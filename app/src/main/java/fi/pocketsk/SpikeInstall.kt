@@ -113,9 +113,12 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
                     lastUpdate = now
                     publish(done = false)
                 }
+            }.also {
+                // Cleared here, inside the block: closing the log flushes it and can throw, and
+                // npm has ended by then whatever the log does.
+                if (it != null) mayHaveOrphans = false
             }
         }
-        if (code != null) mayHaveOrphans = false
         add(if (code == null) "timed out after ${INSTALL_TIMEOUT_S / 60} min" else "exit $code")
         if (code != 0) return
         add("")
