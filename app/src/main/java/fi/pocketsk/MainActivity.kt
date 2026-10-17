@@ -25,6 +25,7 @@ import kotlin.concurrent.thread
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
     private lateinit var output: TextView
+    private var observer: SpikeInstall.Observer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,19 +57,28 @@ class MainActivity : AppCompatActivity() {
             buttons.forEach { it.isEnabled = false }
             runNodeVersion { buttons.forEach { it.isEnabled = true } }
         }
+        val progress = SpikeInstall.Observer { text, finished ->
+            runOnUiThread {
+                output.text = text.ifEmpty { getString(R.string.spike_installing) }
+                if (finished) buttons.forEach { it.isEnabled = runtime.isAvailable }
+            }
+        }
+        observer = progress
         install.setOnClickListener {
             buttons.forEach { it.isEnabled = false }
             output.text = getString(R.string.spike_installing)
-            SpikeInstall(runtime, File(filesDir, "logs/spike-r3.log")).start(
-                onUpdate = { text -> runOnUiThread { output.text = text } },
-                onDone = { text ->
-                    runOnUiThread {
-                        output.text = text
-                        buttons.forEach { it.isEnabled = true }
-                    }
-                },
-            )
+            SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(progress)
         }
+        // An install outlives the activity that started it (a rotation); this one takes it over.
+        SpikeInstall.current?.takeIf { it.isRunning }?.let {
+            buttons.forEach { b -> b.isEnabled = false }
+            it.observe(progress)
+        }
+    }
+
+    override fun onDestroy() {
+        observer?.let { SpikeInstall.current?.detach(it) }
+        super.onDestroy()
     }
 
     private fun runNodeVersion(done: () -> Unit) {

@@ -4,6 +4,7 @@ import fi.pocketsk.node.NodeRuntime
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
@@ -19,66 +20,129 @@ import kotlin.concurrent.thread
  * app targeting API 29+ (§4.2, §15).
  *
  * The run is blocking and long (hundreds of packages over the phone's network), so it lives on
- * its own thread and reports through [onUpdate] at most every half second with the last
+ * its own thread and reports to its [Observer] at most every half second with the last
  * [TAIL_LINES] lines; the whole log goes to `files/logs/spike-r3.log` for the diagnostics that
  * follow. After a clean install a small node script lists what R3 is about: the installed
  * version, the package count, and the packages with install scripts or a binding.gyp.
+ *
+ * One install runs per process, whatever happens to the screen that started it ([start]): a
+ * rotation recreates the activity while npm keeps going, and a second install would delete the
+ * slot and the log under the first. The new activity [observe]s the one running.
  */
-class SpikeInstall(private val runtime: NodeRuntime, private val logFile: File) {
+class SpikeInstall private constructor(private val runtime: NodeRuntime, private val logFile: File) {
+
+    /** The screen's view of the run: the tail so far, and whether the run has ended. */
+    fun interface Observer {
+        fun onProgress(text: String, finished: Boolean)
+    }
 
     /** The last lines of the run, oldest first. Thread-confined to the install thread. */
     private val tail = ArrayDeque<String>()
 
+    @Volatile private var observer: Observer? = null
+    @Volatile private var latest = ""
+    @Volatile private var finished = false
+
+    /** True until the run has ended, its final report included. */
+    val isRunning: Boolean get() = !finished
+
     /**
-     * Starts the install on its own thread. [onUpdate] gets the tail so far, from that thread;
-     * [onDone] gets the final report, also from that thread, exactly once.
+     * Makes [observer] the one told about progress, and tells it the state so far at once, on
+     * the caller's thread; later calls come from the install thread. Both sides write before
+     * they read volatile fields, so the final report reaches an observer attached at any moment,
+     * at worst twice.
      */
-    fun start(onUpdate: (String) -> Unit, onDone: (String) -> Unit) {
+    @Synchronized
+    fun observe(observer: Observer) {
+        this.observer = observer
+        observer.onProgress(latest, finished)
+    }
+
+    /** Stops telling [observer], unless another has taken its place already. */
+    @Synchronized
+    fun detach(observer: Observer) {
+        if (this.observer === observer) this.observer = null
+    }
+
+    private fun begin() {
         thread(name = "spike-npm-install") {
             val started = System.nanoTime()
             try {
-                run(onUpdate)
-            } catch (e: IOException) {
+                run()
+            } catch (e: Exception) {
+                // Broadly: an exception that escapes a plain thread kills the app, and the
+                // report is the point of the spike.
                 add("failed: $e")
             }
             add("(${(System.nanoTime() - started) / 1_000_000_000} s in all; full log: $logFile)")
-            onDone(text())
+            publish(done = true)
         }
     }
 
-    private fun run(onUpdate: (String) -> Unit) {
+    private fun run() {
         runtime.ensureExtracted()
         val slot = File(runtime.slots, "A")
         slot.deleteRecursively()
         if (!slot.mkdirs()) throw IOException("could not create $slot")
         logFile.parentFile?.mkdirs()
         add("$ npm install -g --prefix $slot ${INSTALL_ARGS.joinToString(" ")}")
-        val process = runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS)
-        // npm can stall on a dead network for longer than anyone waits; the reader below only
-        // ends when the process does, so a watchdog ends the process.
-        thread(name = "spike-npm-watchdog", isDaemon = true) {
-            if (!process.waitFor(INSTALL_TIMEOUT_MIN, TimeUnit.MINUTES)) process.destroyForcibly()
-        }
         var lastUpdate = 0L
-        logFile.bufferedWriter().use { log ->
-            process.inputStream.bufferedReader().forEachLine { line ->
+        val code = logFile.bufferedWriter().use { log ->
+            drain(runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS), INSTALL_TIMEOUT_S) { line ->
                 log.appendLine(line)
                 add(line)
                 val now = System.nanoTime()
                 if (now - lastUpdate > UPDATE_INTERVAL_NS) {
                     lastUpdate = now
-                    onUpdate(text())
+                    publish(done = false)
                 }
             }
         }
-        val code = process.waitFor()
-        add("exit $code")
+        add(if (code == null) "timed out after ${INSTALL_TIMEOUT_S / 60} min" else "exit $code")
         if (code != 0) return
         add("")
         add("$ node -e <summary> $slot")
-        val summary = runtime.spawn("-e", SUMMARY_SCRIPT, slot.absolutePath)
-        summary.inputStream.bufferedReader().forEachLine { add(it) }
-        if (!summary.waitFor(SUMMARY_TIMEOUT_S, TimeUnit.SECONDS)) summary.destroyForcibly()
+        val summary = drain(runtime.spawn("-e", SUMMARY_SCRIPT, slot.absolutePath), SUMMARY_TIMEOUT_S, ::add)
+        if (summary != 0) add(if (summary == null) "timed out after $SUMMARY_TIMEOUT_S s" else "exit $summary")
+    }
+
+    /**
+     * Reads [process]'s output to its end, line by line, and returns its exit code, or null when
+     * it was still running after [timeoutS] seconds and was killed. The deadline runs on its own
+     * thread, because a reader blocks for as long as the pipe is open. Killing npm leaves its
+     * lifecycle scripts holding the pipe, so the deadline closes the stream too. The process is
+     * killed and reaped on every way out, a failed log write included, so nothing outlives the
+     * run and a retry never shares the slot with the last one.
+     */
+    private fun drain(process: Process, timeoutS: Long, onLine: (String) -> Unit): Int? {
+        val killed = AtomicBoolean(false)
+        thread(name = "spike-deadline", isDaemon = true) {
+            if (!process.waitFor(timeoutS, TimeUnit.SECONDS)) {
+                killed.set(true)
+                process.destroyForcibly()
+                try {
+                    process.inputStream.close()
+                } catch (_: IOException) {
+                    // Already closed: the reader got to the end first.
+                }
+            }
+        }
+        var read = false
+        try {
+            process.inputStream.bufferedReader().forEachLine(onLine)
+            read = true
+        } catch (e: IOException) {
+            if (!killed.get()) throw e
+        } finally {
+            // Only when the reading did not end at the end of the stream: a process that has
+            // closed its output may not have exited yet, and killing it then would lose its code.
+            if (!read) {
+                process.destroyForcibly()
+                process.waitFor()
+            }
+        }
+        val code = process.waitFor()
+        return if (killed.get()) null else code
     }
 
     private fun add(line: String) {
@@ -86,9 +150,30 @@ class SpikeInstall(private val runtime: NodeRuntime, private val logFile: File) 
         while (tail.size > TAIL_LINES) tail.removeFirst()
     }
 
-    private fun text(): String = tail.joinToString("\n")
+    private fun publish(done: Boolean) {
+        latest = tail.joinToString("\n")
+        finished = done
+        observer?.onProgress(latest, done)
+    }
 
     companion object {
+        /** The install this process started last, running or ended. Only [start] writes it. */
+        @Volatile var current: SpikeInstall? = null
+            private set
+
+        /**
+         * Starts an install into slot A, unless one is already running in this process; either
+         * way returns the one running, for the caller to [observe].
+         */
+        @Synchronized
+        fun start(runtime: NodeRuntime, logFile: File): SpikeInstall {
+            current?.takeIf { it.isRunning }?.let { return it }
+            return SpikeInstall(runtime, logFile).also {
+                current = it
+                it.begin()
+            }
+        }
+
         /**
          * What R3 installs, and how. `--foreground-scripts` puts every lifecycle script's own
          * output in the log, which is the evidence R3 wants; audit and fund are network calls
@@ -100,7 +185,7 @@ class SpikeInstall(private val runtime: NodeRuntime, private val logFile: File) 
         const val TAIL_LINES = 300
 
         private const val UPDATE_INTERVAL_NS = 500_000_000L
-        private const val INSTALL_TIMEOUT_MIN = 20L
+        private const val INSTALL_TIMEOUT_S = 20 * 60L
         private const val SUMMARY_TIMEOUT_S = 60L
 
         /**
