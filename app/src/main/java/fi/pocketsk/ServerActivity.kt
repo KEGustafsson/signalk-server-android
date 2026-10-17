@@ -37,6 +37,11 @@ class ServerActivity : AppCompatActivity() {
         }
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
+        // Nothing here is read from the phone itself: no content:// or file:// URL is ever loaded,
+        // so a page the server serves cannot reach the app's providers or its files either.
+        // allowFileAccess has defaulted to false only since API 30, below minSdk; both are set.
+        web.settings.allowContentAccess = false
+        web.settings.allowFileAccess = false
         // The local server's own pages stay in the WebView; anything else (the App Store links to
         // GitHub and npm) opens in the browser, so JavaScript is only ever on for this server.
         web.webViewClient = object : WebViewClient() {
