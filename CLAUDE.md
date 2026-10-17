@@ -9,7 +9,7 @@ pipeline and several files were lifted (PLAN §17).
 
 ## Stack
 - Android Gradle Plugin 9.4 with its built-in Kotlin (the Kotlin Android plugin is applied nowhere;
-  the root build puts Kotlin 2.4 on the build classpath), Gradle 9.7, compileSdk 37, minSdk 29,
+  the root build puts Kotlin 2.4 on the build classpath), Gradle 9.8, compileSdk 37, minSdk 29,
   targetSdk 37, JDK 17 (a real toolchain: Gradle will not download one). R8 shrinks release builds
   with names kept. Dependabot keeps AndroidX current; the toolchain is moved by hand.
 - No third-party libraries beyond AndroidX and Material for now. `usb-serial-for-android` (MIT)
@@ -39,7 +39,7 @@ app/                 the Android app (the only Gradle module so far)
   fi.pocketsk        MainActivity (currently the R1 spike screen), App, LocalNetwork, WifiLockModes, LegacyPlatform
   fi.pocketsk.node   NodeRuntime: paths, environment, spawn
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
-  fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree
+  fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
 Planned, not yet present (PLAN §2): `node-runtime/` (libnode.so + launcher + npm assets),
