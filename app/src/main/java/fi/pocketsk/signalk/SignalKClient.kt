@@ -1,0 +1,218 @@
+package fi.pocketsk.signalk
+
+import android.content.Context
+import fi.pocketsk.R
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+
+/**
+ * A Signal K server over HTTP: the one this app runs on 127.0.0.1, or another boat's on the LAN.
+ *
+ * Everything here blocks, and is called from a worker thread — never the main one. There is no
+ * client library and no dependency: one `HttpURLConnection`, a short timeout, and the platform
+ * JSON parser. A read is one GET per top-level branch ("navigation" answers heading, speed and
+ * position together).
+ *
+ * The server is local, which is also why the timeouts are short: if it does not answer in a
+ * couple of seconds it is not up, and the supervisor would rather know that than wait.
+ * (Ported from Crew Radio's `ask/SignalKClient`.)
+ */
+class SignalKClient(
+    private val context: Context,
+    private val base: String,
+    private val token: String?,
+    private val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+    private val readTimeoutMs: Int = READ_TIMEOUT_MS,
+) {
+
+    /** Why a request did not produce an answer, in the terms the UI explains it in. */
+    enum class Failure {
+        /** Nothing answered: wrong address, server down or not yet up, or this phone is not on its network. */
+        UNREACHABLE,
+
+        /** The server wants a token, or the one we have has been revoked. */
+        UNAUTHORIZED,
+
+        /** It answered, but not with Signal K. */
+        BAD_RESPONSE,
+    }
+
+    sealed interface Result<out T> {
+        data class Ok<T>(val value: T) : Result<T>
+        /** [detail] is shown to the user as it is; [httpCode] is the status when the server answered with one. */
+        data class Failed(val failure: Failure, val detail: String?, val httpCode: Int = 0) : Result<Nothing>
+    }
+
+    /**
+     * Reads the given top-level branches of `vessels/self` into one tree.
+     *
+     * A branch the boat does not have is not a failure — a boat with no tanks simply has no
+     * `tanks` — so the read succeeds as long as *something* answered. Only when every branch
+     * failed is the whole read reported failed, with the first reason seen.
+     */
+    fun read(branches: List<String>): Result<SignalKTree> {
+        if (branches.isEmpty()) return Result.Ok(SignalKTree.EMPTY)
+        val tree = HashMap<String, Any?>()
+        var firstFailure: Result.Failed? = null
+        for (branch in branches) {
+            when (val response = getJson(SignalKUrl.selfBranch(base, branch))) {
+                is Result.Ok -> tree[branch] = toMap(response.value)
+                is Result.Failed -> {
+                    // A branch this boat does not publish comes back 404: not an error, just absent.
+                    if (response.failure == Failure.BAD_RESPONSE && response.httpCode == HttpURLConnection.HTTP_NOT_FOUND) continue
+                    if (firstFailure == null) firstFailure = response
+                    // Nothing answered: the next branch would wait out the same timeout for the same reason.
+                    if (response.failure == Failure.UNREACHABLE) break
+                }
+            }
+        }
+        if (tree.isEmpty()) return firstFailure ?: http(Failure.BAD_RESPONSE, HttpURLConnection.HTTP_NOT_FOUND)
+        return Result.Ok(SignalKTree(tree))
+    }
+
+    /**
+     * The server's discovery document (`GET /signalk`): the cheapest "is it up?" there is, and
+     * what the supervisor's health gate and the installer's smoke test poll (docs/PLAN.md §5.2).
+     */
+    fun endpoints(): Result<JSONObject> = getJson(SignalKUrl.discovery(base))
+
+    /** Where an access request got to. */
+    data class Access(val href: String?, val state: String?, val permission: String?, val token: String?)
+
+    /**
+     * Asks the server for a token, which someone with the admin UI open then approves. This is
+     * Signal K's own device flow. For the app's own local server the approval is done by the app
+     * itself through the admin API, so nothing is ever shown or typed.
+     */
+    fun requestAccess(clientId: String, description: String): Result<Access> {
+        val body = JSONObject().put("clientId", clientId).put("description", description).toString()
+        return when (val response = post(SignalKUrl.accessRequests(base), body)) {
+            is Result.Ok -> Result.Ok(
+                Access(
+                    href = response.value.optString("href").takeIf { it.isNotEmpty() },
+                    state = response.value.optString("state").takeIf { it.isNotEmpty() },
+                    permission = null,
+                    token = null,
+                )
+            )
+            is Result.Failed -> response
+        }
+    }
+
+    /**
+     * Polls the href a request came back with, until it is approved or denied. The href is the
+     * server's own text, so it is resolved against [base] rather than concatenated: see
+     * [SignalKUrl.resolve] for what concatenating it allowed.
+     */
+    fun pollAccess(href: String): Result<Access> {
+        val url = SignalKUrl.resolve(base, href) ?: return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_redirected))
+        return when (val response = getJson(url)) {
+            is Result.Ok -> {
+                val data = response.value.optJSONObject("accessRequest")
+                Result.Ok(
+                    Access(
+                        href = href,
+                        state = response.value.optString("state").takeIf { it.isNotEmpty() },
+                        permission = data?.optString("permission")?.takeIf { it.isNotEmpty() },
+                        token = data?.optString("token")?.takeIf { it.isNotEmpty() },
+                    )
+                )
+            }
+            is Result.Failed -> response
+        }
+    }
+
+    private fun getJson(url: String): Result<JSONObject> = request(url, "GET", null)
+
+    private fun post(url: String, body: String): Result<JSONObject> = request(url, "POST", body)
+
+    private fun request(url: String, method: String, body: String?): Result<JSONObject> {
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                connectTimeout = connectTimeoutMs
+                readTimeout = readTimeoutMs
+                instanceFollowRedirects = false
+                setRequestProperty("Accept", "application/json")
+                if (!token.isNullOrEmpty()) setRequestProperty("Authorization", "Bearer $token")
+                if (body != null) {
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                }
+            }
+            if (body != null) connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
+                return http(Failure.UNAUTHORIZED, code)
+            }
+            if (code !in 200..299) return http(Failure.BAD_RESPONSE, code)
+            val text = readBounded(connection.inputStream)
+                ?: return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_too_large))
+            return Result.Ok(if (text.isBlank()) JSONObject() else JSONObject(text))
+        } catch (e: IOException) {
+            // Wrong address, nothing listening yet, or this phone is not on the server's network.
+            return Result.Failed(Failure.UNREACHABLE, e.message)
+        } catch (e: JSONException) {
+            return Result.Failed(Failure.BAD_RESPONSE, e.message)
+        } catch (e: SecurityException) {
+            // Cleartext refused by the network security policy, among other things.
+            return Result.Failed(Failure.UNREACHABLE, e.message)
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    /** A server that answered with an HTTP error status. */
+    private fun http(failure: Failure, code: Int) =
+        Result.Failed(failure, context.getString(R.string.signalk_http, code), code)
+
+    /**
+     * The body, or null once it passes [MAX_BODY]. The cap is applied while reading rather than
+     * to the finished string: a server that answers with a hundred megabytes should cost this
+     * phone a megabyte and a rejection, not a hundred megabytes of heap first.
+     */
+    private fun readBounded(stream: java.io.InputStream): String? =
+        stream.bufferedReader(Charsets.UTF_8).use { reader ->
+            val text = StringBuilder()
+            val chunk = CharArray(CHUNK_CHARS)
+            var read = reader.read(chunk)
+            while (read >= 0) {
+                if (text.length + read > MAX_BODY) return@use null
+                text.appendRange(chunk, 0, read)
+                read = reader.read(chunk)
+            }
+            text.toString()
+        }
+
+    companion object {
+        const val CONNECT_TIMEOUT_MS = 2_500
+        const val READ_TIMEOUT_MS = 3_500
+
+        /** A vessel's whole `navigation` branch is a few kilobytes; a megabyte is something else. */
+        const val MAX_BODY = 1 shl 20
+
+        /** How much is read at a time while the cap is being counted. */
+        private const val CHUNK_CHARS = 8 * 1024
+
+        /**
+         * The platform parser's objects as the plain maps [SignalKTree] walks. `JSONObject.NULL`
+         * becomes a real null, and arrays are kept as lists so a value that happens to be one does
+         * not read as a branch.
+         */
+        fun toMap(json: JSONObject): Map<String, Any?> = buildMap {
+            for (key in json.keys()) put(key, unwrap(json.get(key)))
+        }
+
+        private fun unwrap(value: Any?): Any? = when (value) {
+            JSONObject.NULL, null -> null
+            is JSONObject -> toMap(value)
+            is JSONArray -> (0 until value.length()).map { unwrap(value.get(it)) }
+            else -> value
+        }
+    }
+}

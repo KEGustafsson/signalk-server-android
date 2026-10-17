@@ -48,12 +48,16 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 
 ## 2. Repository layout
 
+The Gradle project sits at the repository root, as in Crew Radio, so its workflows apply unchanged.
+
 ```
-pocket-sk/
-├── android/                         # Gradle project
-│   ├── app/                         # Compose UI, service, bridge
-│   ├── node-runtime/                # AAR: libnode.so + launcher + npm assets
-│   └── usb-serial/                  # thin wrapper over usb-serial-for-android
+signalk-server-android/
+├── app/                             # the app: UI, service, bridge          (present)
+│   └── src/main/java/fi/pocketsk/
+│       ├── node/                    # NodeRuntime                           (present)
+│       ├── net/                     # Backoff, Threads, NetworkChoice       (present, from Crew Radio)
+│       └── signalk/                 # Client, Url, Discovery, Tree          (present, from Crew Radio)
+├── node-runtime/                    # AAR: libnode.so + launcher + npm assets
 ├── native/
 │   ├── launcher/                    # C++: main() -> node::Start()
 │   └── CMakeLists.txt
@@ -65,7 +69,8 @@ pocket-sk/
 ├── prebuilds/                       # CI matrix for native addons
 │   ├── packages.json
 │   └── build.sh
-├── ci/                              # GitHub Actions
+├── .github/workflows/               # build.yml, codeql.yml                 (present, from Crew Radio)
+├── gradle/, build.gradle.kts, …     # toolchain                             (present, from Crew Radio)
 └── docs/
 ```
 
@@ -357,11 +362,11 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 
 ## 16. First tasks for the coding agent
 
-1. Create `android/` Gradle project by copying Crew Radio's `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradle/` (wrapper + verification metadata), `proguard-rules.pro` and `CLAUDE.md` skeleton; rename namespace to `fi.pocketsk`, env vars to `POCKETSK_*`. Add Compose and module `node-runtime`.
+1. ~~Create the Gradle project from Crew Radio's skeleton~~ **Done**: root build files, wrapper, verification metadata, `app/` with the reusable Kotlin ported (§17.1), the R1 spike `MainActivity`, `NodeRuntime`, workflows and `CLAUDE.md`. Not yet built on a machine with an SDK: the first CI run is the first build. Compose is added together with the Dock (§8), so the verification metadata changes once, not twice.
 2. Gradle task in `node-runtime` to download `nodejs-mobile-android-24.x.y-z.zip`, verify checksum, unpack `libnode.so` + headers into `src/main/jniLibs` and `src/main/cpp/include`.
 3. `native/launcher/main.cc` + CMake → `libnodeexec.so`.
 4. `NodeRuntime.kt` (§4.3) with asset extraction of `npm` (vendored from the matching Node release tarball into `assets/npm.tar`).
-5. Spike activity with a button: run `node -v` and `npm -v`, print to screen. **This is R1.**
+5. ~~Spike activity~~ `MainActivity` already does this: it shows `nativeLibraryDir` and the environment, and runs `node -v` once `libnodeexec.so` is in the APK. **This is R1.**
 6. Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it. **R2.**
 7. Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log. **R3.**
 8. Button: start server, open WebView. **R4.**
@@ -397,7 +402,7 @@ Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotl
 | `StatusActivity.kt` | Dock › Logs | Last-N status lines with timestamps, packet-style counters become delta/s, restarts, bytes per device, "Check for updates" row |
 | `MainActivity.kt` permission flow | First-run wizard (§5.3) | Ask-when-needed pattern, "App settings" fallback row when a permission is permanently denied |
 | `ask/AskSheet.kt`, `AskVoice.kt`, `AskRecognizer.kt` | Optional **Ask boat data** in Pocket SK | Same feature against `localhost`; no pairing needed because the server is local. Cheap win once the bridge exists |
-| `.github/workflows/build.yml`, `codeql.yml`, `signalk-ci.yml` | same names | See §10 |
+| `.github/workflows/build.yml`, `codeql.yml`, `signalk-ci.yml` | same names | See §10. `build.yml` and `codeql.yml` are in; `signalk-ci.yml` returns with `sk-plugin/android-bridge` |
 | `app/build.gradle.kts` | same | Git-derived version, signing guard, SBOM task, lint gates. Add `node-runtime` download task and `extractNativeLibs=true` |
 | `docs/SECURITY.md`, `docs/cra/*` | `docs/` | Threat model and CRA mapping templates; Pocket SK is a network-facing hub, so Annex I mapping matters more here, not less |
 | `CLAUDE.md` | `CLAUDE.md` | Same structure: stack, architecture diagram, threading rules, how to test on devices |

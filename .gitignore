@@ -1,0 +1,32 @@
+# Gradle / Android Studio
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/
+.externalNativeBuild/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+.DS_Store
+.kotlin/
+
+# Signing keys never enter the repository (see README, Releases)
+*.keystore
+*.jks
+keystore.properties
+
+# Downloaded Node runtime (node-runtime/ fetches nodejs-mobile at build time)
+node-runtime/downloads/
+node-runtime/src/main/jniLibs/
+node-runtime/src/main/cpp/include/
+
+# Signal K plugin workspaces
+sk-plugin/*/node_modules/
+sk-plugin/*/coverage/
+sk-plugin/*/package-lock.json

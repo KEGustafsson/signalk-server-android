@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and earlier (fullBackupContent). The app's own SharedPreferences hold the admin
+  token for the local server; the server's own state under files/home/.signalk holds every
+  plugin's secrets (security.json, tokens, API keys). None of it belongs in a cloud backup;
+  the Dock's explicit backup/restore to a file the user chooses is the way to move it.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="home" />
+    <exclude domain="file" path="sk" />
+</full-backup-content>

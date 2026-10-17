@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12 and later. Same reasoning as backup_rules.xml: the admin token in the default
+  SharedPreferences and the whole server state (files/home/.signalk with security.json and every
+  plugin's credentials, files/sk with the installed server) stay on this phone. Cloud backup is
+  off anyway (allowBackup="false"); device transfer is not, so these rules are what keeps a boat's
+  credentials from riding along to a new phone unasked. The preferences file name is what
+  PreferenceManager.getDefaultSharedPreferences uses: <package>_preferences.xml.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="fi.pocketsk_preferences.xml" />
+        <exclude domain="file" path="home" />
+        <exclude domain="file" path="sk" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="fi.pocketsk_preferences.xml" />
+        <exclude domain="file" path="home" />
+        <exclude domain="file" path="sk" />
+    </device-transfer>
+</data-extraction-rules>

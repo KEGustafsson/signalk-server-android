@@ -15,7 +15,11 @@ Sibling project: [Crew Radio](https://github.com/KEGustafsson/crew-radio), whose
 
 ## Status
 
-Planning. Nothing builds yet. The plan, including the risk spikes that decide the architecture, is in [docs/PLAN.md](docs/PLAN.md).
+Skeleton. The project builds an app whose only screen is the first risk spike (can an app exec the Node runtime?); the runtime itself is not in yet. The plan, including the spikes that decide the architecture, is in [docs/PLAN.md](docs/PLAN.md).
+
+## Build it yourself
+
+Open the folder in Android Studio (a release that supports Android Gradle Plugin 9.4) and build, or run `./gradlew assembleDebug` with an Android SDK (platform 37) and a JDK 17 on the machine. Unit tests: `./gradlew testDebugUnitTest`. Every merge to `main` builds a signed APK and publishes it on the Releases page; the build, signing and release procedure is the one documented for [Crew Radio](https://github.com/KEGustafsson/crew-radio/blob/main/docs/BUILDING.md), with `SIGNALK_ANDROID_` in place of `CREWRADIO_` in the secrets and environment variables.
 
 ## Licence
 

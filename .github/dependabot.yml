@@ -1,0 +1,36 @@
+# Keeps the two things this project depends on current: the Gradle/AndroidX dependencies and
+# the pinned GitHub Actions. (The nodejs-mobile release the node-runtime module downloads is
+# pinned by hand in its build file, with its checksum.) One grouped pull request per ecosystem per week at most; review
+# like any other PR.
+#
+# A Gradle update PR needs one more step before it is green: every artifact the build downloads
+# is checked against gradle/verification-metadata.xml, and Dependabot does not know how to add
+# the new versions' checksums. On the PR branch, with the SDK and a JDK 17 on the machine:
+#
+#     ./gradlew --write-verification-metadata sha256 help testDebugUnitTest assembleRelease assembleDebug lintRelease sbom
+#
+# then look through the diff of gradle/verification-metadata.xml (only the bumped modules should
+# change), commit and push. Gradle merges into the existing file, so nothing else moves.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      all-gradle:
+        patterns: ["*"]
+    ignore:
+      # Major versions of the toolchain (AGP, Kotlin, Gradle) and libraries are taken by hand,
+      # with the migration work they need; Dependabot proposes minor and patch updates only.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      all-actions:
+        patterns: ["*"]
