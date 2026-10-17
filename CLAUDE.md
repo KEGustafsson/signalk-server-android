@@ -45,7 +45,8 @@ app/                 the Android app
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), Tar (unpacks npm)
-native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
+native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs;
+                     spike-addon/ (R2 test addon, two builds; leaves with the spike screen)
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
 Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,

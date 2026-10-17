@@ -5,7 +5,7 @@
 # The launcher is this project's: an executable named like a library, so the build packages it
 # in lib/<abi>/ too and the installer extracts it to nativeLibraryDir, where it may be exec'd.
 cmake_minimum_required(VERSION 3.31)
-project(pocketsk_node_runtime CXX)
+project(pocketsk_node_runtime C CXX)
 
 if(NOT NODEJS_MOBILE_DIR)
   message(FATAL_ERROR "NODEJS_MOBILE_DIR is not set; build through the node-runtime Gradle module")
@@ -17,3 +17,5 @@ set_target_properties(node PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${NODEJS_MOBILE_DIR}/include/node")
 
 add_subdirectory(launcher)
+# Spike R2 only; leaves with the spike screen.
+add_subdirectory(spike-addon)
