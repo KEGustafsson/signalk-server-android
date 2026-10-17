@@ -21,11 +21,6 @@ captures/
 *.jks
 keystore.properties
 
-# Downloaded Node runtime (node-runtime/ fetches nodejs-mobile at build time)
-node-runtime/downloads/
-node-runtime/src/main/jniLibs/
-node-runtime/src/main/cpp/include/
-
 # Signal K plugin workspaces
 sk-plugin/*/node_modules/
 sk-plugin/*/coverage/

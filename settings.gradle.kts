@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "SignalKServerAndroid"
-include(":app")
+include(":app", ":node-runtime")

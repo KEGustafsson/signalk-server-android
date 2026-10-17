@@ -12,8 +12,12 @@ pipeline and several files were lifted (PLAN §17).
   the root build puts Kotlin 2.4 on the build classpath), Gradle 9.8, compileSdk 37, minSdk 29,
   targetSdk 37, JDK 17 (a real toolchain: Gradle will not download one). R8 shrinks release builds
   with names kept. Dependabot keeps AndroidX current; the toolchain is moved by hand.
-- No third-party libraries beyond AndroidX and Material for now. `usb-serial-for-android` (MIT)
-  joins with the bridge (PLAN §7), `nodejs-mobile` (MIT) with the runtime module (PLAN §4).
+- No third-party libraries beyond AndroidX and Material, and nodejs-mobile's `libnode.so` (MIT,
+  Node 24 from digidem's fork; PLAN §4.1), which `node-runtime` downloads from the release zip
+  pinned by version and SHA-256 in `gradle.properties`. `usb-serial-for-android` (MIT) joins with
+  the bridge (PLAN §7).
+- Native: NDK r27d (27.3.13750724), the release libnode.so was built with, and CMake 3.31.6,
+  both pinned in `node-runtime/build.gradle.kts` and fetched by AGP from the SDK repository.
 - Build: `./gradlew assembleDebug` (wrapper committed; needs an Android SDK with platform 37 via
   `ANDROID_HOME` or `local.properties`). A missing JDK 17 fails as "Cannot find a Java installation
   ... {languageVersion=17}". Install: `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
@@ -35,15 +39,16 @@ pipeline and several files were lifted (PLAN §17).
 
 ## Layout
 ```
-app/                 the Android app (the only Gradle module so far)
+app/                 the Android app
   fi.pocketsk        MainActivity (currently the R1 spike screen), App, LocalNetwork, WifiLockModes, LegacyPlatform
   fi.pocketsk.node   NodeRuntime: paths, environment, spawn
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
+node-runtime/        Android library: nodejs-mobile's libnode.so per ABI and the launcher
+native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): `node-runtime/` (libnode.so + launcher + npm assets),
-`native/launcher/`, `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
+Planned, not yet present (PLAN §2): npm assets in `node-runtime/`, `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
 `prebuilds/`.
 
 ## Rules of the house
