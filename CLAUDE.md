@@ -61,3 +61,28 @@ Planned, not yet present (PLAN §2): `node-runtime/` (libnode.so + launcher + np
   its class comment, so a fix found in one repo is carried to the other.
 - Commit messages: what changed and why, present tense, wrapped at 72. Version numbers are never
   part of a commit.
+
+## Review and merge
+The plan is implemented one step at a time (PLAN §16, then the milestones in §13), one pull
+request per step. Nothing reaches `main` without a review, and a green, reviewed step is merged
+without waiting so the next one can start.
+- Every change goes through a pull request; nothing is pushed to `main` directly. The next step
+  starts from the merged `main`, never on top of an unmerged branch.
+- CodeRabbit reviews every pull request. Automatic reviews are off for this repository, so ask
+  for one with a PR comment `@coderabbitai review` when the PR is opened and again after every
+  push that follows a review. The plan allows about one review an hour; when CodeRabbit says the
+  allowance is used up, wait for it and ask again rather than merging unreviewed.
+- Every CodeRabbit finding gets an answer on its thread. Fixed: push the fix, reply naming the
+  commit and what it changed, and ask CodeRabbit to resolve it (`@coderabbitai resolve`, or
+  resolve the thread). Not fixed: reply with the reason. A finding is a claim to check against
+  the code, not an order, but "optional" or "minor" is not a reason to leave it unanswered.
+- Merge, without asking, when all of these hold on the PR's current head: CI green (Build and
+  CodeQL), a CodeRabbit review of that head with no actionable comments left, every review
+  thread resolved, no merge conflict. A push after the last review means a new review first.
+- Do not merge, and ask the owner instead, when a person has requested changes or a step needs
+  a decision the plan does not make. Say so on the PR.
+- What only a phone can prove (the runtime, the service, the bridge; see Unit tests above) does
+  not hold a merge: the PR lists it under "To check on a device", and PLAN §3 keeps the spike
+  results.
+- Merge with a merge commit, as the history so far does. The working branch is then reset onto
+  the new `main` for the next step.
