@@ -19,7 +19,8 @@ import kotlin.concurrent.thread
  * script), then spike R2: it copies the two builds of the test addon out of nativeLibraryDir into
  * writable storage and requires each from there, the way npm leaves a plugin's native addon in
  * node_modules. It prints whatever comes back, including the exact exception when an exec or a
- * load is refused. It becomes the Dock once the service exists.
+ * load is refused. The second button is spike R3 ([SpikeInstall]): npm installs signalk-server
+ * into slot A, its output streamed onto the screen. It becomes the Dock once the service exists.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
@@ -39,17 +40,34 @@ class MainActivity : AppCompatActivity() {
         runtime = NodeRuntime(this)
         output = findViewById(R.id.output)
         val run = findViewById<Button>(R.id.run)
+        val install = findViewById<Button>(R.id.install)
         run.isEnabled = runtime.isAvailable
+        install.isEnabled = runtime.isAvailable
         val intro = buildString {
             append(runtime.describe())
             if (!runtime.isAvailable) appendLine().append(getString(R.string.spike_missing))
         }
         output.text = intro
+        // One run at a time, of either kind: a second tap would start a second node and, the
+        // first time, a second unpack of npm. NodeRuntime serialises the unpack; this keeps the
+        // report whole and keeps two installs out of one slot.
+        val buttons = listOf(run, install)
         run.setOnClickListener {
-            // One run at a time: a second tap would start a second node and, the first time, a
-            // second unpack of npm. NodeRuntime serialises the unpack; this keeps the report whole.
-            run.isEnabled = false
-            runNodeVersion { run.isEnabled = true }
+            buttons.forEach { it.isEnabled = false }
+            runNodeVersion { buttons.forEach { it.isEnabled = true } }
+        }
+        install.setOnClickListener {
+            buttons.forEach { it.isEnabled = false }
+            output.text = getString(R.string.spike_installing)
+            SpikeInstall(runtime, File(filesDir, "logs/spike-r3.log")).start(
+                onUpdate = { text -> runOnUiThread { output.text = text } },
+                onDone = { text ->
+                    runOnUiThread {
+                        output.text = text
+                        buttons.forEach { it.isEnabled = true }
+                    }
+                },
+            )
         }
     }
 
