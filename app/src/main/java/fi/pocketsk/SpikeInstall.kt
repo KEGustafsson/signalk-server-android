@@ -99,10 +99,13 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
         logFile.parentFile?.mkdirs()
         add("$ npm install -g --prefix $slot ${INSTALL_ARGS.joinToString(" ")}")
         var lastUpdate = 0L
-        // Until drain() says npm ended by itself, it may have been killed with scripts still running.
-        mayHaveOrphans = true
         val code = logFile.bufferedWriter().use { log ->
-            drain(runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS), INSTALL_TIMEOUT_S) { line ->
+            val npm = runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS)
+            // From here until drain() says npm ended by itself, it may be killed with scripts still
+            // running. Not before: a log that cannot be opened or an npm that never started leaves
+            // nothing behind.
+            mayHaveOrphans = true
+            drain(npm, INSTALL_TIMEOUT_S) { line ->
                 log.appendLine(line)
                 add(line)
                 val now = System.nanoTime()
