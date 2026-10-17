@@ -57,5 +57,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Spike R4: the server's admin UI in a WebView. Opened only from MainActivity. -->
+        <activity
+            android:name=".ServerActivity"
+            android:exported="false" />
     </application>
 </manifest>
