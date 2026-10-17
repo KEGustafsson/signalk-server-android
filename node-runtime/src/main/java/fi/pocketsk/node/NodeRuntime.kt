@@ -70,9 +70,12 @@ class NodeRuntime(context: Context) {
      * link is not [File.exists], and creating the link again over it fails with EEXIST, which
      * would leave `node` off PATH for good after the first update. Throws [IOException] when the
      * link cannot be made, like every other failure to set up the runtime.
+     *
+     * Under [LAYOUT_LOCK], like [ensureExtracted]: two callers that both find the link stale would
+     * otherwise both delete it, and the second to recreate it fails with EEXIST.
      */
     @Throws(IOException::class)
-    fun ensureLayout() {
+    fun ensureLayout(): Unit = synchronized(LAYOUT_LOCK) {
         for (d in listOf(home, configDir, slots, npmDir, binDir, prebuilds, tmp)) d.mkdirs()
         if (!isAvailable) return
         // A symlink into nativeLibraryDir, so `node` is on PATH for npm's lifecycle scripts.
@@ -103,9 +106,13 @@ class NodeRuntime(context: Context) {
      * beside `files/npm` and swapped in by two renames, the old tree deleted only afterwards, so
      * a process killed at any point leaves a whole npm or none at `files/npm`, never a mixture;
      * a missing stamp means "unpack again".
+     *
+     * One unpack at a time in the process ([LAYOUT_LOCK]): every NodeRuntime shares
+     * `files/npm.new` and `files/npm.old`, and two unpacks interleaved there could swap a
+     * stamped but half-written tree into place, which the stamp would then keep for good.
      */
     @Throws(IOException::class)
-    fun ensureExtracted() {
+    fun ensureExtracted(): Unit = synchronized(LAYOUT_LOCK) {
         ensureLayout()
         val stamp = "npm ${BuildConfig.NPM_VERSION} ${BuildConfig.NPM_SHA256}\n"
         val marker = File(npmDir, STAMP)
@@ -196,5 +203,11 @@ class NodeRuntime(context: Context) {
 
         /** Written last into an unpacked npm: what was unpacked, so the next start can tell. */
         private const val STAMP = ".pocketsk-extracted"
+
+        /**
+         * Process-wide, not per instance: the activity and the service will each hold their own
+         * NodeRuntime, and both lay out and unpack into the same directories.
+         */
+        private val LAYOUT_LOCK = Any()
     }
 }

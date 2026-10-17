@@ -42,10 +42,15 @@ class MainActivity : AppCompatActivity() {
             if (!runtime.isAvailable) appendLine().append(getString(R.string.spike_missing))
         }
         output.text = intro
-        run.setOnClickListener { runNodeVersion() }
+        run.setOnClickListener {
+            // One run at a time: a second tap would start a second node and, the first time, a
+            // second unpack of npm. NodeRuntime serialises the unpack; this keeps the report whole.
+            run.isEnabled = false
+            runNodeVersion { run.isEnabled = true }
+        }
     }
 
-    private fun runNodeVersion() {
+    private fun runNodeVersion(done: () -> Unit) {
         output.text = getString(R.string.spike_running)
         thread(name = "spike-node") {
             val report = StringBuilder()
@@ -61,7 +66,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             report.appendLine().append(runtime.describe())
-            runOnUiThread { output.text = report }
+            runOnUiThread {
+                output.text = report
+                done()
+            }
         }
     }
 
