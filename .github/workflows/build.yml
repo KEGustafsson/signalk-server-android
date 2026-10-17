@@ -55,12 +55,22 @@ jobs:
 
       - name: Unit tests and APK (debug-signed)
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon testDebugUnitTest assembleRelease printVersion
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease printVersion 2>&1 | tee gradle.log
           VERSION=$(cat app/build/version.txt)
           echo "$VERSION" | grep -Eq '^1\.[0-9]+$' || { echo "::error::app/build/version.txt holds '$VERSION', not a version"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/release/app-release.apk "SignalKServer-$VERSION-debugsigned.apk"
+
+      # The full log is only on the Actions page. An annotation is also readable through the
+      # Checks API and on a phone, so the reasons a build failed are repeated there: compiler
+      # errors, failing tests and Gradle's own summary. Actions shows at most ten per step.
+      - name: Why the build failed
+        if: failure()
+        run: |
+          { grep -E '^e: |FAILED$|expected:' gradle.log; grep -A4 '^\* What went wrong' gradle.log; } \
+            | head -10 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
 
       - name: Test report
         if: always()
@@ -78,7 +88,16 @@ jobs:
       # After the APK, so a Lint error still leaves the build's APK to test with. An error fails
       # the job (lint.abortOnError in app/build.gradle.kts); warnings are in the report.
       - name: Android Lint
-        run: ./gradlew --no-daemon lintRelease
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon lintRelease 2>&1 | tee lint.log
+
+      - name: Why Lint failed
+        if: failure()
+        run: |
+          [ -f lint.log ] || exit 0
+          { grep -E ': (Error|Warning): ' lint.log; grep -A4 '^\* What went wrong' lint.log; } \
+            | head -10 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
 
       - name: Lint report
         if: always()
