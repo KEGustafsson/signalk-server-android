@@ -12,7 +12,7 @@ import java.io.File
  * That is what lets `npm`, child processes and `process.execPath` work unmodified inside
  * Signal K Server. Android only lets an app execute files from [nativeLibraryDir], never from
  * its writable storage, and only when the libraries are extracted at install time
- * (`extractNativeLibs="true"` in the manifest, `useLegacyPackaging` in the build).
+ * (`jniLibs.useLegacyPackaging` in the build, which sets `extractNativeLibs`).
  *
  * The on-disk layout under [files] is the one the plan draws:
  *
@@ -24,8 +24,9 @@ import java.io.File
  *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
  *     cache/tmp             $TMPDIR
  *
- * Nothing here is created until [ensureLayout]; before the `node-runtime` module exists
- * [executable] is simply absent and [isAvailable] false, which is what the spike screen reports.
+ * Nothing here is created until [ensureLayout]. The executable comes from the `node-runtime`
+ * module; on an ABI it does not build for, [executable] is absent and [isAvailable] false, which
+ * is what the spike screen reports.
  */
 class NodeRuntime(context: Context) {
     private val app = context.applicationContext

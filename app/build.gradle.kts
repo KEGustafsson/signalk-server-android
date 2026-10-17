@@ -27,6 +27,10 @@ val commitSha = git("rev-parse", "--short", "HEAD").ifEmpty { "local" }
 val dirty = git("status", "--porcelain").isNotEmpty()
 val appVersion = "1.$commitCount"
 
+// The Node runtime node-runtime packages, as pinned in gradle.properties; the SBOM lists it.
+val nodejsMobileVersion = providers.gradleProperty("nodejsMobile.version").get()
+val nodejsMobileSha256 = providers.gradleProperty("nodejsMobile.sha256").get()
+
 // Release signing: a keystore named by SIGNALK_ANDROID_KEYSTORE (CI decodes it from a secret) or
 // app/release.keystore locally, with its passwords from the environment. Without one the
 // release build is signed with the debug key so `assembleRelease` always works; the README
@@ -94,7 +98,8 @@ android {
     buildFeatures { buildConfig = true }
     packaging {
         // The Node runtime is exec'd as a file from nativeLibraryDir (docs/PLAN.md §4.1), which
-        // needs the .so files extracted at install time rather than mapped from the APK.
+        // needs the .so files extracted at install time rather than mapped from the APK. This is
+        // what puts extractNativeLibs="true" in the merged manifest; the manifest does not say it.
         jniLibs { useLegacyPackaging = true }
     }
     compileOptions {
@@ -151,14 +156,23 @@ tasks.register("sbom") {
         walk(cfg.incoming.resolutionResult.rootComponent.get(), appRef)
 
         // The files behind them, hashed. A module without an artifact (a BOM, a Kotlin
-        // multiplatform umbrella pointing at its -jvm variant) is listed without hashes.
-        val files = cfg.resolvedConfiguration.resolvedArtifacts
-            .groupBy({ with(it.moduleVersion.id) { "pkg:maven/$group/$name@$version" } }, { it.file })
-        val comps = modules.entries.joinToString(",\n") { (ref, id) ->
+        // multiplatform umbrella pointing at its -jvm variant) is listed without hashes. Only
+        // Maven modules are asked for files: this build's own modules (node-runtime) are not
+        // downloads, and what they carry is listed below.
+        val files = cfg.incoming.artifactView { componentFilter { it is ModuleComponentIdentifier } }
+            .artifacts.artifacts
+            .groupBy({ purl(it.id.componentIdentifier)!! }, { it.file })
+        val mavenComps = modules.entries.map { (ref, id) ->
             val hashes = (files[ref] ?: emptyList()).distinct().sortedBy { it.name }
                 .joinToString(", ") { """{"alg": "SHA-256", "content": "${sha256(it)}"}""" }
             """    {"type": "library", "group": "${id.group}", "name": "${id.module}", "version": "${id.version}", "purl": "$ref", "bom-ref": "$ref", "hashes": [$hashes]}"""
         }
+        // The Node runtime is not a Maven artifact: node-runtime downloads nodejs-mobile's release
+        // zip, pinned by SHA-256 in gradle.properties, and packages its libnode.so files.
+        val nodeRef = "pkg:github/digidem/nodejs-mobile@v$nodejsMobileVersion"
+        val nodeComp = """    {"type": "library", "name": "nodejs-mobile", "version": "$nodejsMobileVersion", "purl": "$nodeRef", "bom-ref": "$nodeRef", "licenses": [{"license": {"id": "MIT"}}], "hashes": [{"alg": "SHA-256", "content": "$nodejsMobileSha256"}], "externalReferences": [{"type": "distribution", "url": "https://github.com/digidem/nodejs-mobile/releases/download/v$nodejsMobileVersion/nodejs-mobile-android-$nodejsMobileVersion.zip"}]}"""
+        dependsOn[appRef] = (dependsOn.getValue(appRef) + nodeRef).sorted()
+        val comps = (mavenComps + nodeComp).joinToString(",\n")
         val deps = dependsOn.entries.joinToString(",\n") { (ref, on) ->
             """    {"ref": "$ref", "dependsOn": [${on.joinToString(", ") { "\"$it\"" }}]}"""
         }
@@ -206,6 +220,7 @@ tasks.register("printVersion") {
 }
 
 dependencies {
+    implementation(project(":node-runtime"))
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")

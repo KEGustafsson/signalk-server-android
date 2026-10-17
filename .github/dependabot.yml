@@ -1,6 +1,6 @@
 # Keeps the two things this project depends on current: the Gradle/AndroidX dependencies and
 # the pinned GitHub Actions. (The nodejs-mobile release the node-runtime module downloads is
-# pinned by hand in its build file, with its checksum.) One grouped pull request per ecosystem per week at most; review
+# pinned by hand in gradle.properties, with its checksum.) One grouped pull request per ecosystem per week at most; review
 # like any other PR.
 #
 # A Gradle update PR needs one more step before it is green: every artifact the build downloads

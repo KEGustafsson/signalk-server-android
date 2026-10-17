@@ -12,8 +12,12 @@ pipeline and several files were lifted (PLAN §17).
   the root build puts Kotlin 2.4 on the build classpath), Gradle 9.8, compileSdk 37, minSdk 29,
   targetSdk 37, JDK 17 (a real toolchain: Gradle will not download one). R8 shrinks release builds
   with names kept. Dependabot keeps AndroidX current; the toolchain is moved by hand.
-- No third-party libraries beyond AndroidX and Material for now. `usb-serial-for-android` (MIT)
-  joins with the bridge (PLAN §7), `nodejs-mobile` (MIT) with the runtime module (PLAN §4).
+- No third-party libraries beyond AndroidX and Material, and nodejs-mobile's `libnode.so` (MIT,
+  Node 24 from digidem's fork; PLAN §4.1), which `node-runtime` downloads from the release zip
+  pinned by version and SHA-256 in `gradle.properties`. `usb-serial-for-android` (MIT) joins with
+  the bridge (PLAN §7).
+- Native: NDK r27d (27.3.13750724), the release libnode.so was built with, and CMake 3.31.6,
+  both pinned in `node-runtime/build.gradle.kts` and fetched by AGP from the SDK repository.
 - Build: `./gradlew assembleDebug` (wrapper committed; needs an Android SDK with platform 37 via
   `ANDROID_HOME` or `local.properties`). A missing JDK 17 fails as "Cannot find a Java installation
   ... {languageVersion=17}". Install: `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
@@ -35,15 +39,16 @@ pipeline and several files were lifted (PLAN §17).
 
 ## Layout
 ```
-app/                 the Android app (the only Gradle module so far)
+app/                 the Android app
   fi.pocketsk        MainActivity (currently the R1 spike screen), App, LocalNetwork, WifiLockModes, LegacyPlatform
   fi.pocketsk.node   NodeRuntime: paths, environment, spawn
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
+node-runtime/        Android library: nodejs-mobile's libnode.so per ABI and the launcher
+native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): `node-runtime/` (libnode.so + launcher + npm assets),
-`native/launcher/`, `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
+Planned, not yet present (PLAN §2): npm assets in `node-runtime/`, `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
 `prebuilds/`.
 
 ## Rules of the house
@@ -61,3 +66,28 @@ Planned, not yet present (PLAN §2): `node-runtime/` (libnode.so + launcher + np
   its class comment, so a fix found in one repo is carried to the other.
 - Commit messages: what changed and why, present tense, wrapped at 72. Version numbers are never
   part of a commit.
+
+## Review and merge
+The plan is implemented one step at a time (PLAN §16, then the milestones in §13), one pull
+request per step. Nothing reaches `main` without a review, and a green, reviewed step is merged
+without waiting so the next one can start.
+- Every change goes through a pull request; nothing is pushed to `main` directly. The next step
+  starts from the merged `main`, never on top of an unmerged branch.
+- CodeRabbit reviews every pull request. Automatic reviews are off for this repository, so ask
+  for one with a PR comment `@coderabbitai review` when the PR is opened and again after every
+  push that follows a review. The plan allows about one review an hour; when CodeRabbit says the
+  allowance is used up, wait for it and ask again rather than merging unreviewed.
+- Every CodeRabbit finding gets an answer on its thread. Fixed: push the fix, reply naming the
+  commit and what it changed, and ask CodeRabbit to resolve it (`@coderabbitai resolve`, or
+  resolve the thread). Not fixed: reply with the reason. A finding is a claim to check against
+  the code, not an order, but "optional" or "minor" is not a reason to leave it unanswered.
+- Merge, without asking, when all of these hold on the PR's current head: CI green (Build and
+  CodeQL), a CodeRabbit review of that head with no actionable comments left, every review
+  thread resolved, no merge conflict. A push after the last review means a new review first.
+- Do not merge, and ask the owner instead, when a person has requested changes or a step needs
+  a decision the plan does not make. Say so on the PR.
+- What only a phone can prove (the runtime, the service, the bridge; see Unit tests above) does
+  not hold a merge: the PR lists it under "To check on a device", and PLAN §3 keeps the spike
+  results.
+- Merge with a merge commit, as the history so far does. The working branch is then reset onto
+  the new `main` for the next step.

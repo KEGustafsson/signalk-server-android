@@ -43,7 +43,7 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 | Native addons | Prebuilt `android-arm64` / `armeabi-v7a` binaries from our own GitHub Releases, resolved by an npm `node-gyp` shim | No compiler on the phone; prebuild ecosystems have no Android targets |
 | Hardware I/O | Kotlin bridge exposing USB serial, BT SPP and phone sensors over a Unix domain socket to a small Signal K provider plugin | No `/dev/tty*` without root |
 | UI | Native Compose "Dock" for anything that must work when the server is down; WebView for admin UI and webapps | Don't reimplement Signal K's UI |
-| Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.7, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
+| Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.8, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
 | Distribution | GitHub Releases + F-Droid first (with in-app self-updater); Play Store later | Play's "downloaded executable code" policy is a gray area for plugins |
 
 ## 2. Repository layout
@@ -57,8 +57,8 @@ signalk-server-android/
 │       ├── node/                    # NodeRuntime                           (present)
 │       ├── net/                     # Backoff, Threads, NetworkChoice       (present, from Crew Radio)
 │       └── signalk/                 # Client, Url, Discovery, Tree          (present, from Crew Radio)
-├── node-runtime/                    # AAR: libnode.so + launcher + npm assets
-├── native/
+├── node-runtime/                    # AAR: libnode.so + launcher + npm assets  (present: libnode.so + launcher)
+├── native/                          #                                       (present)
 │   ├── launcher/                    # C++: main() -> node::Start()
 │   └── CMakeLists.txt
 ├── runtime-tools/
@@ -103,10 +103,12 @@ int main(int argc, char** argv) {
 }
 ```
 
-- CMake target `nodeexec`, output name forced to `libnodeexec.so` so Gradle packages it in `lib/<abi>/`.
-- Links against `libnode.so` from the nodejs-mobile release zip (download in Gradle task, verify SHA-256).
-- Also package `libc++_shared.so`.
-- `AndroidManifest`: `android:extractNativeLibs="true"`; `bundle { ... }` with `useLegacyPackaging true` in Gradle.
+- CMake target `nodeexec`, output name forced to `libnodeexec.so` so Gradle packages it in `lib/<abi>/`. **Done** (`native/`, built by the `node-runtime` module).
+- Links against `libnode.so` from the nodejs-mobile release zip (download in Gradle task, verify SHA-256). **Done**: the Node 24 line is published by digidem's fork as `nodejs-mobile-android-<A.B.C-R>.zip` (upstream `nodejs-mobile/nodejs-mobile` stops at 18.20.4, and signalk-server needs Node ≥ 22). It holds `bin/<abi>/libnode.so` for arm64-v8a, armeabi-v7a and x86_64 plus `include/node`; the version and SHA-256 are pinned in `gradle.properties`, the zip is cached in the Gradle user home and recorded in the SBOM. The `full` flavour, not `lite`: lite drops `node:sqlite` and changes V8's pointer compression, and plugins vary too much to bet on either.
+- Also package `libc++_shared.so`. **Done** (`ANDROID_STL=c++_shared`). It has to come from the NDK libnode.so was built with, **r27d (27.3.13750724)**, so `ndkVersion` is pinned to it.
+- The launcher carries `RUNPATH $ORIGIN`, so it finds `libnode.so` beside it even in a child process whose environment lost `LD_LIBRARY_PATH`. CMake is pinned to 3.31.6: AGP's default 3.22.1 writes that RPATH as a bare `$`.
+- `extractNativeLibs="true"` comes from `jniLibs.useLegacyPackaging = true` in the app's Gradle build; AGP warns about the attribute in a source manifest, so it is not there.
+- APK cost: about 26 MB compressed per ABI (libnode.so is 80–87 MB uncompressed), so the universal release APK is about 80 MB. ABI splits for the release are a §10 decision.
 
 ### 4.2 Runtime filesystem (app-private)
 
@@ -363,8 +365,8 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 ## 16. First tasks for the coding agent
 
 1. ~~Create the Gradle project from Crew Radio's skeleton~~ **Done**: root build files, wrapper, verification metadata, `app/` with the reusable Kotlin ported (§17.1), the R1 spike `MainActivity`, `NodeRuntime`, workflows and `CLAUDE.md`. Not yet built on a machine with an SDK: the first CI run is the first build. Compose is added together with the Dock (§8), so the verification metadata changes once, not twice.
-2. Gradle task in `node-runtime` to download `nodejs-mobile-android-24.x.y-z.zip`, verify checksum, unpack `libnode.so` + headers into `src/main/jniLibs` and `src/main/cpp/include`.
-3. `native/launcher/main.cc` + CMake → `libnodeexec.so`.
+2. ~~Gradle task in `node-runtime` to download `nodejs-mobile-android-24.x.y-z.zip`, verify checksum, unpack `libnode.so` + headers~~ **Done**: unpacked into the module's build directory (not `src/`), and CMake links and packages them (§4.1).
+3. ~~`native/launcher/main.cc` + CMake → `libnodeexec.so`~~ **Done**. With it, the `MainActivity` button of step 5 runs a real `node -v`.
 4. `NodeRuntime.kt` (§4.3) with asset extraction of `npm` (vendored from the matching Node release tarball into `assets/npm.tar`).
 5. ~~Spike activity~~ `MainActivity` already does this: it shows `nativeLibraryDir` and the environment, and runs `node -v` once `libnodeexec.so` is in the APK. **This is R1.**
 6. Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it. **R2.**
