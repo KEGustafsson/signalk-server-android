@@ -7,8 +7,12 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Spike R3 (docs/PLAN.md §3): `npm install signalk-server` on the phone, into slot A, with the
- * phone's own shell for lifecycle scripts. Node runs `shell: true` scripts with
+ * Spike R3 (docs/PLAN.md §3): `npm install -g signalk-server` on the phone, into slot A, with the
+ * phone's own shell for lifecycle scripts. Global, with the slot as its prefix, because that is
+ * how a Pi installs it and the layout signalk-server expects: a local install hoists its
+ * dependencies to the slot's node_modules, and the server then cannot find
+ * `@signalk/server-admin-ui`, which it looks for under its own node_modules (the admin UI
+ * answers 500). Installed that way it lives in `<slot>/lib/node_modules/signalk-server`. Node runs `shell: true` scripts with
  * `/system/bin/sh` on Android, so npm needs no script-shell setting; what nobody knows yet is
  * which of signalk-server's dependencies run install scripts toybox cannot handle, or exec a
  * file from app storage by name (`node_modules/.bin`, node-gyp), which Android refuses for an
@@ -48,8 +52,8 @@ class SpikeInstall(private val runtime: NodeRuntime, private val logFile: File) 
         slot.deleteRecursively()
         if (!slot.mkdirs()) throw IOException("could not create $slot")
         logFile.parentFile?.mkdirs()
-        add("$ npm install --prefix $slot ${INSTALL_ARGS.joinToString(" ")}")
-        val process = runtime.npm("install", "--prefix", slot.absolutePath, *INSTALL_ARGS)
+        add("$ npm install -g --prefix $slot ${INSTALL_ARGS.joinToString(" ")}")
+        val process = runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS)
         // npm can stall on a dead network for longer than anyone waits; the reader below only
         // ends when the process does, so a watchdog ends the process.
         thread(name = "spike-npm-watchdog", isDaemon = true) {
@@ -100,14 +104,15 @@ class SpikeInstall(private val runtime: NodeRuntime, private val logFile: File) 
         private const val SUMMARY_TIMEOUT_S = 60L
 
         /**
-         * Walks the installed tree (argv[1] is the slot) and prints three lines: the
+         * Walks the installed tree (argv[1] is the slot, the tree is its lib/node_modules, as a
+         * global install lays it out) and prints three lines: the
          * signalk-server version and package count, the packages with install-time scripts,
          * and the packages with a binding.gyp, which npm builds with node-gyp when they ship no
          * script of their own.
          */
         val SUMMARY_SCRIPT = """
             const fs = require('fs'), path = require('path');
-            const root = path.join(process.argv[1], 'node_modules');
+            const root = path.join(process.argv[1], 'lib', 'node_modules');
             const pkgs = [];
             (function walk(dir) {
               for (const n of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {

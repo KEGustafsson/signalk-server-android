@@ -20,7 +20,7 @@ import java.io.IOException
  * The on-disk layout under [files] is the one the plan draws:
  *
  *     files/home            $HOME; .npmrc and .signalk live here
- *     files/sk/slots/{A,B}  npm prefixes holding node_modules/signalk-server
+ *     files/sk/slots/{A,B}  npm global prefixes: lib/node_modules/signalk-server, as on a Pi
  *     files/sk/current      symlink to the live slot
  *     files/npm             npm itself (bin/npm-cli.js, lib, node_modules), extracted from the APK
  *     files/bin             node, a symlink into nativeLibraryDir; later the node-gyp shim

@@ -118,7 +118,7 @@ files/
 │   ├── .npmrc               # points node-gyp at the shim, cache dir, prefix
 │   └── .signalk/            # SIGNALK_NODE_CONFIG_DIR (settings, plugins config)
 ├── sk/
-│   ├── slots/A/             # npm prefix: node_modules/signalk-server
+│   ├── slots/A/             # npm global prefix: lib/node_modules/signalk-server
 │   ├── slots/B/
 │   └── current -> slots/A   # symlink; the only thing promotion changes
 ├── npm/                     # npm-cli.js + node_modules extracted from assets
@@ -165,7 +165,7 @@ Deliverable: a `node-runtime` AAR usable by any app, published separately. (Side
 
 Order of preference, all producing the same slot layout:
 
-1. **npm registry** (default): `npm install --prefix <slot> signalk-server@<version> --omit=dev`.
+1. **npm registry** (default): `npm install -g --prefix <slot> signalk-server@<version> --omit=dev`. Global, as on a Pi, not a local install into the slot: a local install hoists signalk-server's dependencies to `<slot>/node_modules`, and the server looks for `@signalk/server-admin-ui` under its own `node_modules`, so the admin UI answers 500 (seen on desktop, 2026-10-17). Global keeps them nested, in `<slot>/lib/node_modules/signalk-server`.
 2. **GitHub release tarball** mirror (if registry unreachable or rate-limited).
 3. **Sideload** via Storage Access Framework: user picks a `.tgz` produced by `npm pack` on any machine. Important for boats with no internet at install time.
 
@@ -185,7 +185,7 @@ Algorithm:
 
 1. Pick the inactive slot; wipe it.
 2. Run npm install into it, streaming log lines to UI.
-3. **Smoke test**: spawn `node <slot>/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data --port 3999` with a temporary config dir copied from the live one (`cp -r .signalk → cache/verify`). Poll `GET /signalk` until `{"endpoints":...}` or 60 s timeout. Kill.
+3. **Smoke test**: spawn `node <slot>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data --port 3999` with a temporary config dir copied from the live one (`cp -r .signalk → cache/verify`). Poll `GET /signalk` until `{"endpoints":...}` or 60 s timeout. Kill.
 4. **Promote**: atomically repoint `current` symlink (rename of a temp symlink).
 5. Signal the supervisor to restart the server from the new slot.
 6. **Health gate**: if the live server fails to answer `GET /signalk` within 90 s of promotion, or crash-loops 3× in 5 min, flip `current` back and mark the version bad (stored in `install-history.json`, shown in UI).
@@ -207,7 +207,7 @@ Plugins and webapps are not in slots: Signal K installs them into `.signalk/node
 Start from Crew Radio's `PttService`: keep its startForeground-first-then-slow-work-on-own-thread pattern, `ServiceCompat.startForeground` with explicit types, immediate low-importance notification, lock handling and the 250 ms notification throttle. Replace the engine with the Node child process.
 
 - Holds `PARTIAL_WAKE_LOCK`, the Wi-Fi locks from `WifiLockModes.forSdk()` (LOW_LATENCY + HIGH_PERF where it still exists) and `WifiManager.MulticastLock` (mDNS). Request `ACCESS_LOCAL_NETWORK` on API 37+ before the first start (`LocalNetwork` rules).
-- Spawns `node <current>/node_modules/signalk-server/bin/signalk-server`.
+- Spawns `node <current>/lib/node_modules/signalk-server/bin/signalk-server`.
 - Restart policy: exit code 0 → immediate restart (this is Signal K's own "restart" button); non-zero → exponential backoff 2 s → 60 s; after 5 failures in 10 min → stop, notify, offer rollback.
 - Captures stdout/stderr into a 2 MB ring buffer + rotating files in `files/logs/`.
 - Watches `/signalk` health every 30 s; exposes `StateFlow<ServerState>` to UI.
@@ -377,7 +377,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 4. ~~`NodeRuntime.kt` (§4.3) with asset extraction of `npm` (vendored from the matching Node release tarball into `assets/npm.tar`)~~ **Done**, from the registry tarball instead (§4.3). The spike screen's button runs `npm -v` after `node -v`.
 5. ~~Spike activity~~ `MainActivity` already does this: it shows `nativeLibraryDir` and the environment, and runs `node -v` once `libnodeexec.so` is in the APK. **This is R1.**
 6. ~~Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it~~ **Done**, built by the app's own CMake rather than in a separate CI job (`native/spike-addon`): it is packaged in `lib/<abi>/`, and the spike screen copies it to `files/prebuilds/spike/` and requires it from there. **R2.** It is built twice, because R2 also settles how §9's prebuilds must be linked: `spike_napi` as prebuildify/node-gyp build for Linux (no link to Node, `napi_*` left undefined for the loading process to supply) and `spike_napi_linked` as nodejs-mobile's own addon test builds (`-lnode`). If only the linked one loads, §9 links every prebuild against `libnode.so`.
-7. ~~Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log~~ **Done** (`SpikeInstall`): the spike screen's second button wipes slot A, runs that install with `--omit=dev --foreground-scripts`, streams the tail onto the screen, writes the whole log to `files/logs/spike-r3.log`, and on success prints the installed version, the package count and the packages with install scripts or a `binding.gyp`. **R3.**
+7. ~~Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log~~ **Done** (`SpikeInstall`): the spike screen's second button wipes slot A, runs that install as a global one (`-g --prefix`, §5.1) with `--omit=dev --foreground-scripts`, streams the tail onto the screen, writes the whole log to `files/logs/spike-r3.log`, and on success prints the installed version, the package count and the packages with install scripts or a `binding.gyp`. **R3.**
 8. Button: start server, open WebView. **R4.**
 9. Only then: `SignalKService`, `InstallManager`, wizard, bridge, per §5–§8.
 
