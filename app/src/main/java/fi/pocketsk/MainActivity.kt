@@ -19,11 +19,13 @@ import kotlin.concurrent.thread
  * script), then spike R2: it copies the two builds of the test addon out of nativeLibraryDir into
  * writable storage and requires each from there, the way npm leaves a plugin's native addon in
  * node_modules. It prints whatever comes back, including the exact exception when an exec or a
- * load is refused. It becomes the Dock once the service exists.
+ * load is refused. The second button is spike R3 ([SpikeInstall]): npm installs signalk-server
+ * into slot A, its output streamed onto the screen. It becomes the Dock once the service exists.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
     private lateinit var output: TextView
+    private var observer: SpikeInstall.Observer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,18 +41,50 @@ class MainActivity : AppCompatActivity() {
         runtime = NodeRuntime(this)
         output = findViewById(R.id.output)
         val run = findViewById<Button>(R.id.run)
+        val install = findViewById<Button>(R.id.install)
         run.isEnabled = runtime.isAvailable
+        install.isEnabled = runtime.isAvailable
         val intro = buildString {
             append(runtime.describe())
             if (!runtime.isAvailable) appendLine().append(getString(R.string.spike_missing))
         }
         output.text = intro
-        run.setOnClickListener {
-            // One run at a time: a second tap would start a second node and, the first time, a
-            // second unpack of npm. NodeRuntime serialises the unpack; this keeps the report whole.
-            run.isEnabled = false
-            runNodeVersion { run.isEnabled = true }
+        // One run at a time, of either kind: a second tap would start a second node and, the
+        // first time, a second unpack of npm. NodeRuntime serialises the unpack; this keeps the
+        // report whole and keeps two installs out of one slot.
+        val buttons = listOf(run, install)
+        fun idle() {
+            buttons.forEach { it.isEnabled = runtime.isAvailable }
+            // An install that killed npm keeps the slot until the app is force-stopped.
+            if (SpikeInstall.current?.mayHaveOrphans == true) install.isEnabled = false
         }
+        run.setOnClickListener {
+            buttons.forEach { it.isEnabled = false }
+            runNodeVersion { idle() }
+        }
+        val progress = SpikeInstall.Observer { text, finished ->
+            runOnUiThread {
+                output.text = text.ifEmpty { getString(R.string.spike_installing) }
+                if (finished) idle()
+            }
+        }
+        observer = progress
+        install.setOnClickListener {
+            buttons.forEach { it.isEnabled = false }
+            output.text = getString(R.string.spike_installing)
+            SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(progress)
+        }
+        // An install outlives the activity that started it (a rotation); this one takes it over,
+        // or shows its report when it has ended, since the report is what the spike is for.
+        SpikeInstall.current?.let {
+            if (it.isRunning) buttons.forEach { b -> b.isEnabled = false }
+            it.observe(progress)
+        }
+    }
+
+    override fun onDestroy() {
+        observer?.let { SpikeInstall.current?.detach(it) }
+        super.onDestroy()
     }
 
     private fun runNodeVersion(done: () -> Unit) {
