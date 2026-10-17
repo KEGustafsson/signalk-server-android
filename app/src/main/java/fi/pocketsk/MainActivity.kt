@@ -69,9 +69,10 @@ class MainActivity : AppCompatActivity() {
             output.text = getString(R.string.spike_installing)
             SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(progress)
         }
-        // An install outlives the activity that started it (a rotation); this one takes it over.
-        SpikeInstall.current?.takeIf { it.isRunning }?.let {
-            buttons.forEach { b -> b.isEnabled = false }
+        // An install outlives the activity that started it (a rotation); this one takes it over,
+        // or shows its report when it has ended, since the report is what the spike is for.
+        SpikeInstall.current?.let {
+            if (it.isRunning) buttons.forEach { b -> b.isEnabled = false }
             it.observe(progress)
         }
     }
