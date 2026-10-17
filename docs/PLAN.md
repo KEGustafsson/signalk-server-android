@@ -57,7 +57,7 @@ signalk-server-android/
 │       ├── node/                    # NodeRuntime                           (present)
 │       ├── net/                     # Backoff, Threads, NetworkChoice       (present, from Crew Radio)
 │       └── signalk/                 # Client, Url, Discovery, Tree          (present, from Crew Radio)
-├── node-runtime/                    # AAR: libnode.so + launcher + npm assets  (present: libnode.so + launcher)
+├── node-runtime/                    # AAR: libnode.so + launcher + npm assets  (present)
 ├── native/                          #                                       (present)
 │   ├── launcher/                    # C++: main() -> node::Start()
 │   └── CMakeLists.txt
@@ -123,22 +123,27 @@ files/
 │   └── current -> slots/A   # symlink; the only thing promotion changes
 ├── npm/                     # npm-cli.js + node_modules extracted from assets
 ├── bin/
-│   ├── node -> <nativeLibraryDir>/libnodeexec.so   # symlink, for PATH
-│   ├── npm                  # sh wrapper
-│   └── node-gyp             # the shim
+│   ├── node -> <nativeLibraryDir>/libnodeexec.so   # symlink, for PATH; re-pointed on every start
+│   └── node-gyp             # the shim (§9.2)
 └── prebuilds/               # downloaded native addon cache
 cache/tmp/                   # $TMPDIR
 ```
+
+No `bin/npm` wrapper: an app targeting API 29+ may not `exec()` a file in its own data directory (Android's W^X rule for app data), so a script under `files/` can be run as `sh <file>` but never by name. npm is started as `node files/npm/bin/npm-cli.js`. The same rule covers what npm's lifecycle scripts exec by name — `node_modules/.bin/*` (shebang scripts), and the `node-gyp` shim of §9.2 if it is a script — so finding out how much of that npm and Signal K's plugins need is part of R3 (§15).
 
 ### 4.3 `NodeRuntime` Kotlin API
 
 ```kotlin
 class NodeRuntime(ctx: Context) {
-  fun ensureExtracted()                       // npm assets, bin shims, symlinks; idempotent, versioned by APK build
+  fun ensureLayout()                          // directories, and files/bin/node pointed at this install's launcher
+  fun ensureExtracted()                       // ensureLayout + npm unpacked from assets; idempotent, stamped with npm's version and SHA-256
   fun env(): Map<String,String>               // HOME, TMPDIR, PATH, LD_LIBRARY_PATH, SIGNALK_NODE_CONFIG_DIR, NODE_OPTIONS
-  fun spawn(vararg args: String, cwd: File, onLine: (String)->Unit): Process
+  fun spawn(vararg args: String, cwd: File): Process   // stderr merged into stdout; the caller reads it
+  fun npm(vararg args: String, cwd: File): Process     // node files/npm/bin/npm-cli.js args
 }
 ```
+
+**Done** (in `node-runtime`, package `fi.pocketsk.node`). npm comes from the registry tarball (`npm-<version>.tgz`: the same npm a Node release carries, published with its dependencies bundled, 3 MB rather than the 30 MB Node tarball), the version that ships with the pinned Node (nodejs.org `dist/index.json`), pinned by SHA-256 in `gradle.properties` and listed in the SBOM. The build puts it into the APK as `assets/npm.tgz`; `Tar` (pure Kotlin, unit-tested, including against that real tarball) unpacks it into `files/npm.new` and renames it into place, refusing links and any path that leaves the destination.
 
 Environment:
 
@@ -358,6 +363,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 ## 15. Open questions to resolve during M0
 
 - Does `/system/bin/sh` (toybox) break any npm lifecycle scripts in the top-50 Signal K plugins? Script a crawl of the registry by keyword and grep `scripts.install/postinstall`.
+- The same crawl answers the W^X question of §4.2: which of those scripts exec something by name from the app's data directory (`node_modules/.bin/*`, `node-gyp`, `prebuild-install`)? If many do, npm's `script-shell` can point at a small launcher in `nativeLibraryDir` that runs a shebang script as `node <script>`.
 - Memory ceiling on 3–4 GB phones with Freeboard + 10 plugins; choose `--max-old-space-size` policy.
 - Does the WebView need a custom scheme handler for `file://` uploads in Signal K's restore flow?
 - F-Droid reproducibility of nodejs-mobile; if not feasible, IzzyOnDroid.
@@ -367,7 +373,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 1. ~~Create the Gradle project from Crew Radio's skeleton~~ **Done**: root build files, wrapper, verification metadata, `app/` with the reusable Kotlin ported (§17.1), the R1 spike `MainActivity`, `NodeRuntime`, workflows and `CLAUDE.md`. Not yet built on a machine with an SDK: the first CI run is the first build. Compose is added together with the Dock (§8), so the verification metadata changes once, not twice.
 2. ~~Gradle task in `node-runtime` to download `nodejs-mobile-android-24.x.y-z.zip`, verify checksum, unpack `libnode.so` + headers~~ **Done**: unpacked into the module's build directory (not `src/`), and CMake links and packages them (§4.1).
 3. ~~`native/launcher/main.cc` + CMake → `libnodeexec.so`~~ **Done**. With it, the `MainActivity` button of step 5 runs a real `node -v`.
-4. `NodeRuntime.kt` (§4.3) with asset extraction of `npm` (vendored from the matching Node release tarball into `assets/npm.tar`).
+4. ~~`NodeRuntime.kt` (§4.3) with asset extraction of `npm` (vendored from the matching Node release tarball into `assets/npm.tar`)~~ **Done**, from the registry tarball instead (§4.3). The spike screen's button runs `npm -v` after `node -v`.
 5. ~~Spike activity~~ `MainActivity` already does this: it shows `nativeLibraryDir` and the environment, and runs `node -v` once `libnodeexec.so` is in the APK. **This is R1.**
 6. Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it. **R2.**
 7. Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log. **R3.**

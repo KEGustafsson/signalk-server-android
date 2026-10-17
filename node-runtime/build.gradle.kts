@@ -6,8 +6,9 @@ plugins {
     id("com.android.library")
 }
 
-// The Node runtime as an Android library (docs/PLAN.md §4.1): nodejs-mobile's libnode.so for each
-// ABI, and libnodeexec.so, a launcher executable that calls node::Start. The app execs the
+// The Node runtime as an Android library (docs/PLAN.md §4): nodejs-mobile's libnode.so for each
+// ABI, libnodeexec.so, a launcher executable that calls node::Start, npm as an asset, and
+// NodeRuntime, which lays out the files, unpacks npm and starts processes. The app execs the
 // launcher from nativeLibraryDir like `node` on a Pi; nothing here is called through JNI.
 //
 // libnode.so is not built here. It comes from nodejs-mobile's release zip, pinned in
@@ -18,6 +19,8 @@ plugins {
 val nodejsMobileVersion = providers.gradleProperty("nodejsMobile.version").get()
 val nodejsMobileSha256 = providers.gradleProperty("nodejsMobile.sha256").get()
 val nodejsMobileZip = "nodejs-mobile-android-$nodejsMobileVersion.zip"
+val npmVersion = providers.gradleProperty("npm.version").get()
+val npmSha256 = providers.gradleProperty("npm.sha256").get()
 
 /**
  * The NDK libnode.so was built with (nodejs-mobile's docs/BUILDING.md, and the .comment section of
@@ -100,6 +103,38 @@ val fetchNodejsMobile = tasks.register<FetchVerified>("fetchNodejsMobile") {
 
 val nodejsMobileDir = layout.buildDirectory.dir("nodejs-mobile/$nodejsMobileVersion")
 
+// npm from the registry rather than out of a Node release tarball: the same npm, published with
+// its dependencies bundled, 3 MB instead of 30. Same rule as the zip: pinned, checked, cached.
+val fetchNpm = tasks.register<FetchVerified>("fetchNpm") {
+    url.set("https://registry.npmjs.org/npm/-/npm-$npmVersion.tgz")
+    sha256.set(npmSha256)
+    dest.set(File(gradle.gradleUserHomeDir, "caches/pocketsk/npm-$npmVersion.tgz"))
+}
+
+/** Puts the verified npm tarball into a generated assets directory as NodeRuntime.NPM_ASSET. */
+abstract class NpmAsset : DefaultTask() {
+    @get:InputFile abstract val tarball: RegularFileProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:Inject abstract val fs: FileSystemOperations
+
+    @TaskAction
+    fun copy() {
+        fs.sync {
+            from(tarball) { rename { "npm.tgz" } }
+            into(outputDir)
+        }
+    }
+}
+
+val npmAsset = tasks.register<NpmAsset>("npmAsset") {
+    tarball.set(fetchNpm.flatMap { it.dest })
+    outputDir.set(layout.buildDirectory.dir("generated/npm-asset"))
+}
+
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(npmAsset, NpmAsset::outputDir) }
+}
+
 val unpackNodejsMobile = tasks.register<UnpackNodejsMobile>("unpackNodejsMobile") {
     zip.set(fetchNodejsMobile.flatMap { it.dest })
     // The ABIs the build packages (abiFilters below) are the ones unpacked.
@@ -108,11 +143,15 @@ val unpackNodejsMobile = tasks.register<UnpackNodejsMobile>("unpackNodejsMobile"
 }
 
 android {
-    namespace = "fi.pocketsk.noderuntime"
+    namespace = "fi.pocketsk.node"
     compileSdk = 37
     ndkVersion = nodejsMobileNdk
+    buildFeatures { buildConfig = true }
     defaultConfig {
         minSdk = 29
+        // What NodeRuntime stamps an unpacked npm with, so it can tell when the APK carries another.
+        buildConfigField("String", "NPM_VERSION", "\"$npmVersion\"")
+        buildConfigField("String", "NPM_SHA256", "\"$npmSha256\"")
         // The three ABIs nodejs-mobile's zip ships: the two phone ABIs, and x86_64 for the
         // emulator and ChromeOS. Written out here, not in a variable, so Lint can see x86_64.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
@@ -154,4 +193,15 @@ android {
 // CMake reads the headers and libnode.so while configuring, so every native task waits for them.
 tasks.configureEach {
     if (name.contains("CMake") || name.startsWith("generateJsonModel")) dependsOn(unpackNodejsMobile)
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+}
+
+// TarTest also unpacks the real npm tarball the APK carries, not only archives it builds itself.
+tasks.withType<Test>().configureEach {
+    val tarball = fetchNpm.flatMap { it.dest }
+    inputs.file(tarball)
+    doFirst { systemProperty("pocketsk.npmTarball", tarball.get().asFile.absolutePath) }
 }

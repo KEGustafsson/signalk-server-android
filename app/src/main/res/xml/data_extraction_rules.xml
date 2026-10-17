@@ -6,6 +6,9 @@
   off anyway (allowBackup="false"); device transfer is not, so these rules are what keeps a boat's
   credentials from riding along to a new phone unasked. The preferences file name is what
   PreferenceManager.getDefaultSharedPreferences uses: <package>_preferences.xml.
+  files/npm, files/bin and files/prebuilds hold nothing of the boat's: the APK unpacks or fetches
+  them again, and files/bin/node points into the old install's nativeLibraryDir, which a new
+  phone does not have.
 -->
 <data-extraction-rules>
     <cloud-backup>
@@ -13,11 +16,17 @@
         <exclude domain="sharedpref" path="fi.pocketsk_preferences.xml" />
         <exclude domain="file" path="home" />
         <exclude domain="file" path="sk" />
+        <exclude domain="file" path="npm" />
+        <exclude domain="file" path="bin" />
+        <exclude domain="file" path="prebuilds" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="fi.pocketsk_preferences.xml" />
         <exclude domain="file" path="home" />
         <exclude domain="file" path="sk" />
+        <exclude domain="file" path="npm" />
+        <exclude domain="file" path="bin" />
+        <exclude domain="file" path="prebuilds" />
     </device-transfer>
 </data-extraction-rules>
