@@ -13,9 +13,9 @@ pipeline and several files were lifted (PLAN §17).
   targetSdk 37, JDK 17 (a real toolchain: Gradle will not download one). R8 shrinks release builds
   with names kept. Dependabot keeps AndroidX current; the toolchain is moved by hand.
 - No third-party libraries beyond AndroidX and Material, and nodejs-mobile's `libnode.so` (MIT,
-  Node 24 from digidem's fork; PLAN §4.1), which `node-runtime` downloads from the release zip
-  pinned by version and SHA-256 in `gradle.properties`. `usb-serial-for-android` (MIT) joins with
-  the bridge (PLAN §7).
+  Node 24 from digidem's fork; PLAN §4.1) and npm (Artistic-2.0, the registry tarball; §4.3),
+  which `node-runtime` downloads pinned by version and SHA-256 in `gradle.properties`.
+  `usb-serial-for-android` (MIT) joins with the bridge (PLAN §7).
 - Native: NDK r27d (27.3.13750724), the release libnode.so was built with, and CMake 3.31.6,
   both pinned in `node-runtime/build.gradle.kts` and fetched by AGP from the SDK repository.
 - Build: `./gradlew assembleDebug` (wrapper committed; needs an Android SDK with platform 37 via
@@ -41,14 +41,14 @@ pipeline and several files were lifted (PLAN §17).
 ```
 app/                 the Android app
   fi.pocketsk        MainActivity (currently the R1 spike screen), App, LocalNetwork, WifiLockModes, LegacyPlatform
-  fi.pocketsk.node   NodeRuntime: paths, environment, spawn
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
-node-runtime/        Android library: nodejs-mobile's libnode.so per ABI and the launcher
+node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
+  fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), Tar (unpacks npm)
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): npm assets in `node-runtime/`, `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
+Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
 `prebuilds/`.
 
 ## Rules of the house
@@ -61,7 +61,8 @@ Planned, not yet present (PLAN §2): npm assets in `node-runtime/`, `runtime-too
   carries a comment saying why.
 - Secrets (the admin token, anything under `files/home/.signalk`) never enter backups, logs or
   the diagnostics bundle. `data_extraction_rules.xml` excludes them; keep it in step with the
-  layout in `NodeRuntime`.
+  layout in `NodeRuntime`. `files/npm`, `files/bin` and `files/prebuilds` are excluded too: the APK
+  makes them again, and `files/bin/node` points into the old install.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of
   its class comment, so a fix found in one repo is carried to the other.
 - Commit messages: what changed and why, present tense, wrapped at 72. Version numbers are never

@@ -2,7 +2,10 @@ package fi.pocketsk.node
 
 import android.content.Context
 import android.os.Build
+import android.system.ErrnoException
+import android.system.Os
 import java.io.File
+import java.io.IOException
 
 /**
  * Where the Node runtime lives and how it is run (docs/PLAN.md §4).
@@ -19,14 +22,20 @@ import java.io.File
  *     files/home            $HOME; .npmrc and .signalk live here
  *     files/sk/slots/{A,B}  npm prefixes holding node_modules/signalk-server
  *     files/sk/current      symlink to the live slot
- *     files/npm             npm-cli.js and its node_modules, extracted from assets
- *     files/bin             node (symlink into nativeLibraryDir), npm and node-gyp wrappers
+ *     files/npm             npm itself (bin/npm-cli.js, lib, node_modules), extracted from the APK
+ *     files/bin             node, a symlink into nativeLibraryDir; later the node-gyp shim
  *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
  *     cache/tmp             $TMPDIR
  *
- * Nothing here is created until [ensureLayout]. The executable comes from the `node-runtime`
- * module; on an ABI it does not build for, [executable] is absent and [isAvailable] false, which
- * is what the spike screen reports.
+ * Nothing here is created until [ensureLayout], and npm is not unpacked until [ensureExtracted].
+ * The executable comes from this module's native build; on an ABI it does not build for,
+ * [executable] is absent and [isAvailable] false, which is what the spike screen reports.
+ *
+ * There is no `files/bin/npm` wrapper script, though the plan once drew one. An app that targets
+ * API 29 or later may not exec() a file in its own data directory, so a script there could be
+ * run only as `sh files/bin/npm`, never by name from a lifecycle script; npm is started as
+ * `node files/npm/bin/npm-cli.js` ([npm]) instead. Whether npm's lifecycle scripts get by under
+ * that rule is spike R3 (docs/PLAN.md §3, §15).
  */
 class NodeRuntime(context: Context) {
     private val app = context.applicationContext
@@ -49,15 +58,67 @@ class NodeRuntime(context: Context) {
     val prebuilds = File(files, "prebuilds")
     val tmp = File(cache, "tmp")
 
-    /** Creates the directories and the `node` symlink. Idempotent. Cheap enough to call on every start. */
+    /** npm's entry point, once [ensureExtracted] has unpacked it. */
+    val npmCli = File(npmDir, "bin/npm-cli.js")
+
+    /**
+     * Creates the directories and points `files/bin/node` at this install's executable.
+     * Idempotent, and cheap enough to call on every start.
+     *
+     * The link is checked every time, not only created once: nativeLibraryDir is a new random
+     * path after every app update, so a link made by the previous install dangles. A dangling
+     * link is not [File.exists], and creating the link again over it fails with EEXIST, which
+     * would leave `node` off PATH for good after the first update. Throws [IOException] when the
+     * link cannot be made, like every other failure to set up the runtime.
+     */
+    @Throws(IOException::class)
     fun ensureLayout() {
         for (d in listOf(home, configDir, slots, npmDir, binDir, prebuilds, tmp)) d.mkdirs()
+        if (!isAvailable) return
+        // A symlink into nativeLibraryDir, so `node` is on PATH for npm's lifecycle scripts.
+        // Whether exec follows it across the SELinux label boundary is part of spike R1.
         val node = File(binDir, "node")
-        if (isAvailable && !node.exists()) {
-            // A symlink into nativeLibraryDir, so `node` is on PATH for npm's lifecycle scripts.
-            // Whether exec follows it across the SELinux label boundary is part of spike R1.
-            android.system.Os.symlink(executable.absolutePath, node.absolutePath)
+        val target = executable.absolutePath
+        val current = try {
+            Os.readlink(node.absolutePath)
+        } catch (_: ErrnoException) {
+            null
         }
+        if (current == target) return
+        if (current != null || node.exists()) node.delete()
+        try {
+            Os.symlink(target, node.absolutePath)
+        } catch (e: ErrnoException) {
+            throw IOException("could not link $node to $target", e)
+        }
+    }
+
+    /**
+     * [ensureLayout], then unpacks the npm this APK carries into `files/npm` unless that exact
+     * npm is already there. Blocking (about 2000 files the first time, then a file read): never
+     * on the main thread.
+     *
+     * The unpacked tree is stamped with npm's version and the SHA-256 of its tarball, so an app
+     * update that moves npm replaces it and one that does not costs nothing. It is unpacked
+     * beside `files/npm` and swapped in by two renames, the old tree deleted only afterwards, so
+     * a process killed at any point leaves a whole npm or none at `files/npm`, never a mixture;
+     * a missing stamp means "unpack again".
+     */
+    @Throws(IOException::class)
+    fun ensureExtracted() {
+        ensureLayout()
+        val stamp = "npm ${BuildConfig.NPM_VERSION} ${BuildConfig.NPM_SHA256}\n"
+        val marker = File(npmDir, STAMP)
+        if (marker.isFile && marker.readText() == stamp) return
+        val staging = File(files, "npm.new")
+        val old = File(files, "npm.old")
+        staging.deleteRecursively()
+        old.deleteRecursively()
+        app.assets.open(NPM_ASSET).use { Tar.extractTgz(it, staging, stripComponents = 1) }
+        File(staging, STAMP).writeText(stamp)
+        if (npmDir.exists() && !npmDir.renameTo(old)) throw IOException("could not move $npmDir aside")
+        if (!staging.renameTo(npmDir)) throw IOException("could not move $staging to $npmDir")
+        old.deleteRecursively()
     }
 
     /**
@@ -97,6 +158,12 @@ class NodeRuntime(context: Context) {
         return pb.start()
     }
 
+    /**
+     * Starts `npm args...` the way the npm shell wrapper would on a Pi, as node running
+     * npm-cli.js. [ensureExtracted] must have run; [spawn]'s rules apply.
+     */
+    fun npm(vararg args: String, cwd: File = home): Process = spawn(npmCli.absolutePath, *args, cwd = cwd)
+
     /** A one-paragraph description of the runtime situation, for the spike screen and diagnostics. */
     fun describe(): String = buildString {
         appendLine("device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
@@ -104,6 +171,7 @@ class NodeRuntime(context: Context) {
         appendLine("page size: ${pageSize()} bytes")
         appendLine("nativeLibraryDir: $nativeLibraryDir")
         appendLine("executable: $executable (${if (isAvailable) "present" else "absent"})")
+        appendLine("npm: ${BuildConfig.NPM_VERSION} (${if (File(npmDir, STAMP).isFile) "unpacked" else "not unpacked yet"})")
         appendLine("ram: ${memoryMb()} MB")
         appendLine()
         appendLine("environment:")
@@ -122,5 +190,11 @@ class NodeRuntime(context: Context) {
     companion object {
         /** Named like a library so the build packages it in lib/<abi>/ and the installer extracts it. */
         const val EXEC_NAME = "libnodeexec.so"
+
+        /** npm's registry tarball, put into the APK's assets by this module's build. */
+        const val NPM_ASSET = "npm.tgz"
+
+        /** Written last into an unpacked npm: what was unpacked, so the next start can tell. */
+        private const val STAMP = ".pocketsk-extracted"
     }
 }

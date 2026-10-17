@@ -3,8 +3,8 @@
 
     <!-- R1 spike screen -->
     <string name="spike_title">Node runtime spike (R1)</string>
-    <string name="spike_run">Run node -v</string>
-    <string name="spike_missing">libnodeexec.so is not in this build yet: the node-runtime module (docs/PLAN.md §4) has not been added. nativeLibraryDir and the environment are shown so the exec path can be checked by hand.</string>
+    <string name="spike_run">Run node -v and npm -v</string>
+    <string name="spike_missing">libnodeexec.so is not in this APK for this phone\'s ABI (the build carries arm64-v8a, armeabi-v7a and x86_64). nativeLibraryDir and the environment are shown so the exec path can be checked by hand.</string>
     <string name="spike_running">Running…</string>
 
     <!-- SignalKClient failure details -->

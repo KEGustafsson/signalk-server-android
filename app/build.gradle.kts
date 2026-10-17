@@ -27,9 +27,11 @@ val commitSha = git("rev-parse", "--short", "HEAD").ifEmpty { "local" }
 val dirty = git("status", "--porcelain").isNotEmpty()
 val appVersion = "1.$commitCount"
 
-// The Node runtime node-runtime packages, as pinned in gradle.properties; the SBOM lists it.
+// The Node runtime and the npm node-runtime packages, as pinned in gradle.properties; the SBOM lists them.
 val nodejsMobileVersion = providers.gradleProperty("nodejsMobile.version").get()
 val nodejsMobileSha256 = providers.gradleProperty("nodejsMobile.sha256").get()
+val npmVersion = providers.gradleProperty("npm.version").get()
+val npmSha256 = providers.gradleProperty("npm.sha256").get()
 
 // Release signing: a keystore named by SIGNALK_ANDROID_KEYSTORE (CI decodes it from a secret) or
 // app/release.keystore locally, with its passwords from the environment. Without one the
@@ -171,8 +173,11 @@ tasks.register("sbom") {
         // zip, pinned by SHA-256 in gradle.properties, and packages its libnode.so files.
         val nodeRef = "pkg:github/digidem/nodejs-mobile@v$nodejsMobileVersion"
         val nodeComp = """    {"type": "library", "name": "nodejs-mobile", "version": "$nodejsMobileVersion", "purl": "$nodeRef", "bom-ref": "$nodeRef", "licenses": [{"license": {"id": "MIT"}}], "hashes": [{"alg": "SHA-256", "content": "$nodejsMobileSha256"}], "externalReferences": [{"type": "distribution", "url": "https://github.com/digidem/nodejs-mobile/releases/download/v$nodejsMobileVersion/nodejs-mobile-android-$nodejsMobileVersion.zip"}]}"""
-        dependsOn[appRef] = (dependsOn.getValue(appRef) + nodeRef).sorted()
-        val comps = (mavenComps + nodeComp).joinToString(",\n")
+        // npm, the registry tarball node-runtime puts into the assets and NodeRuntime unpacks.
+        val npmRef = "pkg:npm/npm@$npmVersion"
+        val npmComp = """    {"type": "application", "name": "npm", "version": "$npmVersion", "purl": "$npmRef", "bom-ref": "$npmRef", "licenses": [{"license": {"id": "Artistic-2.0"}}], "hashes": [{"alg": "SHA-256", "content": "$npmSha256"}], "externalReferences": [{"type": "distribution", "url": "https://registry.npmjs.org/npm/-/npm-$npmVersion.tgz"}]}"""
+        dependsOn[appRef] = (dependsOn.getValue(appRef) + nodeRef + npmRef).sorted()
+        val comps = (mavenComps + nodeComp + npmComp).joinToString(",\n")
         val deps = dependsOn.entries.joinToString(",\n") { (ref, on) ->
             """    {"ref": "$ref", "dependsOn": [${on.joinToString(", ") { "\"$it\"" }}]}"""
         }
