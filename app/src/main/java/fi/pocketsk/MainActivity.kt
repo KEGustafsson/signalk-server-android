@@ -48,8 +48,9 @@ class MainActivity : AppCompatActivity() {
             syncButtons()
         }
 
-        override fun onReady(ms: Long) = runOnUiThread {
-            startActivity(Intent(this@MainActivity, ServerActivity::class.java))
+        override fun onReady(ms: Long, generation: Long) = runOnUiThread {
+            // Checked again here: Stop may have been tapped while this waited for the main thread.
+            if (SpikeServer.isCurrent(generation)) startActivity(Intent(this@MainActivity, ServerActivity::class.java))
         }
     }
 

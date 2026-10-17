@@ -31,13 +31,23 @@ object SpikeServer {
         /** The last lines of output so far, and whether the server still runs. */
         fun onProgress(text: String, running: Boolean)
 
-        /** `/signalk` answered, [ms] after the start; once per start. */
-        fun onReady(ms: Long)
+        /**
+         * `/signalk` answered, [ms] after the start of run [generation]; once per start, to the
+         * observer attached then or, if none is, to the next one. Check [isCurrent] with
+         * [generation] before acting on it later: the server may have been stopped since.
+         */
+        fun onReady(ms: Long, generation: Long)
     }
 
     @Volatile private var process: Process? = null
     @Volatile private var observer: Observer? = null
     @Volatile private var latest = ""
+
+    /** Counts runs, start and stop alike, so a readiness from an older run is recognised. */
+    @Volatile private var generation = 0L
+
+    /** A readiness no observer was attached to receive (a rotation in between); guarded by this. */
+    private var pendingReady: Pair<Long, Long>? = null
 
     /** The last lines of output, oldest first; guarded by itself, as two threads add to it. */
     private val tail = ArrayDeque<String>()
@@ -45,11 +55,19 @@ object SpikeServer {
 
     val isRunning: Boolean get() = process?.isAlive == true
 
-    /** Makes [observer] the one told, and tells it the output so far at once, on the caller's thread. */
+    /** True while run [generation] is the one running, neither stopped nor replaced. */
+    fun isCurrent(generation: Long): Boolean = generation == this.generation && isRunning
+
+    /**
+     * Makes [observer] the one told, and tells it the output so far at once, on the caller's
+     * thread, and a readiness that arrived while no observer was attached.
+     */
     @Synchronized
     fun observe(observer: Observer) {
         this.observer = observer
         observer.onProgress(latest, isRunning)
+        pendingReady?.let { (ms, run) -> if (isCurrent(run)) observer.onReady(ms, run) }
+        pendingReady = null
     }
 
     /** Stops telling [observer], unless another has taken its place already. */
@@ -72,6 +90,8 @@ object SpikeServer {
         logFile.parentFile?.mkdirs()
         synchronized(tail) { tail.clear() }
         latest = ""
+        pendingReady = null
+        val run = ++generation
         val started = System.nanoTime()
         val p = runtime.spawn(main.absolutePath, "--sample-nmea0183-data")
         process = p
@@ -100,17 +120,35 @@ object SpikeServer {
                 if (client.endpoints() is SignalKClient.Result.Ok) {
                     val ms = (System.nanoTime() - started) / 1_000_000
                     add("(answering on $BASE after $ms ms; opening the admin UI)", now = true)
-                    observer?.onReady(ms)
+                    ready(ms, run)
                     return@thread
                 }
                 Thread.sleep(POLL_MS)
             }
+            if (p.isAlive) add("(no answer on $BASE after ${READY_TIMEOUT_NS / 1_000_000_000} s)", now = true)
         }
     }
 
-    /** Stops the server, if one runs: SIGTERM, which Signal K shuts down on cleanly. */
+    /**
+     * Stops the server, if one runs: SIGTERM, which Signal K shuts down on cleanly. A readiness
+     * still on its way belongs to the run stopped here, so it opens nothing.
+     */
+    @Synchronized
     fun stop() {
+        generation++
+        pendingReady = null
         process?.destroy()
+    }
+
+    /**
+     * Hands run [run]'s readiness to the observer, or keeps it for the next one, under the same
+     * lock as [observe] so it is neither lost nor delivered twice while the screen is replaced.
+     */
+    @Synchronized
+    private fun ready(ms: Long, run: Long) {
+        if (!isCurrent(run)) return
+        val o = observer
+        if (o != null) o.onReady(ms, run) else pendingReady = ms to run
     }
 
     /** Adds [line] and tells the observer, at most every half second unless [now]. */
