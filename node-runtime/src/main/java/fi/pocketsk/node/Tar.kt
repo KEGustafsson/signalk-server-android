@@ -72,7 +72,7 @@ object Tar {
                         target.outputStream().use { out -> copy(data, out, size) }
                         skipPadding(data, size)
                         val mode = octal(header, MODE_OFFSET, MODE_LENGTH, "mode")
-                        if (mode and EXEC_BITS != 0L) target.setExecutable(true)
+                        if ((mode and EXEC_BITS) != 0L) target.setExecutable(true)
                         files++
                     }
                 }
