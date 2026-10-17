@@ -53,14 +53,19 @@ class MainActivity : AppCompatActivity() {
         // first time, a second unpack of npm. NodeRuntime serialises the unpack; this keeps the
         // report whole and keeps two installs out of one slot.
         val buttons = listOf(run, install)
+        fun idle() {
+            buttons.forEach { it.isEnabled = runtime.isAvailable }
+            // An install that killed npm keeps the slot until the app is force-stopped.
+            if (SpikeInstall.current?.mayHaveOrphans == true) install.isEnabled = false
+        }
         run.setOnClickListener {
             buttons.forEach { it.isEnabled = false }
-            runNodeVersion { buttons.forEach { it.isEnabled = true } }
+            runNodeVersion { idle() }
         }
         val progress = SpikeInstall.Observer { text, finished ->
             runOnUiThread {
                 output.text = text.ifEmpty { getString(R.string.spike_installing) }
-                if (finished) buttons.forEach { it.isEnabled = runtime.isAvailable }
+                if (finished) idle()
             }
         }
         observer = progress

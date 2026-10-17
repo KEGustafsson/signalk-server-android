@@ -48,6 +48,16 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
     val isRunning: Boolean get() = !finished
 
     /**
+     * True once npm had to be killed (out of time, or its log could not be written). Killing npm
+     * does not kill the lifecycle scripts it started, and Android gives an app no handle on them:
+     * no child pids, and once npm is gone they belong to init. They end with the app's process
+     * group, which Android kills on a force stop, so until then [start] refuses another install
+     * into the slot they may still be writing to. The real installer kills the whole group (PLAN §5).
+     */
+    @Volatile var mayHaveOrphans = false
+        private set
+
+    /**
      * Makes [observer] the one told about progress, and tells it the state so far at once, on
      * the caller's thread; later calls come from the install thread. Both sides write before
      * they read volatile fields, so the final report reaches an observer attached at any moment,
@@ -75,6 +85,7 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
                 // report is the point of the spike.
                 add("failed: $e")
             }
+            if (mayHaveOrphans) add(ORPHANS)
             add("(${(System.nanoTime() - started) / 1_000_000_000} s in all; full log: $logFile)")
             publish(done = true)
         }
@@ -88,6 +99,8 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
         logFile.parentFile?.mkdirs()
         add("$ npm install -g --prefix $slot ${INSTALL_ARGS.joinToString(" ")}")
         var lastUpdate = 0L
+        // Until drain() says npm ended by itself, it may have been killed with scripts still running.
+        mayHaveOrphans = true
         val code = logFile.bufferedWriter().use { log ->
             drain(runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS), INSTALL_TIMEOUT_S) { line ->
                 log.appendLine(line)
@@ -99,6 +112,7 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
                 }
             }
         }
+        if (code != null) mayHaveOrphans = false
         add(if (code == null) "timed out after ${INSTALL_TIMEOUT_S / 60} min" else "exit $code")
         if (code != 0) return
         add("")
@@ -170,12 +184,13 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
             private set
 
         /**
-         * Starts an install into slot A, unless one is already running in this process; either
-         * way returns the one running, for the caller to [observe].
+         * Starts an install into slot A, unless one is already running in this process or the
+         * last one may have left scripts running ([mayHaveOrphans]); either way returns the one
+         * that holds the slot, for the caller to [observe].
          */
         @Synchronized
         fun start(runtime: NodeRuntime, logFile: File): SpikeInstall {
-            current?.takeIf { it.isRunning }?.let { return it }
+            current?.takeIf { it.isRunning || it.mayHaveOrphans }?.let { return it }
             return SpikeInstall(runtime, logFile).also {
                 current = it
                 it.begin()
@@ -195,6 +210,8 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
         private const val UPDATE_INTERVAL_NS = 500_000_000L
         private const val INSTALL_TIMEOUT_S = 20 * 60L
         private const val SUMMARY_TIMEOUT_S = 60L
+        private const val ORPHANS = "npm was killed: scripts it started may still be running in slot A. " +
+            "Force-stop the app before installing again."
 
         /**
          * Walks the installed tree (argv[1] is the slot, the tree is its lib/node_modules, as a
