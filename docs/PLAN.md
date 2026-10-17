@@ -375,7 +375,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 3. ~~`native/launcher/main.cc` + CMake → `libnodeexec.so`~~ **Done**. With it, the `MainActivity` button of step 5 runs a real `node -v`.
 4. ~~`NodeRuntime.kt` (§4.3) with asset extraction of `npm` (vendored from the matching Node release tarball into `assets/npm.tar`)~~ **Done**, from the registry tarball instead (§4.3). The spike screen's button runs `npm -v` after `node -v`.
 5. ~~Spike activity~~ `MainActivity` already does this: it shows `nativeLibraryDir` and the environment, and runs `node -v` once `libnodeexec.so` is in the APK. **This is R1.**
-6. Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it. **R2.**
+6. ~~Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it~~ **Done**, built by the app's own CMake rather than in a separate CI job (`native/spike-addon`): it is packaged in `lib/<abi>/`, and the spike screen copies it to `files/prebuilds/spike/` and requires it from there. **R2.** It is built twice, because R2 also settles how §9's prebuilds must be linked: `spike_napi` as prebuildify/node-gyp build for Linux (no link to Node, `napi_*` left undefined for the loading process to supply) and `spike_napi_linked` as nodejs-mobile's own addon test builds (`-lnode`). If only the linked one loads, §9 links every prebuild against `libnode.so`.
 7. Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log. **R3.**
 8. Button: start server, open WebView. **R4.**
 9. Only then: `SignalKService`, `InstallManager`, wizard, bridge, per §5–§8.

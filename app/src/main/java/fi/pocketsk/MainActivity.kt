@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import fi.pocketsk.node.NodeRuntime
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -15,8 +16,10 @@ import kotlin.concurrent.thread
  * Spike R1 (docs/PLAN.md §3): can this app exec the Node runtime from its native library
  * directory? The screen shows where the runtime is and the environment it gets, and the button
  * runs `node -v`, then unpacks npm and runs `npm -v` (node running npm-cli.js, the first real
- * script), printing whatever comes back, including the exact exception when the exec is
- * refused. It becomes the Dock once the service exists.
+ * script), then spike R2: it copies the two builds of the test addon out of nativeLibraryDir into
+ * writable storage and requires each from there, the way npm leaves a plugin's native addon in
+ * node_modules. It prints whatever comes back, including the exact exception when an exec or a
+ * load is refused. It becomes the Dock once the service exists.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
@@ -64,12 +67,25 @@ class MainActivity : AppCompatActivity() {
                     report.appendLine("(npm ready in ${(System.nanoTime() - started) / 1_000_000} ms)")
                     runtime.npm("-v")
                 }
+                report.appendLine().appendLine("$ node -e 'require(<addon in files/>)'   # R2")
+                exec(report) { runtime.spawn("-e", R2_SCRIPT, *copyAddons().map { it.absolutePath }.toTypedArray()) }
             }
             report.appendLine().append(runtime.describe())
             runOnUiThread {
                 output.text = report
                 done()
             }
+        }
+    }
+
+    /**
+     * The test addon's two builds, copied from nativeLibraryDir to files/prebuilds/spike as
+     * `.node` files: writable storage, where npm puts every native addon a plugin brings.
+     */
+    private fun copyAddons(): List<File> {
+        val dir = File(runtime.prebuilds, "spike").apply { mkdirs() }
+        return ADDONS.map { name ->
+            File(dir, "$name.node").also { File(runtime.nativeLibraryDir, "lib$name.so").copyTo(it, overwrite = true) }
         }
     }
 
@@ -92,5 +108,13 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         const val PAD_DP = 16
         const val SPIKE_TIMEOUT_S = 20L
+
+        /** native/spike-addon: one build linked like a generic prebuild, one linked to libnode.so. */
+        val ADDONS = listOf("spike_napi", "spike_napi_linked")
+
+        /** Requires each addon named on the command line, one line per addon, whatever happens. */
+        const val R2_SCRIPT = "for (const f of process.argv.slice(1)) { " +
+            "try { console.log(require('path').basename(f) + ': ' + require(f).hello()) } " +
+            "catch (e) { console.log(require('path').basename(f) + ': FAILED ' + e.message) } }"
     }
 }
