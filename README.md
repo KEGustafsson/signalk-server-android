@@ -23,4 +23,4 @@ Open the folder in Android Studio (a release that supports Android Gradle Plugin
 
 ## Licence
 
-EUPL-1.2.
+EUPL-1.2 ([LICENSE](LICENSE)).
