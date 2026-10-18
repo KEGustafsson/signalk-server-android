@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong
  *     files/bin             node, a symlink into nativeLibraryDir; later the node-gyp shim
  *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
  *     cache/tmp             $TMPDIR
- *     cache/groups          one file per running [spawn], the id of its process group ([NodeProcess])
+ *     no_backup/groups      one file per running [spawn], the id of its process group ([NodeProcess])
  *
  * Nothing here is created until [ensureLayout], and npm is not unpacked until [ensureExtracted].
  * The executable comes from this module's native build; on an ABI it does not build for,
@@ -60,8 +60,13 @@ class NodeRuntime(context: Context) {
     val prebuilds = File(files, "prebuilds")
     val tmp = File(cache, "tmp")
 
-    /** Where the launcher records each spawned node's process group; see [NodeProcess]. */
-    val groups = File(cache, "groups")
+    /**
+     * Where the launcher records each spawned node's process group; see [NodeProcess]. Not in the
+     * cache: Android may clear that while the app runs, and a server's record is first read when
+     * it is stopped, hours later perhaps; a lost record leaves the group unreachable. no_backup is
+     * never cleared by the system and never backed up, which pids have no business in either.
+     */
+    val groups = File(app.noBackupFilesDir, "groups")
 
     /** npm's entry point, once [ensureExtracted] has unpacked it. */
     val npmCli = File(npmDir, "bin/npm-cli.js")
