@@ -118,9 +118,19 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
      * final [State.Done] or [State.Failed], having told [listener] along the way. A version the
      * health gate rolled back before ([InstallHistory.isBad]) is refused unless [allowBad]. The
      * live slot is touched only by the promotion, and not at all when anything fails.
+     *
+     * [onPromoting] hears the version just before `current` moves to it, under the same lock as
+     * [rollback]: whatever the supervisor must know about a new live version (that it owes a
+     * health gate) is then recorded before any rollback waiting for the lock can see it live.
+     * After the call returns would be too late: the supervisor could start it ungated meanwhile.
      */
-    fun install(source: Source, allowBad: Boolean = false, listener: Listener): State = synchronized(LOCK) {
-        Run(source, allowBad, listener).execute()
+    fun install(
+        source: Source,
+        allowBad: Boolean = false,
+        onPromoting: (String) -> Unit = {},
+        listener: Listener,
+    ): State = synchronized(LOCK) {
+        Run(source, allowBad, onPromoting, listener).execute()
     }
 
     /**
@@ -153,7 +163,12 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
     }
 
     /** One install, from the wipe to the record; the tail and its throttle are its own. */
-    private inner class Run(private val source: Source, private val allowBad: Boolean, private val listener: Listener) {
+    private inner class Run(
+        private val source: Source,
+        private val allowBad: Boolean,
+        private val onPromoting: (String) -> Unit,
+        private val listener: Listener,
+    ) {
         private val tail = ArrayDeque<String>()
         private var lastPost = 0L
         private val slot = Slots.inactive(liveSlot())
@@ -205,6 +220,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 verifying = true
                 listener.onState(State.Verifying(slot, tailText()))
                 smokeTest(dir, log)?.let { return@use fail(it, log, version) }
+                onPromoting(version)
                 promote(slot)
                 // Live from here on: nothing that fails afterwards may empty the slot.
                 wiped = false

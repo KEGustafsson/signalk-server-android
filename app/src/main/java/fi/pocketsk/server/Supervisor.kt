@@ -74,6 +74,9 @@ internal class Supervisor(
     private var rollbackFirst = false
     private var gateFailure: String? = null
 
+    /** The slot of the run in progress, set with [node]. */
+    private var runSlot: String? = null
+
     @Volatile var state: ServerState = ServerState.Stopped
         private set
 
@@ -112,11 +115,16 @@ internal class Supervisor(
 
     /**
      * A new version was made live ([ServerPrefs.gateVersion] says which): a running server moves
-     * to it now, under the health gate; a stopped one meets the gate on its next start.
+     * to it now, under the health gate; a stopped one meets the gate on its next start. A run of
+     * the live slot already (a gate rollback that found the new version live and started it) is
+     * left be.
      */
     @Synchronized
     fun promoted() {
-        if (loop != null) restart()
+        if (loop == null) return
+        val live = installs.liveSlot()
+        if (node != null && live != null && live == runSlot) return
+        restart()
     }
 
     /** The service is going: kill the group now, without the grace of [stop]. */
@@ -217,6 +225,7 @@ internal class Supervisor(
             }
             synchronized(this) {
                 node = n
+                runSlot = slot
                 // A stop or restart that came while this was spawning found no node to signal.
                 if (ask != Ask.NONE) {
                     publish(ServerState.Stopping)

@@ -394,11 +394,15 @@ class SignalKService : Service() {
         }
 
         /**
-         * [version] was just made live by the installer: it owes its health gate, and a running
-         * server moves to it. From the installing thread.
+         * [version] is about to be made live by the installer, so it owes its health gate. Called
+         * under the installer's lock, before `current` moves, so no run can start it ungated.
          */
-        internal fun promoted(context: Context, version: String) {
+        internal fun owesGate(context: Context, version: String) {
             ServerPrefs(context).gateVersion = version
+        }
+
+        /** The installer made a new version live: a running server moves to it. From the installing thread. */
+        internal fun promoted(context: Context) {
             if (ServerStatus.state.isActive) send(context, ACTION_PROMOTED)
         }
 

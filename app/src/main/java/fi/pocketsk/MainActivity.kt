@@ -196,9 +196,12 @@ class MainActivity : AppCompatActivity() {
             InstallJob.observe(upgradeObserver)
             val app = applicationContext
             // A running server moves to the new version at once, under its health gate.
-            InstallJob.start(InstallManager(this, runtime), InstallManager.Source.Registry()) {
-                SignalKService.promoted(app, it.version)
-            }
+            InstallJob.start(
+                InstallManager(this, runtime),
+                InstallManager.Source.Registry(),
+                onPromoting = { SignalKService.owesGate(app, it) },
+                onPromoted = { SignalKService.promoted(app) },
+            )
             syncButtons()
         }
         server.setOnClickListener {
