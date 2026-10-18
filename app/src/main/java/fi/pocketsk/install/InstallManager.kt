@@ -158,12 +158,17 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         /** True once the slot has been wiped for this install, so a failure empties it again. */
         private var wiped = false
 
+        /** The version made live, once it is: from then on nothing is a failure of this install. */
+        private var promoted: String? = null
+
         fun execute(): State {
             val state = try {
                 attempt()
             } catch (e: Exception) {
                 // Broadly: whatever went wrong, it is recorded and reported, not thrown at a screen.
-                fail("$e")
+                // After the promotion the install has happened, whatever the log does (closing it
+                // can still throw on a full disk), so it is reported as done.
+                promoted?.let { State.Done(it, slot, readHistory()) } ?: fail("$e")
             }
             listener.onState(state)
             return state
@@ -195,6 +200,9 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 listener.onState(State.Verifying(slot, tailText()))
                 smokeTest(dir, log)?.let { return@use fail(it, log, version) }
                 promote(slot)
+                // Live from here on: nothing that fails afterwards may empty the slot.
+                wiped = false
+                promoted = version
                 record(version, InstallHistory.Outcome.PROMOTED, null)
                 line(log, "signalk-server $version is live in slot $slot", now = true)
                 State.Done(version, slot, readHistory())
@@ -383,28 +391,39 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         writeAtomically(versionsFile, json.toString())
     }
 
-    private fun readHistory(): InstallHistory = try {
-        val a = JSONArray(historyFile.readText())
-        InstallHistory(
-            List(a.length()) { i ->
-                val e = a.getJSONObject(i)
-                InstallHistory.Entry(
-                    at = e.getLong("at"),
-                    version = e.getString("version"),
-                    slot = e.getString("slot"),
-                    source = e.getString("source"),
-                    outcome = InstallHistory.Outcome.valueOf(e.getString("outcome")),
-                    detail = e.optString("detail").ifEmpty { null },
-                )
+    /**
+     * The history file, entry by entry: one entry this build cannot read (a newer build's outcome,
+     * a damaged line) is left out alone, because the next write would otherwise replace the whole
+     * file with what was read, BAD markers and all.
+     */
+    private fun readHistory(): InstallHistory {
+        val a = try {
+            JSONArray(historyFile.readText())
+        } catch (_: IOException) {
+            return InstallHistory()
+        } catch (_: JSONException) {
+            return InstallHistory()
+        }
+        return InstallHistory(
+            (0 until a.length()).mapNotNull { i ->
+                try {
+                    val e = a.getJSONObject(i)
+                    InstallHistory.Entry(
+                        at = e.getLong("at"),
+                        version = e.getString("version"),
+                        slot = e.getString("slot"),
+                        source = e.getString("source"),
+                        outcome = InstallHistory.Outcome.valueOf(e.getString("outcome")),
+                        detail = e.optString("detail").ifEmpty { null },
+                    )
+                } catch (_: JSONException) {
+                    null
+                } catch (_: IllegalArgumentException) {
+                    // An outcome this build does not know, from a newer one.
+                    null
+                }
             },
         )
-    } catch (_: IOException) {
-        InstallHistory()
-    } catch (_: JSONException) {
-        InstallHistory()
-    } catch (_: IllegalArgumentException) {
-        // An outcome this build does not know, from a newer one.
-        InstallHistory()
     }
 
     private fun writeHistory(history: InstallHistory) {
