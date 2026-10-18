@@ -14,11 +14,30 @@
     <string name="spike_upgrade_verifying">Smoke test of slot %1$s on port %2$d…\n\n%3$s</string>
     <string name="spike_upgrade_done">signalk-server %1$s is live in slot %2$s. Its history:\n\n%3$s</string>
     <string name="spike_upgrade_failed">The install failed: %1$s\n\n%2$s</string>
-    <string name="spike_server_start">Start signalk-server and open it (R4)</string>
-    <string name="spike_server_stop">Stop signalk-server</string>
-    <string name="spike_server_starting">Starting signalk-server from slot A…</string>
-    <string name="spike_server_failed">Could not start signalk-server: %1$s</string>
-    <string name="spike_server_no_browser">No browser to open %1$s</string>
+    <string name="spike_service_start">Start the server service (9.3)</string>
+    <string name="spike_service_stop">Stop the server service</string>
+    <string name="spike_service_admin">Open the admin UI</string>
+    <string name="spike_service_autostart">Start the server when the phone starts</string>
+    <string name="spike_service_stopped">Stopped.</string>
+    <string name="spike_service_failed">Gave up: %1$s</string>
+    <string name="spike_service_no_browser">No browser to open %1$s</string>
+
+    <!-- SignalKService: the ongoing notification, its actions and the alerts -->
+    <string name="server_channel">Server</string>
+    <string name="server_alert_channel">Server problems</string>
+    <string name="server_title">Signal K Server %1$s</string>
+    <string name="server_starting">Starting…</string>
+    <string name="server_not_answering">Not answering on %1$s</string>
+    <string name="server_on_trial">%1$s · new version on trial</string>
+    <string name="server_waiting">Ended (%1$s); starting again in %2$d s</string>
+    <string name="server_stopping">Stopping…</string>
+    <string name="server_action_stop">Stop</string>
+    <string name="server_action_restart">Restart</string>
+    <string name="server_action_start">Start again</string>
+    <string name="server_action_rollback">Roll back to %1$s</string>
+    <string name="server_alert_title">Signal K Server needs attention</string>
+    <string name="server_no_local_network">Local network access was refused: only this phone can reach the server. Allow Nearby devices for the app to let others on the boat connect.</string>
+    <string name="server_no_notifications">Notifications were refused: the server runs without its notification and its alerts.</string>
 
     <!-- SignalKClient failure details -->
     <string name="signalk_http">HTTP %1$d</string>

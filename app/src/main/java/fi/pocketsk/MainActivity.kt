@@ -1,12 +1,18 @@
 package fi.pocketsk
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -15,6 +21,11 @@ import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.ServerPrefs
+import fi.pocketsk.server.ServerState
+import fi.pocketsk.server.ServerStatus
+import fi.pocketsk.server.ServerEndpoint
+import fi.pocketsk.server.SignalKService
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -32,9 +43,10 @@ import kotlin.concurrent.thread
  * into slot A, its output streamed onto the screen. The third runs PLAN §16 step 9.2's
  * [InstallManager] through [InstallJob]: the latest release into the slot that is not live, its
  * smoke test, and the promotion, so the installer can be tried on a phone before the wizard
- * exists. The fourth is spike R4 ([SpikeServer]): it starts slot A's server with sample data and
- * opens its admin UI in the browser once it answers, and stops it again. It becomes the Dock
- * once the service exists.
+ * exists. The fourth starts and stops PLAN §16 step 9.3's [SignalKService], which runs the live
+ * slot's server under its supervisor, and shows its state and log; once it answers, the fifth
+ * opens the admin UI in the browser. (It replaced spike R4's button, which ran slot A's server
+ * by hand.) It all becomes the Dock in step 9.4.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
@@ -43,19 +55,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var install: Button
     private lateinit var upgrade: Button
     private lateinit var server: Button
+    private lateinit var admin: Button
+    private lateinit var autostart: CheckBox
 
-    /** Whether this screen's R1/R2 run is going. Unlike the other two, it dies with the screen. */
+    /** Whether this screen's R1/R2 run is going. Unlike the others, it dies with the screen. */
     private var nodeRunning = false
+
+    /** Whose output the screen shows: the last thing started from it, or found running. */
+    private enum class Showing { NOTHING, NODE, INSTALL, UPGRADE, SERVER }
+    private var showing = Showing.NOTHING
 
     private val installObserver = SpikeInstall.Observer { text, _ ->
         runOnUiThread {
-            output.text = text.ifEmpty { getString(R.string.spike_installing) }
+            if (showing == Showing.INSTALL) output.text = text.ifEmpty { getString(R.string.spike_installing) }
             syncButtons()
         }
     }
 
     private val upgradeObserver = InstallJob.Observer { state, _ ->
         runOnUiThread {
+            if (showing != Showing.UPGRADE) return@runOnUiThread syncButtons()
             output.text = when (state) {
                 is InstallManager.State.Installing -> getString(R.string.spike_upgrade_installing, state.slot, state.tail)
                 is InstallManager.State.Verifying ->
@@ -68,28 +87,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val serverObserver = object : SpikeServer.Observer {
-        override fun onProgress(text: String, running: Boolean) = runOnUiThread {
-            if (text.isNotEmpty()) output.text = text
-            syncButtons()
-        }
-
-        override fun onReady(ms: Long, generation: Long) = runOnUiThread {
-            // Checked again here: Stop may have been tapped while this waited for the main thread.
-            if (SpikeServer.isCurrent(generation)) openAdmin()
-        }
+    private val serverObserver = ServerStatus.Observer { state ->
+        if (showing == Showing.SERVER) output.text = serverText(state)
+        syncButtons()
     }
+
+    /**
+     * What the service needs asked for first: notifications (Android 13+), without which it runs
+     * unseen, and Android 17's local network access, without which only the phone itself reaches
+     * the server ([LocalNetwork]). It starts whatever the answers: without the second, the
+     * phone's own browser and the plugins still reach it on the loopback, which for a phone that
+     * is the boat's only screen is all there is. What was refused is said in the server's log, so
+     * a tablet that cannot connect has its reason on this screen.
+     */
+    private val askThenStart = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        val log = ServerStatus.log(this)
+        if (granted[LocalNetwork.PERMISSION] == false) log.note(getString(R.string.server_no_local_network))
+        if (granted[Manifest.permission.POST_NOTIFICATIONS] == false) log.note(getString(R.string.server_no_notifications))
+        SignalKService.start(this)
+    }
+
+    private fun startServer() {
+        val wanted = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
+            if (LocalNetwork.forServer(Build.VERSION.SDK_INT, lanAccess = true) == LocalNetwork.Need.REQUIRED) add(LocalNetwork.PERMISSION)
+        }.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (wanted.isEmpty()) SignalKService.start(this) else askThenStart.launch(wanted.toTypedArray())
+    }
+
+    /** The state on top, the newest of the log below it. */
+    private fun serverText(state: ServerState): String {
+        val head = when (state) {
+            ServerState.Stopped -> getString(R.string.spike_service_stopped)
+            is ServerState.Starting -> getString(R.string.server_title, state.version) + "  " + getString(R.string.server_starting)
+            is ServerState.Running -> getString(R.string.server_title, state.version) + "  " + localUrl(state.port).let {
+                when {
+                    !state.answering -> getString(R.string.server_not_answering, it)
+                    state.onTrial -> getString(R.string.server_on_trial, it)
+                    else -> it
+                }
+            }
+            is ServerState.Waiting -> getString(R.string.server_waiting, state.reason, state.delayMs / 1000)
+            ServerState.Stopping -> getString(R.string.server_stopping)
+            is ServerState.Failed -> getString(R.string.spike_service_failed, state.reason)
+        }
+        return head + "\n\n" + ServerStatus.log(this).tail(SpikeInstall.TAIL_LINES)
+    }
+
+    /** The server on this phone, plain HTTP; with SSL on, the server redirects it to HTTPS itself. */
+    private fun localUrl(port: Int) = "http://127.0.0.1:$port"
 
     /**
      * The admin UI in the phone's browser, the way it is used on any Signal K server: the app has
      * no viewer of its own for it (docs/PLAN.md §8.2).
      */
     private fun openAdmin() {
-        val url = "${SpikeServer.BASE}/admin/"
+        val port = (ServerStatus.state as? ServerState.Running)?.port ?: ServerEndpoint.DEFAULT_PORT
+        val url = "${localUrl(port)}/admin/"
         try {
             startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (_: ActivityNotFoundException) {
-            Toast.makeText(this, getString(R.string.spike_server_no_browser, url), Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.spike_service_no_browser, url), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -110,12 +168,15 @@ class MainActivity : AppCompatActivity() {
         install = findViewById(R.id.install)
         upgrade = findViewById(R.id.upgrade)
         server = findViewById(R.id.server)
+        admin = findViewById(R.id.admin)
+        autostart = findViewById(R.id.autostart)
         val intro = buildString {
             append(runtime.describe())
             if (!runtime.isAvailable) appendLine().append(getString(R.string.spike_missing))
         }
         output.text = intro
         run.setOnClickListener {
+            showing = Showing.NODE
             nodeRunning = true
             syncButtons()
             runNodeVersion {
@@ -124,63 +185,77 @@ class MainActivity : AppCompatActivity() {
             }
         }
         install.setOnClickListener {
+            showing = Showing.INSTALL
             output.text = getString(R.string.spike_installing)
             SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(installObserver)
             syncButtons()
         }
         upgrade.setOnClickListener {
+            showing = Showing.UPGRADE
             output.text = getString(R.string.spike_upgrade_starting)
             InstallJob.observe(upgradeObserver)
-            InstallJob.start(InstallManager(this, runtime), InstallManager.Source.Registry())
+            val app = applicationContext
+            // A running server moves to the new version at once, under its health gate.
+            InstallJob.start(
+                InstallManager(this, runtime),
+                InstallManager.Source.Registry(),
+                onPromoting = { SignalKService.owesGate(app, it) },
+                onPromoted = { SignalKService.promoted(app) },
+            )
             syncButtons()
         }
         server.setOnClickListener {
-            if (SpikeServer.isRunning) {
-                SpikeServer.stop()
-                return@setOnClickListener
-            }
-            output.text = getString(R.string.spike_server_starting)
-            SpikeServer.observe(serverObserver)
-            try {
-                SpikeServer.start(this, runtime, File(filesDir, "logs/spike-r4.log"))
-            } catch (e: IOException) {
-                output.text = getString(R.string.spike_server_failed, e.toString())
-            }
-            syncButtons()
+            showing = Showing.SERVER
+            if (ServerStatus.state.isActive) SignalKService.stop(this) else startServer()
+            output.text = serverText(ServerStatus.state)
         }
+        admin.setOnClickListener { openAdmin() }
+        val prefs = ServerPrefs(this)
+        autostart.isChecked = prefs.autostart
+        autostart.setOnCheckedChangeListener { _, on -> prefs.autostart = on }
         // An install or a server outlives the activity that started it (a rotation); this one
-        // takes it over, its output and its end. An install that has ended shows its report,
-        // since the report is what the spike is for; a running server's output wins over it.
+        // takes it over, its output and its end. A running server's output wins; else an
+        // install's report, since the report is what the spike is for.
+        showing = when {
+            ServerStatus.state.isActive -> Showing.SERVER
+            InstallJob.isRunning -> Showing.UPGRADE
+            SpikeInstall.current != null -> Showing.INSTALL
+            else -> Showing.NOTHING
+        }
         SpikeInstall.current?.observe(installObserver)
         InstallJob.observe(upgradeObserver)
-        if (SpikeServer.isRunning) SpikeServer.observe(serverObserver)
+        ServerStatus.observe(serverObserver)
         syncButtons()
     }
 
     override fun onDestroy() {
         SpikeInstall.current?.detach(installObserver)
         InstallJob.detach(upgradeObserver)
-        SpikeServer.detach(serverObserver)
+        ServerStatus.detach(serverObserver)
         super.onDestroy()
     }
 
     /**
-     * One run at a time, of any kind: a second tap would start a second node and, the first time,
-     * a second unpack of npm (NodeRuntime serialises it; this keeps the report whole); an install
-     * deletes the slot a running server runs from. While the server runs its button stops it.
+     * One spike run at a time: a second tap would start a second node and, the first time, a
+     * second unpack of npm (NodeRuntime serialises it; this keeps the report whole). R3 wipes
+     * slot A, which may be the live one, so it waits for the server to stop; InstallManager's
+     * install goes to the slot that is not live and may run beside it. While the server runs its
+     * button stops it.
      */
     private fun syncButtons() {
-        val installing = SpikeInstall.current?.isRunning == true || InstallJob.isRunning
-        val serving = SpikeServer.isRunning
-        val idle = runtime.isAvailable && !nodeRunning && !installing && !serving
+        val state = ServerStatus.state
+        val serving = state.isActive
+        val spiking = nodeRunning || SpikeInstall.current?.isRunning == true || InstallJob.isRunning
+        val idle = runtime.isAvailable && !spiking
         run.isEnabled = idle
-        // An install that killed npm keeps the slot until the app is force-stopped: a script it
+        // An install that killed npm keeps slot A until the app is force-stopped: a script it
         // started may still be writing there, so neither a new install nor a server starts from it.
         val slotHeld = SpikeInstall.current?.mayHaveOrphans == true
-        install.isEnabled = idle && !slotHeld
+        install.isEnabled = idle && !slotHeld && !serving
         upgrade.isEnabled = idle && !slotHeld
-        server.isEnabled = serving || (idle && !slotHeld)
-        server.setText(if (serving) R.string.spike_server_stop else R.string.spike_server_start)
+        server.isEnabled = serving || (runtime.isAvailable && SpikeInstall.current?.isRunning != true && !slotHeld)
+        server.setText(if (serving) R.string.spike_service_stop else R.string.spike_service_start)
+        admin.isEnabled = state is ServerState.Running && state.answering
     }
 
     /** [history], newest first, one line each, for the screen after an install. */

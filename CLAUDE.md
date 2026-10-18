@@ -40,10 +40,14 @@ pipeline and several files were lifted (PLAN §17).
 ## Layout
 ```
 app/                 the Android app
-  fi.pocketsk        MainActivity (currently the R1–R4 spike screen), SpikeInstall (R3), SpikeServer (R4),
-                     App, LocalNetwork, WifiLockModes, LegacyPlatform
+  fi.pocketsk        MainActivity (currently the spike screen), SpikeInstall (R3), App, LocalNetwork,
+                     WifiLockModes, LegacyPlatform
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      Slots, ServerVersion, InstallHistory, HealthGate (pure, tested)
+  fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
+                     health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver;
+                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
+                     tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
@@ -68,7 +72,8 @@ Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap)
 - Secrets (the admin token, anything under `files/home/.signalk`) never enter backups, logs or
   the diagnostics bundle. `data_extraction_rules.xml` excludes them; keep it in step with the
   layout in `NodeRuntime`. `files/npm`, `files/bin` and `files/prebuilds` are excluded too: the APK
-  makes them again, and `files/bin/node` points into the old install.
+  makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
+  server's output, which may carry whatever a plugin printed.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of
   its class comment, so a fix found in one repo is carried to the other.
 - Commit messages: what changed and why, present tense, wrapped at 72. Version numbers are never

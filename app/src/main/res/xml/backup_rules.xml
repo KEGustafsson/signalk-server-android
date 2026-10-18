@@ -4,7 +4,8 @@
   token for the local server; the server's own state under files/home/.signalk holds every
   plugin's secrets (security.json, tokens, API keys). None of it belongs in a cloud backup;
   the Dock's explicit backup/restore to a file the user chooses is the way to move it. files/npm,
-  files/bin and files/prebuilds are the APK's own and made again on the next start.
+  files/bin and files/prebuilds are the APK's own and made again on the next start. files/logs is
+  the server's output, which is this phone's story and may carry whatever a plugin printed.
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="." />
@@ -13,4 +14,5 @@
     <exclude domain="file" path="npm" />
     <exclude domain="file" path="bin" />
     <exclude domain="file" path="prebuilds" />
+    <exclude domain="file" path="logs" />
 </full-backup-content>

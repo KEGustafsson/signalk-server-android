@@ -118,9 +118,19 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
      * final [State.Done] or [State.Failed], having told [listener] along the way. A version the
      * health gate rolled back before ([InstallHistory.isBad]) is refused unless [allowBad]. The
      * live slot is touched only by the promotion, and not at all when anything fails.
+     *
+     * [onPromoting] hears the version just before `current` moves to it, under the same lock as
+     * [rollback]: whatever the supervisor must know about a new live version (that it owes a
+     * health gate) is then recorded before any rollback waiting for the lock can see it live.
+     * After the call returns would be too late: the supervisor could start it ungated meanwhile.
      */
-    fun install(source: Source, allowBad: Boolean = false, listener: Listener): State = synchronized(LOCK) {
-        Run(source, allowBad, listener).execute()
+    fun install(
+        source: Source,
+        allowBad: Boolean = false,
+        onPromoting: (String) -> Unit = {},
+        listener: Listener,
+    ): State = synchronized(LOCK) {
+        Run(source, allowBad, onPromoting, listener).execute()
     }
 
     /**
@@ -128,9 +138,15 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
      * marked [InstallHistory.Outcome.BAD]) and the Updates card's "Rollback to …" ([bad] false).
      * Returns the slot now live, or null when there is nothing to go back to: no live slot, an
      * empty other slot, or a version there that was itself rolled back as bad.
+     *
+     * [onlyFrom] is the version the caller means to leave, checked under the same lock as an
+     * install: the health gate's verdict is about one version, and an install may have made
+     * another live while the rollback waited for it. That newer version is then left alone,
+     * not marked bad for its predecessor's failure, and null is returned.
      */
-    fun rollback(bad: Boolean, reason: String? = null): String? = synchronized(LOCK) {
+    fun rollback(bad: Boolean, reason: String? = null, onlyFrom: String? = null): String? = synchronized(LOCK) {
         val live = liveSlot() ?: return null
+        if (onlyFrom != null && installedVersion(live) != onlyFrom) return null
         val target = Slots.inactive(live)
         val targetVersion = installedVersion(target) ?: return null
         val history = readHistory()
@@ -147,7 +163,12 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
     }
 
     /** One install, from the wipe to the record; the tail and its throttle are its own. */
-    private inner class Run(private val source: Source, private val allowBad: Boolean, private val listener: Listener) {
+    private inner class Run(
+        private val source: Source,
+        private val allowBad: Boolean,
+        private val onPromoting: (String) -> Unit,
+        private val listener: Listener,
+    ) {
         private val tail = ArrayDeque<String>()
         private var lastPost = 0L
         private val slot = Slots.inactive(liveSlot())
@@ -199,6 +220,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 verifying = true
                 listener.onState(State.Verifying(slot, tailText()))
                 smokeTest(dir, log)?.let { return@use fail(it, log, version) }
+                onPromoting(version)
                 promote(slot)
                 // Live from here on: nothing that fails afterwards may empty the slot.
                 wiped = false

@@ -36,7 +36,19 @@
         android:id="@+id/server"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/spike_server_start" />
+        android:text="@string/spike_service_start" />
+
+    <Button
+        android:id="@+id/admin"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/spike_service_admin" />
+
+    <CheckBox
+        android:id="@+id/autostart"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/spike_service_autostart" />
 
     <ScrollView
         android:layout_width="match_parent"
