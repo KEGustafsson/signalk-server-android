@@ -23,6 +23,9 @@ const MAX_LINE = 64 * 1024;
 /** The sensors a subscribe may name; the app ignores any other. */
 const SENSORS = ["battery", "baro"];
 
+/** The largest time, in ms either side of 1970, a JavaScript Date can hold. */
+const MAX_TIME_MS = 8.64e15;
+
 const PATH = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$/;
 const SOURCE = /^android\.[a-z0-9_]+$/;
 
@@ -54,7 +57,8 @@ function parseSensor(msg) {
   if (typeof msg.path !== "string" || !PATH.test(msg.path)) return { ok: false, reason: "sensor with a bad path" };
   if (typeof msg.src !== "string" || !SOURCE.test(msg.src)) return { ok: false, reason: "sensor with a bad source" };
   if (!validValue(msg.value)) return { ok: false, reason: `sensor ${msg.path} with a bad value` };
-  const ts = Number.isFinite(msg.ts) ? msg.ts : null;
+  // A time no Date can hold would throw in toDelta, inside the socket's data listener: taken as missing.
+  const ts = Number.isFinite(msg.ts) && Math.abs(msg.ts) <= MAX_TIME_MS ? msg.ts : null;
   return { ok: true, msg: { t: "sensor", path: msg.path, value: msg.value, src: msg.src, ts } };
 }
 

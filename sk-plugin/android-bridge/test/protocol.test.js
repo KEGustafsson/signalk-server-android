@@ -19,6 +19,15 @@ test("an object value of numbers and nulls is a sensor value", () => {
   assert.equal(r.msg.ts, null);
 });
 
+test("a time no Date can hold is taken as missing, so the delta gets the time of arrival", () => {
+  for (const ts of [1e20, -1e20, 8.64e15 + 1]) {
+    const r = parseLine(JSON.stringify({ t: "sensor", path: "a.b", value: 1, src: "android.baro", ts }));
+    assert.equal(r.msg.ts, null, String(ts));
+    assert.equal(toDelta(r.msg, () => 0).updates[0].timestamp, "1970-01-01T00:00:00.000Z");
+  }
+  assert.equal(parseLine('{"t":"sensor","path":"a.b","value":1,"src":"android.baro","ts":8.64e15}').msg.ts, 8.64e15);
+});
+
 test("hello carries the protocol version and the app's", () => {
   assert.deepEqual(parseLine('{"t":"hello","v":1,"app":"1.123"}'), { ok: true, msg: { t: "hello", v: 1, app: "1.123" } });
   assert.deepEqual(parseLine('{"t":"hello","v":2}'), { ok: true, msg: { t: "hello", v: 2, app: "" } });
