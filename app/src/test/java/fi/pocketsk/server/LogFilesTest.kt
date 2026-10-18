@@ -51,6 +51,18 @@ class LogFilesTest {
     }
 
     @Test
+    fun aFullFileThatCannotBeMovedAsideIsStartedAgain() {
+        val dir = tmp.newFolder()
+        // A directory with something in it: no file can be renamed over it.
+        File(dir, "server.log.1").mkdirs()
+        File(dir, "server.log.1/x").writeText("x")
+        val log = LogFiles(dir, maxBytes = 6, keep = 1)
+        for (i in 1..5) log.append("l$i")
+        log.close()
+        assertEquals(listOf("l5"), read(File(dir, "server.log")))
+    }
+
+    @Test
     fun aLineLargerThanAFileStillGoesIn() {
         val dir = tmp.newFolder()
         val log = LogFiles(dir, maxBytes = 4, keep = 1)

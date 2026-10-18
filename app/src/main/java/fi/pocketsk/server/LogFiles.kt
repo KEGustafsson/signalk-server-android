@@ -47,19 +47,29 @@ internal class LogFiles(
         out = null
     }
 
-    private fun open(): Writer {
+    /** Opens [current] for appending, or empty when not [append]. */
+    private fun open(append: Boolean = true): Writer {
         dir.mkdirs()
         val f = current
-        written = if (f.isFile) f.length() else 0L
-        return FileOutputStream(f, true).bufferedWriter().also { out = it }
+        written = if (append && f.isFile) f.length() else 0L
+        return FileOutputStream(f, append).bufferedWriter().also { out = it }
     }
 
+    /**
+     * Each file moves up one place, the oldest first and over the one there (a rename replaces
+     * it), so `server.log.<keep>` drops out. A file that cannot move is deleted, so one stuck name
+     * never stops the turn-over; and a full [current] that cannot be moved aside is started again
+     * empty, because opened for appending it would still be full, and every line after it would
+     * try again while the file grew without bound. The bound matters more than those lines.
+     */
     private fun rotate(): Writer {
         close()
-        File(dir, "$name.$keep").delete()
-        for (i in keep - 1 downTo 1) File(dir, "$name.$i").let { if (it.exists()) it.renameTo(File(dir, "$name.${i + 1}")) }
-        if (keep > 0) current.renameTo(File(dir, "$name.1")) else current.delete()
-        return open()
+        for (i in keep - 1 downTo 1) {
+            val f = File(dir, "$name.$i")
+            if (f.exists() && !f.renameTo(File(dir, "$name.${i + 1}"))) f.delete()
+        }
+        val movedAside = keep > 0 && current.renameTo(File(dir, "$name.1"))
+        return open(append = movedAside)
     }
 
     companion object {
