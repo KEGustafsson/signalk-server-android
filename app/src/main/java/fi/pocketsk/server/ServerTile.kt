@@ -1,8 +1,6 @@
 package fi.pocketsk.server
 
 import android.app.PendingIntent
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.Tile
@@ -17,15 +15,30 @@ import fi.pocketsk.R
  * A stop is a command to the running service, which a tile may always send. A start is a
  * foreground service start, which Android 12 and later refuse from the background unless an
  * exemption applies; when it is refused, the tile opens the Dock with [MainActivity.ACTION_START]
- * and the Dock starts it, a screen in front being the case every Android allows. The tile reads
- * [ServerStatus], so it is right whenever it is shown, and the service asks for a fresh look
- * ([requestUpdate]) on every change while it is not.
+ * and the Dock starts it, a screen in front being the case every Android allows.
+ *
+ * The tile is not an active one: the system binds it whenever the panel opens and keeps it
+ * listening until the panel closes, so it reads [ServerStatus] on opening and observes it while
+ * shown, and a start going on to running moves the tile with it. An active tile would instead be
+ * asked to look only when the app requested it, and would show a server that died with the
+ * process as still running.
  */
 class ServerTile : TileService() {
 
+    /** What the tile shows now, so a log line (which also reaches observers) costs no update. */
+    private var shown: ServerState? = null
+
+    private val observer = ServerStatus.Observer { state -> if (state != shown) refresh() }
+
     override fun onStartListening() {
         super.onStartListening()
-        refresh()
+        shown = null
+        ServerStatus.observe(observer)
+    }
+
+    override fun onStopListening() {
+        ServerStatus.detach(observer)
+        super.onStopListening()
     }
 
     override fun onClick() {
@@ -57,6 +70,7 @@ class ServerTile : TileService() {
     private fun refresh() {
         val tile = qsTile ?: return
         val state = ServerStatus.state
+        shown = state
         tile.state = if (state.isActive) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.subtitle = getString(
             when (state) {
@@ -68,16 +82,5 @@ class ServerTile : TileService() {
             },
         )
         tile.updateTile()
-    }
-
-    companion object {
-        /** Asks the system to show the tile its state again; harmless when the tile is not added. */
-        fun requestUpdate(context: Context) {
-            try {
-                requestListeningState(context, ComponentName(context, ServerTile::class.java))
-            } catch (_: RuntimeException) {
-                // Some builds throw when the tile is not in the panel; nothing to update then.
-            }
-        }
     }
 }

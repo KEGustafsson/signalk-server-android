@@ -45,6 +45,7 @@ import fi.pocketsk.ui.SetupScreen
 import fi.pocketsk.ui.SlotsView
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
 
 /**
  * The app's screen (docs/PLAN.md §5.3, §8.1): the setup wizard until it has been finished once,
@@ -61,6 +62,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var installs: InstallManager
     private lateinit var prefs: ServerPrefs
     private val model = AppModel()
+
+    /** Counts the sideload picks, main thread only, so a slow copy cannot replace a newer one. */
+    private var picks = 0
 
     /** Null until the first read of the prefs and the slots says which screen comes first. */
     private var setupDone by mutableStateOf<Boolean?>(null)
@@ -196,7 +200,9 @@ class MainActivity : ComponentActivity() {
 
     private fun install(source: InstallManager.Source) {
         model.install = null
-        if (ServerActions.install(this, runtime, source)) model.installing = true
+        // Refused because one is running already (begun elsewhere, and not yet past its first
+        // state): this screen follows that one, whose states reach it through the observer.
+        model.installing = ServerActions.install(this, runtime, source) || InstallJob.isRunning
     }
 
     private fun pickTarball() = pickFile.launch(TARBALL_TYPES)
@@ -290,21 +296,52 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Copies the picked `.tgz` into the app's cache, where npm can read it as a file: a document
-     * from the system picker is a content URI, not a path. One sideload kept at a time.
+     * from the system picker is a content URI, not a path. Each pick gets a directory of its own,
+     * the file written under a temporary name and renamed to the picked file's name when whole
+     * (that name is what the install history records), so a second pick never writes over the
+     * file a running install is reading, and only the newest pick becomes the choice.
      */
     private fun copyTarball(uri: Uri) {
-        val target = File(cacheDir, "sideload/signalk-server.tgz")
-        transportThread("dock-sideload", onError = { e -> ServerStatus.log(this).note("could not read $uri: $e") }) {
-            val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        val pick = ++picks
+        val app = applicationContext
+        transportThread("dock-sideload", onError = { e -> ServerStatus.log(app).note("could not read $uri: $e") }) {
+            val shown = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                 if (c.moveToFirst()) c.getString(0) else null
-            } ?: uri.lastPathSegment ?: target.name
-            target.parentFile?.mkdirs()
-            val input = contentResolver.openInputStream(uri) ?: throw IOException("$uri cannot be opened")
-            input.use { i -> target.outputStream().use { o -> i.copyTo(o) } }
-            runOnUiThread {
-                model.tarball = target
-                model.tarballName = name
+            } ?: uri.lastPathSegment
+            val name = shown?.replace(UNSAFE_NAME, "_")?.trim('.', '_')?.takeIf { it.isNotEmpty() && it != PARTIAL } ?: "signalk-server.tgz"
+            val dir = Files.createTempDirectory(File(cacheDir, SIDELOAD_DIR).apply { mkdirs() }.toPath(), "pick-").toFile()
+            val partial = File(dir, PARTIAL)
+            val target = File(dir, name)
+            try {
+                val input = contentResolver.openInputStream(uri) ?: throw IOException("$uri cannot be opened")
+                input.use { i -> partial.outputStream().use { o -> i.copyTo(o) } }
+                if (!partial.renameTo(target)) throw IOException("cannot rename $PARTIAL to $name")
+            } catch (e: IOException) {
+                dir.deleteRecursively()
+                throw e
             }
+            runOnUiThread { pickCopied(pick, target, shown ?: name) }
+        }
+    }
+
+    /**
+     * A copy is whole: the choice if it is the newest pick, else dropped. The picks before it are
+     * deleted unless an install is running, which may be reading one of them, and except those
+     * still being copied; one left behind that way goes with the next pick made while nothing
+     * installs, or with the cache.
+     */
+    private fun pickCopied(pick: Int, file: File, name: String) {
+        val dir = file.parentFile ?: return
+        if (pick != picks) {
+            dir.deleteRecursively()
+            return
+        }
+        model.tarball = file
+        model.tarballName = name
+        if (!InstallJob.isRunning) {
+            File(cacheDir, SIDELOAD_DIR).listFiles()
+                ?.filter { it != dir && !File(it, PARTIAL).exists() }
+                ?.forEach { it.deleteRecursively() }
         }
     }
 
@@ -313,6 +350,15 @@ class MainActivity : ComponentActivity() {
         const val ACTION_START = "fi.pocketsk.action.OPEN_AND_START"
 
         private const val LOG_LINES = 60
+
+        /** Under the cache: the sideloaded tarballs, a directory per pick. */
+        private const val SIDELOAD_DIR = "sideload"
+
+        /** A pick's file while it is being copied. */
+        private const val PARTIAL = "copying.part"
+
+        /** What a picked file's name may not carry into a path or an npm argument. */
+        private val UNSAFE_NAME = Regex("[^A-Za-z0-9._-]")
 
         /** What a `.tgz` from `npm pack` is called, depending on who serves it. */
         private val TARBALL_TYPES = arrayOf("application/gzip", "application/x-gzip", "application/x-tar", "application/octet-stream")

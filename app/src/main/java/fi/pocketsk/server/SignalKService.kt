@@ -165,7 +165,6 @@ class SignalKService : Service() {
     /** From the supervisor's threads. */
     private fun onState(state: ServerState) {
         ServerStatus.publish(state)
-        ServerTile.requestUpdate(this)
         if (state.isActive) postNotification() else main.post { finish() }
     }
 
