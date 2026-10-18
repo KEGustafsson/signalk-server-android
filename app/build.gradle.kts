@@ -8,6 +8,7 @@ import java.util.UUID
 
 plugins {
     id("com.android.application")      // brings the Kotlin compiler with it (AGP built-in Kotlin)
+    id("org.jetbrains.kotlin.plugin.compose")  // the Dock and the setup wizard (docs/PLAN.md §5.3, §8.1)
 }
 
 /** Output of a git command run in the repository, or empty when git is unavailable (a source download, say). */
@@ -97,7 +98,10 @@ android {
             signingConfig = if (hasReleaseKey) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
-    buildFeatures { buildConfig = true }
+    buildFeatures {
+        buildConfig = true
+        compose = true
+    }
     packaging {
         // The Node runtime is exec'd as a file from nativeLibraryDir (docs/PLAN.md §4.1), which
         // needs the .so files extracted at install time rather than mapped from the APK. This is
@@ -231,5 +235,10 @@ dependencies {
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.2")
+    // Compose for the Dock and the setup wizard; the BOM keeps its libraries on one release.
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.13.0")
     testImplementation("junit:junit:4.13.2")
 }

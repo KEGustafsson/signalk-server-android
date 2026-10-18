@@ -18,6 +18,11 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getBoolean(RUNNING, false)
         set(value) = prefs.edit { putBoolean(RUNNING, value) }
 
+    /** The setup wizard has been finished once; the Dock comes first from then on. */
+    var setupDone: Boolean
+        get() = prefs.getBoolean(SETUP_DONE, false)
+        set(value) = prefs.edit { putBoolean(SETUP_DONE, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -51,6 +56,7 @@ internal class ServerPrefs(context: Context) {
         const val FILE = "server"
         const val RUNNING = "running"
         const val AUTOSTART = "autostart"
+        const val SETUP_DONE = "setup_done"
         const val GATE_VERSION = "gate_version"
     }
 }

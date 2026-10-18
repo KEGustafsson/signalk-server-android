@@ -215,6 +215,8 @@ Plugins and webapps are not in slots: Signal K installs them into `.signalk/node
 4. Permissions: notifications, battery optimization exemption, nearby devices (BT), location (for GNSS provider, optional).
 5. Open admin UI.
 
+**Done** (§16 step 9.4, `fi.pocketsk.ui.SetupScreen`): welcome with the download size, the newest five releases from `listAvailable` (the latest chosen) or a `.tgz` from the system file picker (copied into the cache, since npm needs a path), the install with its live log, then the permissions (notifications, Android 17's local network access, the battery-optimisation list — the list, not the one-tap request, which needs a permission Play restricts and lint flags — and autostart) and the start. Location is asked for with the bridge's GNSS (§7), not here. The wizard shows until it has been finished once; a phone with a server already live skips it.
+
 ## 6. Phase 3 — Foreground service and supervisor
 
 `SignalKService : Service` (`foregroundServiceType="connectedDevice"`; `location` joins with the bridge's GNSS, §7). Not `dataSync`: since Android 15 a dataSync service gets six hours in 24 and may not be started from `BOOT_COMPLETED`, and the server runs for days. connectedDevice's prerequisite on Android 14+ is a connectivity permission, and `CHANGE_WIFI_MULTICAST_STATE` (mDNS) is one.
@@ -241,9 +243,9 @@ Start from Crew Radio's `PttService`: keep its startForeground-first-then-slow-w
 - Log: `LogRing` (2 M characters) and `LogFiles` (`files/logs/server.log` + 3 predecessors of 1 MB), every line stamped; `files/logs` is excluded from backups and device transfer.
 - The notification shows the phone's LAN address (`LanAddress`, pure, tested: Wi-Fi, then the phone's own hotspot, then Ethernet, never mobile data). Its actions are Stop and Restart; Start lives on the alert, since a stopped server has no ongoing notification.
 - `BootReceiver`: after boot when autostart is on, and after an app update when the server was running.
-- Not yet: the Quick Settings tile, which comes with the Dock (step 9.4), where its state and the permission flow have a screen to fall back on.
+- The Quick Settings tile came with the Dock (step 9.4): see below.
 
-Quick Settings tile (`TileService`): one tap Start/Stop, shows state.
+Quick Settings tile (`TileService`): one tap Start/Stop, shows state. **Done** (§16 step 9.4, `ServerTile`): a stop is a command to the running service; a start is tried as a foreground start, and when Android refuses one from the background the tile opens the Dock with a start request instead, a screen in front being what every release allows. The service asks the tile for a fresh look on every state change.
 
 ## 7. Phase 4 — Android bridge (hardware & sensors)
 
@@ -285,6 +287,8 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 ## 8. Phase 5 — UI
 
 ### 8.1 Dock (native Compose, bottom nav tab 1)
+
+**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Not yet: uptime, CPU/RAM and delta rate on the Status card, the changelog, and the Devices, Sensors, Power, Logs (filter, diagnostics bundle) and Backup cards, which come with the steps that give them something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
 
 - **Status card**: running/stopped, version, uptime, URL(s), CPU/RAM of child process, delta rate.
 - **Updates**: current slot, available versions, "Install", "Rollback to <prev>", install history with pass/fail. Changelog pulled from GitHub releases.
@@ -411,7 +415,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
    1. ~~Process groups~~ **Done** (`NodeProcess`, the launcher's `POCKETSK_GROUP_FILE`, §4.1): every spawn leads a process group of its own, and the spike screen's npm, summary and server are stopped and reaped with theirs. The R4 server's Start stays off until its group is reaped, and Stop kills the group 10 s after SIGTERM, as §6 will. R3's force-stop guard is left only for a phone where the group cannot be made.
    2. ~~`InstallManager` (§5.1–5.2)~~ **Done** (`fi.pocketsk.install`): slots, the `current` link, the smoke test on port 3999, promotion, rollback and `install-history.json`, from the registry or a sideloaded `.tgz`; the health gate's rules as `HealthGate`, for the supervisor of part 3 to feed. The spike screen's third button runs it (the latest release into the slot that is not live), so it can be tried on a phone before the wizard exists. The GitHub mirror (§5.1, source 2) is not in yet.
    3. ~~`SignalKService` (§6)~~ **Done** (`fi.pocketsk.server`): the supervisor, locks, notification, restart policy, log ring and health watch, the health gate fed and rolling back, boot and update restarts. The spike screen's fourth button starts and stops it in place of R4's, the fifth opens the admin UI, and the installer's button moves a running server to the new version. The Quick Settings tile moves to part 4.
-   4. The first-run wizard and the Dock's first screen (§5.3, §8.1), with Compose, replacing the spike screen; the Quick Settings tile (§6).
+   4. ~~The first-run wizard and the Dock's first screen (§5.3, §8.1), with Compose~~ **Done** (`fi.pocketsk.ui`, `MainActivity`): Compose (BOM 2026.09.00, Material 3, activity-compose) joins the build; the wizard, the Dock's first screen and the Quick Settings tile (§6). The spike screen is not removed but moved behind the Dock's "Runtime checks", since the spikes of §3 have still to pass on real phones; it goes when they have.
    5. The bridge (§7) belongs to milestone M4 and follows once M3's soak (§13) has passed.
 
 ## 17. Reuse from Crew Radio

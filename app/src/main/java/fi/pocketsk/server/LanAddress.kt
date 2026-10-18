@@ -1,5 +1,9 @@
 package fi.pocketsk.server
 
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.SocketException
+
 /**
  * Which of the phone's addresses to show as the server's, in the notification and on the Dock:
  * the one a tablet or a chart plotter on the boat would use. Wi-Fi first (the boat's router),
@@ -9,10 +13,27 @@ package fi.pocketsk.server
  * IPv4 only: what people type, and what every plotter takes. Loopback and link-local
  * (169.254/16) are never an answer.
  *
- * Pure, over (interface name, dotted address) pairs read by the caller from
- * [java.net.NetworkInterface], so the order is unit-tested.
+ * [pick] is pure, over (interface name, dotted address) pairs, so the order is unit-tested;
+ * [ofThisPhone] reads them from [NetworkInterface] for the notification and the Dock.
  */
 internal object LanAddress {
+
+    /** The phone's address on the boat's network, or null with none. */
+    fun ofThisPhone(): String? {
+        val all = try {
+            NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+        } catch (_: SocketException) {
+            return null
+        }
+        val candidates = all.filter {
+            try {
+                it.isUp
+            } catch (_: SocketException) {
+                false
+            }
+        }.flatMap { i -> i.inetAddresses.toList().filterIsInstance<Inet4Address>().mapNotNull { a -> a.hostAddress?.let { i.name to it } } }
+        return pick(candidates)
+    }
 
     /** The best address of [candidates] (interface name to IPv4 address), or null when none will do. */
     fun pick(candidates: List<Pair<String, String>>): String? =

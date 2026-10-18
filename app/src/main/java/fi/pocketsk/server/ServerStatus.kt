@@ -4,12 +4,13 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import java.io.File
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * The server's state and log as the screens see them, held for the process rather than by the
  * service: a screen opened after the server gave up (no service any more) still shows why, and
  * one rotation hands the same state to the next screen, the way [fi.pocketsk.install.InstallJob]
- * does for an install. One observer at a time, the screen in front.
+ * does for an install. Every screen alive observes (the Dock under the runtime checks too).
  */
 internal object ServerStatus {
 
@@ -22,7 +23,7 @@ internal object ServerStatus {
     @Volatile var state: ServerState = ServerState.Stopped
         private set
 
-    @Volatile private var observer: Observer? = null
+    private val observers = CopyOnWriteArraySet<Observer>()
     private var log: ServerLog? = null
     private val main = Handler(Looper.getMainLooper())
     private var logPending = false
@@ -34,21 +35,25 @@ internal object ServerStatus {
         log = it
     }
 
-    /** Makes [observer] the one told, and tells it the state at once. Main thread. */
+    /** Adds [observer] to those told, and tells it the state at once. Main thread. */
     fun observe(observer: Observer) {
-        this.observer = observer
+        observers += observer
         observer.onChange(state)
     }
 
-    /** Stops telling [observer], unless another has taken its place already. Main thread. */
+    /** Stops telling [observer]. Main thread. */
     fun detach(observer: Observer) {
-        if (this.observer === observer) this.observer = null
+        observers -= observer
+    }
+
+    private fun tell() {
+        for (o in observers) o.onChange(state)
     }
 
     /** From the supervisor, on its threads. */
     fun publish(state: ServerState) {
         this.state = state
-        main.post { observer?.onChange(this.state) }
+        main.post(::tell)
     }
 
     /**
@@ -63,7 +68,7 @@ internal object ServerStatus {
         }
         main.postDelayed({
             synchronized(this) { logPending = false }
-            observer?.onChange(state)
+            tell()
         }, LOG_GAP_MS)
     }
 
