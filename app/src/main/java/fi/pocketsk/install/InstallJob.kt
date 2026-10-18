@@ -22,15 +22,24 @@ internal object InstallJob {
 
     /**
      * Starts installing [source] with [manager] on a thread of its own; false, and nothing
-     * started, when an install is already running.
+     * started, when an install is already running. [onPromoted] is told, on the installing
+     * thread and before any observer, when a version has been made live: what the supervisor
+     * needs to move to it under its health gate, whether or not a screen is still watching.
      */
     @Synchronized
-    fun start(manager: InstallManager, source: InstallManager.Source, allowBad: Boolean = false): Boolean {
+    fun start(
+        manager: InstallManager,
+        source: InstallManager.Source,
+        allowBad: Boolean = false,
+        onPromoted: (InstallManager.State.Done) -> Unit = {},
+    ): Boolean {
         if (isRunning) return false
         isRunning = true
         latest = null
         transportThread("install", onError = { finish(InstallManager.State.Failed("$it", "")) }) {
-            finish(manager.install(source, allowBad) { state -> publish(state, running = true) })
+            val end = manager.install(source, allowBad) { state -> publish(state, running = true) }
+            if (end is InstallManager.State.Done) onPromoted(end)
+            finish(end)
         }
         return true
     }
