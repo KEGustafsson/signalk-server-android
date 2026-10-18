@@ -128,9 +128,15 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
      * marked [InstallHistory.Outcome.BAD]) and the Updates card's "Rollback to …" ([bad] false).
      * Returns the slot now live, or null when there is nothing to go back to: no live slot, an
      * empty other slot, or a version there that was itself rolled back as bad.
+     *
+     * [onlyFrom] is the version the caller means to leave, checked under the same lock as an
+     * install: the health gate's verdict is about one version, and an install may have made
+     * another live while the rollback waited for it. That newer version is then left alone,
+     * not marked bad for its predecessor's failure, and null is returned.
      */
-    fun rollback(bad: Boolean, reason: String? = null): String? = synchronized(LOCK) {
+    fun rollback(bad: Boolean, reason: String? = null, onlyFrom: String? = null): String? = synchronized(LOCK) {
         val live = liveSlot() ?: return null
+        if (onlyFrom != null && installedVersion(live) != onlyFrom) return null
         val target = Slots.inactive(live)
         val targetVersion = installedVersion(target) ?: return null
         val history = readHistory()

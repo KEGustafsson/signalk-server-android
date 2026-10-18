@@ -95,9 +95,15 @@ class MainActivity : AppCompatActivity() {
     /**
      * What the service needs asked for first: notifications (Android 13+), without which it runs
      * unseen, and Android 17's local network access, without which only the phone itself reaches
-     * the server ([LocalNetwork]). It starts whatever the answers, and says the rest in its log.
+     * the server ([LocalNetwork]). It starts whatever the answers: without the second, the
+     * phone's own browser and the plugins still reach it on the loopback, which for a phone that
+     * is the boat's only screen is all there is. What was refused is said in the server's log, so
+     * a tablet that cannot connect has its reason on this screen.
      */
-    private val askThenStart = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    private val askThenStart = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        val log = ServerStatus.log(this)
+        if (granted[LocalNetwork.PERMISSION] == false) log.note(getString(R.string.server_no_local_network))
+        if (granted[Manifest.permission.POST_NOTIFICATIONS] == false) log.note(getString(R.string.server_no_notifications))
         SignalKService.start(this)
     }
 

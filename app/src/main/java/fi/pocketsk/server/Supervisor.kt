@@ -355,17 +355,30 @@ internal class Supervisor(
         true
     }
 
-    /** The gate failed for [version]: back to the other slot, the version marked bad. */
+    /**
+     * The gate failed for [version]: back to the other slot, the version marked bad. Only while
+     * [version] is still live: an install that finished while the rollback waited for it has made
+     * another version live, which keeps its own pending gate and is started next, on trial.
+     */
     private fun rollBackBad(version: String, why: String) {
         synchronized(this) {
-            gate = null
-            gateFor = null
+            if (gateFor == version) {
+                gate = null
+                gateFor = null
+            }
             gateFailure = null
         }
-        prefs.gateVersion = null
-        val to = installs.rollback(bad = true, reason = why)
+        if (prefs.gateVersion == version) prefs.gateVersion = null
+        val to = installs.rollback(bad = true, reason = why, onlyFrom = version)
         if (to == null) {
-            log.note("signalk-server $version $why, and there is nothing to roll back to")
+            val live = installs.liveSlot()?.let { installs.installedVersion(it) }
+            log.note(
+                if (live != version) {
+                    "signalk-server $version $why, but $live has been made live since: starting that"
+                } else {
+                    "signalk-server $version $why, and there is nothing to roll back to"
+                },
+            )
             return
         }
         policy.reset()

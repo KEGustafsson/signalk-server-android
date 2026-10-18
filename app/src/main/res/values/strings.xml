@@ -36,6 +36,8 @@
     <string name="server_action_start">Start again</string>
     <string name="server_action_rollback">Roll back to %1$s</string>
     <string name="server_alert_title">Signal K Server needs attention</string>
+    <string name="server_no_local_network">Local network access was refused: only this phone can reach the server. Allow Nearby devices for the app to let others on the boat connect.</string>
+    <string name="server_no_notifications">Notifications were refused: the server runs without its notification and its alerts.</string>
 
     <!-- SignalKClient failure details -->
     <string name="signalk_http">HTTP %1$d</string>
