@@ -3,8 +3,9 @@ name: CodeQL
 # Static analysis on every push and pull request to main, and weekly so new query packs run
 # against unchanged code: the Kotlin sources (built, so the analysis sees the real classpath)
 # and the workflows themselves. One matrix job per language, each under its own category so
-# the findings stay apart under Security › Code scanning. javascript-typescript joins the
-# matrix when sk-plugin/android-bridge and runtime-tools/ exist (docs/PLAN.md §7.2, §9.2).
+# the findings stay apart under Security › Code scanning. javascript-typescript covers the
+# Android bridge's plugin (sk-plugin/android-bridge, docs/PLAN.md §7.2), and runtime-tools/
+# when it exists (§9.2).
 
 on:
   push:
@@ -31,6 +32,8 @@ jobs:
           - language: java-kotlin
             build-mode: manual
           - language: actions
+            build-mode: none
+          - language: javascript-typescript
             build-mode: none
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

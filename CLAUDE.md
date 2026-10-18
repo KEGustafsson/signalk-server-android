@@ -36,7 +36,9 @@ pipeline and several files were lifted (PLAN §17).
   CycloneDX SBOM. Without the keystore `assembleRelease` falls back to the debug key.
 - Unit tests (JUnit 4, pure Kotlin, no Android runtime): `./gradlew testDebugUnitTest`. Anything
   that touches the runtime, the service or the bridge is tested on a device; the emulator has no
-  USB host, no Bluetooth and a different SELinux policy for exec.
+  USB host, no Bluetooth and a different SELinux policy for exec. The bridge plugin's tests:
+  `npm test` in `sk-plugin/android-bridge` (`npm run coverage` enforces what CI does); CI runs them
+  through Signal K's reusable plugin workflow (`.github/workflows/signalk-ci.yml`).
 
 ## Layout
 ```
@@ -52,6 +54,10 @@ app/                 the Android app
                      ServerTile (Quick Settings);
                      RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
                      tested)
+  fi.pocketsk.bridge Bridge (the socket and the sensors, run by the service), BridgeServer (Unix
+                     socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
+                     barometer), BridgePlugin (puts the plugin in place before every start);
+                     BridgeProtocol, Json, Readings (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
@@ -60,10 +66,12 @@ node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the la
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
                      (leads a process group when NodeRuntime asks);
                      spike-addon/ (R2 test addon, two builds; leaves with the spike screen)
+sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: plain CommonJS, no
+                     dependencies, `node --test`; packed into the APK as assets/android-bridge.tar.
+                     lib/protocol.js mirrors BridgeProtocol: change both together
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `sk-plugin/android-bridge/`,
-`prebuilds/`.
+Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `prebuilds/`.
 
 ## Rules of the house
 - Threading: nothing blocking on the main thread. Worker loops use `transportThread` and report
@@ -75,8 +83,8 @@ Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap)
   carries a comment saying why.
 - Secrets (the admin token, anything under `files/home/.signalk`) never enter backups, logs or
   the diagnostics bundle. `data_extraction_rules.xml` excludes them; keep it in step with the
-  layout in `NodeRuntime`. `files/npm`, `files/bin` and `files/prebuilds` are excluded too: the APK
-  makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
+  layout in `NodeRuntime`. `files/npm`, `files/bin`, `files/prebuilds` and `files/plugins` (the
+  bridge's plugin) are excluded too, with `files/bridge.sock`: the APK makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
   server's output, which may carry whatever a plugin printed.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of
   its class comment, so a fix found in one repo is carried to the other.

@@ -2,6 +2,8 @@ package fi.pocketsk.server
 
 import android.content.Context
 import android.os.SystemClock
+import fi.pocketsk.bridge.Bridge
+import fi.pocketsk.bridge.BridgePlugin
 import fi.pocketsk.install.HealthGate
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.Slots
@@ -217,9 +219,16 @@ internal class Supervisor(
             )
             // A wake left over from a stop that came between runs would cut the next backoff short.
             waiter.await(0)
+            // The bridge's plugin, put in place again before every run (a new APK carries a new
+            // one); a failure costs the phone's sensors, not the server.
+            try {
+                BridgePlugin.install(app, runtime)
+            } catch (e: IOException) {
+                log.note("android bridge plugin not installed: $e")
+            }
             val startedAt = SystemClock.elapsedRealtime()
             val n = try {
-                runtime.spawn(main.absolutePath)
+                runtime.spawn(main.absolutePath, extraEnv = mapOf(Bridge.ENV to Bridge.socketFile(app).absolutePath))
             } catch (e: IOException) {
                 return failed("could not start node: $e")
             }

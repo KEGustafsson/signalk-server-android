@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import fi.pocketsk.MainActivity
 import fi.pocketsk.R
 import fi.pocketsk.WifiLockModes
+import fi.pocketsk.bridge.Bridge
 import fi.pocketsk.net.reporting
 import fi.pocketsk.node.NodeRuntime
 
@@ -59,6 +60,7 @@ import fi.pocketsk.node.NodeRuntime
  */
 class SignalKService : Service() {
     private lateinit var supervisor: Supervisor
+    private lateinit var bridge: Bridge
     private lateinit var prefs: ServerPrefs
     private lateinit var log: ServerLog
     private val main = Handler(Looper.getMainLooper())
@@ -98,6 +100,7 @@ class SignalKService : Service() {
         prefs = ServerPrefs(this)
         log = ServerStatus.log(this)
         supervisor = Supervisor(this, NodeRuntime(this), log, prefs, ::onState, ::onAlert)
+        bridge = Bridge(this, log)
         createChannels()
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
@@ -136,6 +139,8 @@ class SignalKService : Service() {
         // Last resort, when Android destroys a service that still runs the server: the group goes
         // now, since nothing will be left to reap it.
         if (supervisor.isActive) supervisor.shutdown()
+        // On the bridge's own thread: the socket closes and its threads end after this returns.
+        bridge.close()
         releaseLocks()
         super.onDestroy()
     }
@@ -159,6 +164,7 @@ class SignalKService : Service() {
         getSystemService(NotificationManager::class.java)?.cancel(ALERT_ID)
         acquireLocks()
         address = LanAddress.ofThisPhone()
+        bridge.start()
         supervisor.start(rollbackFirst)
     }
 
@@ -174,6 +180,7 @@ class SignalKService : Service() {
         if (!alive || supervisor.isActive) return
         foreground = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        bridge.stop()
         releaseLocks()
         stopIfIdle()
     }
