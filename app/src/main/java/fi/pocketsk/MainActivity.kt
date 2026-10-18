@@ -10,6 +10,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import fi.pocketsk.install.InstallHistory
+import fi.pocketsk.install.InstallJob
+import fi.pocketsk.install.InstallManager
 import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import java.io.File
@@ -26,15 +29,19 @@ import kotlin.concurrent.thread
  * writable storage and requires each from there, the way npm leaves a plugin's native addon in
  * node_modules. It prints whatever comes back, including the exact exception when an exec or a
  * load is refused. The second button is spike R3 ([SpikeInstall]): npm installs signalk-server
- * into slot A, its output streamed onto the screen. The third is spike R4 ([SpikeServer]): it
- * starts that server with sample data and opens its admin UI in the browser once it answers,
- * and stops it again. It becomes the Dock once the service exists.
+ * into slot A, its output streamed onto the screen. The third runs PLAN §16 step 9.2's
+ * [InstallManager] through [InstallJob]: the latest release into the slot that is not live, its
+ * smoke test, and the promotion, so the installer can be tried on a phone before the wizard
+ * exists. The fourth is spike R4 ([SpikeServer]): it starts slot A's server with sample data and
+ * opens its admin UI in the browser once it answers, and stops it again. It becomes the Dock
+ * once the service exists.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
     private lateinit var output: TextView
     private lateinit var run: Button
     private lateinit var install: Button
+    private lateinit var upgrade: Button
     private lateinit var server: Button
 
     /** Whether this screen's R1/R2 run is going. Unlike the other two, it dies with the screen. */
@@ -43,6 +50,20 @@ class MainActivity : AppCompatActivity() {
     private val installObserver = SpikeInstall.Observer { text, _ ->
         runOnUiThread {
             output.text = text.ifEmpty { getString(R.string.spike_installing) }
+            syncButtons()
+        }
+    }
+
+    private val upgradeObserver = InstallJob.Observer { state, _ ->
+        runOnUiThread {
+            output.text = when (state) {
+                is InstallManager.State.Installing -> getString(R.string.spike_upgrade_installing, state.slot, state.tail)
+                is InstallManager.State.Verifying ->
+                    getString(R.string.spike_upgrade_verifying, state.slot, InstallManager.SMOKE_PORT, state.tail)
+                is InstallManager.State.Done ->
+                    getString(R.string.spike_upgrade_done, state.version, state.slot, historyText(state.history))
+                is InstallManager.State.Failed -> getString(R.string.spike_upgrade_failed, state.reason, state.tail)
+            }
             syncButtons()
         }
     }
@@ -87,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         output = findViewById(R.id.output)
         run = findViewById(R.id.run)
         install = findViewById(R.id.install)
+        upgrade = findViewById(R.id.upgrade)
         server = findViewById(R.id.server)
         val intro = buildString {
             append(runtime.describe())
@@ -104,6 +126,12 @@ class MainActivity : AppCompatActivity() {
         install.setOnClickListener {
             output.text = getString(R.string.spike_installing)
             SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(installObserver)
+            syncButtons()
+        }
+        upgrade.setOnClickListener {
+            output.text = getString(R.string.spike_upgrade_starting)
+            InstallJob.observe(upgradeObserver)
+            InstallJob.start(InstallManager(this, runtime), InstallManager.Source.Registry())
             syncButtons()
         }
         server.setOnClickListener {
@@ -124,12 +152,14 @@ class MainActivity : AppCompatActivity() {
         // takes it over, its output and its end. An install that has ended shows its report,
         // since the report is what the spike is for; a running server's output wins over it.
         SpikeInstall.current?.observe(installObserver)
+        InstallJob.observe(upgradeObserver)
         if (SpikeServer.isRunning) SpikeServer.observe(serverObserver)
         syncButtons()
     }
 
     override fun onDestroy() {
         SpikeInstall.current?.detach(installObserver)
+        InstallJob.detach(upgradeObserver)
         SpikeServer.detach(serverObserver)
         super.onDestroy()
     }
@@ -140,7 +170,7 @@ class MainActivity : AppCompatActivity() {
      * deletes the slot a running server runs from. While the server runs its button stops it.
      */
     private fun syncButtons() {
-        val installing = SpikeInstall.current?.isRunning == true
+        val installing = SpikeInstall.current?.isRunning == true || InstallJob.isRunning
         val serving = SpikeServer.isRunning
         val idle = runtime.isAvailable && !nodeRunning && !installing && !serving
         run.isEnabled = idle
@@ -148,8 +178,15 @@ class MainActivity : AppCompatActivity() {
         // started may still be writing there, so neither a new install nor a server starts from it.
         val slotHeld = SpikeInstall.current?.mayHaveOrphans == true
         install.isEnabled = idle && !slotHeld
+        upgrade.isEnabled = idle && !slotHeld
         server.isEnabled = serving || (idle && !slotHeld)
         server.setText(if (serving) R.string.spike_server_stop else R.string.spike_server_start)
+    }
+
+    /** [history], newest first, one line each, for the screen after an install. */
+    private fun historyText(history: InstallHistory): String = history.newestFirst.joinToString("\n") {
+        "${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it.at))}  ${it.outcome}  ${it.version}  " +
+            "slot ${it.slot}  ${it.source}" + (it.detail?.let { d -> "  ($d)" } ?: "")
     }
 
     private fun runNodeVersion(done: () -> Unit) {

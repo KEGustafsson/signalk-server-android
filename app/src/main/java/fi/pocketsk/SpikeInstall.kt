@@ -4,9 +4,6 @@ import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import java.io.File
 import java.io.IOException
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
@@ -108,7 +105,7 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
             // running, unless they are killed with it. Not before: a log that cannot be opened or
             // an npm that never started leaves nothing behind.
             mayHaveOrphans = true
-            drain(npm, INSTALL_TIMEOUT_S) { line ->
+            npm.drain(INSTALL_TIMEOUT_S) { line ->
                 log.appendLine(line)
                 add(line)
                 val now = System.nanoTime()
@@ -126,56 +123,8 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
         if (code != 0) return
         add("")
         add("$ node -e <summary> $slot")
-        val summary = drain(runtime.spawn("-e", SUMMARY_SCRIPT, slot.absolutePath), SUMMARY_TIMEOUT_S, ::add)
+        val summary = runtime.spawn("-e", SUMMARY_SCRIPT, slot.absolutePath).drain(SUMMARY_TIMEOUT_S, ::add)
         if (summary != 0) add(if (summary == null) "timed out after $SUMMARY_TIMEOUT_S s" else "exit $summary")
-    }
-
-    /**
-     * Reads [process]'s output to its end, line by line, and returns its exit code, or null when
-     * the reading had not ended after [timeoutS] seconds and the process was killed. The deadline
-     * runs on its own thread, because a reader blocks for as long as the pipe is open, and it
-     * counts the reading rather than the process: npm can exit while a lifecycle script it
-     * started still holds the pipe, so the deadline closes the stream too. Whichever of the two
-     * finishes first decides the outcome, so a reading that ends as the deadline passes is not
-     * also called a timeout. The process is killed with its group and waited for on every way
-     * out, a failed log write included, and what is left of the group is killed once it has
-     * ended ([NodeProcess.reap]), so nothing outlives the run and a retry never shares the slot
-     * with the last one.
-     */
-    private fun drain(node: NodeProcess, timeoutS: Long, onLine: (String) -> Unit): Int? {
-        val process = node.process
-        val settled = AtomicBoolean(false)
-        val drained = CountDownLatch(1)
-        thread(name = "spike-deadline", isDaemon = true) {
-            if (!drained.await(timeoutS, TimeUnit.SECONDS) && settled.compareAndSet(false, true)) {
-                node.kill()
-                try {
-                    process.inputStream.close()
-                } catch (_: IOException) {
-                    // Closed already; the reader ends either way.
-                }
-            }
-        }
-        var read = false
-        var timedOut = false
-        try {
-            process.inputStream.bufferedReader().forEachLine(onLine)
-            read = true
-        } catch (e: IOException) {
-            // The deadline closing the stream under the reader is a timeout, not a failure.
-            if (settled.get()) timedOut = true else throw e
-        } finally {
-            if (!settled.compareAndSet(false, true)) timedOut = true
-            drained.countDown()
-            // Only when the reading failed or ran out of time: after a clean end of the stream
-            // the process may not have exited yet, and killing it then would lose its code.
-            if (!read || timedOut) node.kill()
-            // Its group is reaped only once it has ended, or its exit code would be lost too.
-            process.waitFor()
-            node.reap()
-        }
-        val code = process.exitValue()
-        return if (timedOut) null else code
     }
 
     private fun add(line: String) {
