@@ -401,9 +401,15 @@ class SignalKService : Service() {
             ServerPrefs(context).gateVersion = version
         }
 
-        /** The installer made a new version live: a running server moves to it. From the installing thread. */
+        /**
+         * The installer made a new version live: a running server moves to it. From the installing
+         * thread. Decided on whether the server is meant to run ([ServerPrefs.running], set as the
+         * service starts it), not on the published state, which reads Stopped until the supervisor
+         * first reports, and a start in that moment may already have read the old slot. A service
+         * that has nothing running ignores the command.
+         */
         internal fun promoted(context: Context) {
-            if (ServerStatus.state.isActive) send(context, ACTION_PROMOTED)
+            if (ServerPrefs(context).running) send(context, ACTION_PROMOTED)
         }
 
         /**

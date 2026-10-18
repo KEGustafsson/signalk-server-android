@@ -346,13 +346,16 @@ internal class Supervisor(
 
     /**
      * Opens the health gate for [version] if it owes one ([ServerPrefs.gateVersion]) and none is
-     * open for it; drops a gate owed by a version no longer live (rolled back, or replaced).
-     * True when the coming run is on trial.
+     * open for it. True when the coming run is on trial.
+     *
+     * A gate owed by another version is left where it is, never cleared here: the slot this run
+     * starts from was read without the installer's lock (holding it would hold every start for
+     * as long as an install runs), so it may be the slot a promotion is just moving away from,
+     * and the version that owes the gate starts next, when [promoted] restarts the run. Only that
+     * version's own gate verdict, or a rollback of it, clears what it owes.
      */
     private fun armGate(version: String): Boolean = synchronized(this) {
-        val owed = prefs.gateVersion
-        if (owed != version) {
-            if (owed != null) prefs.gateVersion = null
+        if (prefs.gateVersion != version) {
             gate = null
             gateFor = null
             return false
