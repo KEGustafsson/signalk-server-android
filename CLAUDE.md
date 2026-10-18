@@ -12,9 +12,10 @@ pipeline and several files were lifted (PLAN §17).
   the root build puts Kotlin 2.4 on the build classpath), Gradle 9.8, compileSdk 37, minSdk 29,
   targetSdk 37, JDK 17 (a real toolchain: Gradle will not download one). R8 shrinks release builds
   with names kept. Dependabot keeps AndroidX current; the toolchain is moved by hand.
-- No third-party libraries beyond AndroidX and Material, and nodejs-mobile's `libnode.so` (MIT,
-  Node 24 from digidem's fork; PLAN §4.1) and npm (Artistic-2.0, the registry tarball; §4.3),
-  which `node-runtime` downloads pinned by version and SHA-256 in `gradle.properties`.
+- No third-party libraries beyond AndroidX (Compose among them, from its BOM, for the Dock) and
+  Material, and nodejs-mobile's `libnode.so` (MIT, Node 24 from digidem's fork; PLAN §4.1) and npm
+  (Artistic-2.0, the registry tarball; §4.3), which `node-runtime` downloads pinned by version and
+  SHA-256 in `gradle.properties`.
   `usb-serial-for-android` (MIT) joins with the bridge (PLAN §7).
 - Native: NDK r27d (27.3.13750724), the release libnode.so was built with, and CMake 3.31.6,
   both pinned in `node-runtime/build.gradle.kts` and fetched by AGP from the SDK repository.
@@ -40,12 +41,15 @@ pipeline and several files were lifted (PLAN §17).
 ## Layout
 ```
 app/                 the Android app
-  fi.pocketsk        MainActivity (currently the spike screen), SpikeInstall (R3), App, LocalNetwork,
-                     WifiLockModes, LegacyPlatform
+  fi.pocketsk        MainActivity (the Dock and the setup wizard, Compose), ServerActions,
+                     SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3), App,
+                     LocalNetwork, WifiLockModes, LegacyPlatform
+  fi.pocketsk.ui     DockScreen, SetupScreen, Common (sections, permission rows), AppModel, Theme
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
-                     Slots, ServerVersion, InstallHistory, HealthGate (pure, tested)
+                     Slots, ServerVersion, InstallHistory, HealthGate, UpdateOffer (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
-                     health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver;
+                     health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver,
+                     ServerTile (Quick Settings);
                      RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
                      tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice

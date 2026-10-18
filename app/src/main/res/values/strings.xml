@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Signal K Server</string>
 
-    <!-- R1 spike screen -->
-    <string name="spike_title">Node runtime spikes (R1–R4)</string>
+    <!-- The runtime checks: spikes R1–R3 and the step 9.2/9.3 buttons, opened from the Dock -->
+    <string name="spike_title">Runtime checks</string>
     <string name="spike_run">Run node, npm and the R2 addons</string>
     <string name="spike_missing">libnodeexec.so is not in this APK for this phone\'s ABI (the build carries arm64-v8a, armeabi-v7a and x86_64). nativeLibraryDir and the environment are shown so the exec path can be checked by hand.</string>
     <string name="spike_running">Running…</string>
@@ -20,7 +20,83 @@
     <string name="spike_service_autostart">Start the server when the phone starts</string>
     <string name="spike_service_stopped">Stopped.</string>
     <string name="spike_service_failed">Gave up: %1$s</string>
-    <string name="spike_service_no_browser">No browser to open %1$s</string>
+    <string name="no_browser">No browser to open %1$s</string>
+
+    <!-- Setup wizard (docs/PLAN.md §5.3) -->
+    <string name="setup_title">Set up Signal K Server</string>
+    <string name="setup_next">Next</string>
+    <string name="setup_back">Back</string>
+    <string name="setup_retry">Try again</string>
+    <string name="setup_welcome_title">Welcome</string>
+    <string name="setup_welcome_text">This phone will run the real Signal K Server, the same one a Raspberry Pi runs. The app downloads it from the npm registry now, about 90 MB, so a Wi-Fi connection to the internet is best. With no internet aboard, install it from a file made on any computer with npm pack signalk-server.</string>
+    <string name="setup_version_title">Which version</string>
+    <string name="setup_version_loading">Asking npm which versions there are…</string>
+    <string name="setup_version_failed">npm did not answer: %1$s</string>
+    <string name="setup_version_latest">%1$s, the latest release</string>
+    <string name="setup_version_file">From a file (.tgz)</string>
+    <string name="setup_version_file_named">From a file: %1$s</string>
+    <string name="setup_version_file_pick">Choose another file</string>
+    <string name="setup_install">Install</string>
+    <string name="setup_install_title">Installing</string>
+    <string name="setup_install_preparing">Getting ready…</string>
+    <string name="setup_install_npm">npm is installing signalk-server into slot %1$s…</string>
+    <string name="setup_install_verifying">Trying the new server in slot %1$s on port %2$d…</string>
+    <string name="setup_install_done">signalk-server %1$s is installed in slot %2$s.</string>
+    <string name="setup_install_failed">The install failed: %1$s</string>
+    <string name="setup_permissions_title">What the server needs</string>
+    <string name="setup_permissions_text">Notifications show that the server runs and warn when it has trouble. Nearby devices lets tablets and plotters on the boat\'s network reach it; without it only this phone can. An unrestricted battery keeps Android from stopping it overnight.</string>
+    <string name="setup_done_title">Ready</string>
+    <string name="setup_done_text">Start the server now. Its admin UI opens in the browser, where plugins and webapps are installed as on any Signal K server.</string>
+    <string name="setup_done_start">Start the server</string>
+    <string name="setup_done_later">Not now</string>
+
+    <!-- What the server needs from the phone: the wizard and the Dock\'s Settings card -->
+    <string name="perm_notifications">Notifications</string>
+    <string name="perm_local_network">Nearby devices (local network)</string>
+    <string name="perm_allow">Allow</string>
+    <string name="perm_granted">Allowed</string>
+    <string name="perm_not_granted">Not allowed</string>
+    <string name="perm_battery">Unrestricted battery</string>
+    <string name="perm_battery_why">In the list that opens, choose All apps, then Signal K Server, then Don\'t optimise.</string>
+    <string name="perm_battery_open">Open battery settings</string>
+    <string name="perm_battery_none">This phone has no battery optimisation settings to open</string>
+    <string name="perm_autostart">Start the server when the phone starts</string>
+
+    <!-- The Dock (docs/PLAN.md §8.1) -->
+    <string name="dock_runtime_checks">Runtime checks</string>
+    <string name="dock_status_title">Server</string>
+    <string name="dock_stopped">Stopped</string>
+    <string name="dock_starting">Starting %1$s from slot %2$s…</string>
+    <string name="dock_running">Running %1$s from slot %2$s</string>
+    <string name="dock_running_on_trial">Running %1$s from slot %2$s, on trial after its update</string>
+    <string name="dock_failed">Stopped: %1$s</string>
+    <string name="dock_url_lan">On the boat\'s network: %1$s</string>
+    <string name="dock_url_phone">On this phone: %1$s</string>
+    <string name="dock_start">Start</string>
+    <string name="dock_open_admin">Open the admin UI</string>
+    <string name="dock_updates_title">Updates</string>
+    <string name="dock_live">Live: %1$s in slot %2$s</string>
+    <string name="dock_nothing_live">Nothing installed yet</string>
+    <string name="dock_other">Other slot: %1$s in slot %2$s</string>
+    <string name="dock_check_updates">Check for updates</string>
+    <string name="dock_up_to_date">Up to date</string>
+    <string name="dock_install">Install %1$s</string>
+    <string name="dock_rollback">Roll back to %1$s</string>
+    <string name="dock_rollback_reason">by hand, from the Dock</string>
+    <string name="dock_history">History</string>
+    <string name="dock_history_line">%1$s  %2$s  %3$s  slot %4$s</string>
+    <string name="dock_settings_title">Settings</string>
+    <string name="dock_log_title">Log</string>
+    <string name="dock_log_empty">Nothing logged yet</string>
+    <string name="dock_app_version">App %1$s (%2$s)</string>
+
+    <!-- Quick Settings tile -->
+    <string name="tile_label">Signal K</string>
+    <string name="tile_running">Running</string>
+    <string name="tile_not_answering">Not answering</string>
+    <string name="tile_starting">Starting…</string>
+    <string name="tile_stopped">Stopped</string>
+    <string name="tile_failed">Stopped after errors</string>
 
     <!-- SignalKService: the ongoing notification, its actions and the alerts -->
     <string name="server_channel">Server</string>

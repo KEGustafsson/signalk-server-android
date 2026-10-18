@@ -6,7 +6,10 @@
 
 package fi.pocketsk
 
+import android.annotation.SuppressLint
+import android.content.Intent
 import android.net.nsd.NsdManager
+import android.service.quicksettings.TileService
 import android.net.nsd.NsdServiceInfo
 import java.net.InetAddress
 
@@ -26,4 +29,15 @@ object LegacyPlatform {
 
     /** The single address a pre-34 resolve reports. */
     fun hostOf(info: NsdServiceInfo): InetAddress? = info.host
+
+    // ---- Quick Settings tile, below API 34 -------------------------------------------------------
+    // startActivityAndCollapse(PendingIntent) replaces it from API 34, which refuses the Intent form.
+
+    /** Opens [intent] from the tile and closes the panel. */
+    // Lint cannot see the caller's API check from here (ServerTile calls the PendingIntent form on
+    // API 34 and later); below 34 this Intent form is the only one there is.
+    @SuppressLint("StartActivityAndCollapseDeprecated")
+    fun startActivityAndCollapse(tile: TileService, intent: Intent) {
+        tile.startActivityAndCollapse(intent)
+    }
 }

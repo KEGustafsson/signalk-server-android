@@ -1,12 +1,15 @@
 package fi.pocketsk.install
 
 import fi.pocketsk.net.transportThread
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * The one [InstallManager.install] running in this process, if any, and how it went: held here,
  * not by a screen, because an install takes minutes and a rotation, the wizard's next page or
  * the Dock's Updates card must all see the same one (docs/PLAN.md §5.3, §8.1). A second start
  * while one runs is refused, and the screen that asks [observe]s the running one instead.
+ * Every screen alive observes, not only the one in front: the Dock stays alive under the
+ * runtime checks, and an install finishing then must still reach it.
  */
 internal object InstallJob {
 
@@ -15,7 +18,7 @@ internal object InstallJob {
         fun onState(state: InstallManager.State, running: Boolean)
     }
 
-    @Volatile private var observer: Observer? = null
+    private val observers = CopyOnWriteArraySet<Observer>()
     @Volatile private var latest: InstallManager.State? = null
     @Volatile var isRunning = false
         private set
@@ -46,17 +49,16 @@ internal object InstallJob {
         return true
     }
 
-    /** Makes [observer] the one told, and tells it at once what is known so far. */
+    /** Adds [observer] to those told, and tells it at once what is known so far. */
     @Synchronized
     fun observe(observer: Observer) {
-        this.observer = observer
+        observers += observer
         latest?.let { observer.onState(it, isRunning) }
     }
 
-    /** Stops telling [observer], unless another has taken its place already. */
-    @Synchronized
+    /** Stops telling [observer]. */
     fun detach(observer: Observer) {
-        if (this.observer === observer) this.observer = null
+        observers -= observer
     }
 
     @Synchronized
@@ -68,6 +70,6 @@ internal object InstallJob {
     @Synchronized
     private fun publish(state: InstallManager.State, running: Boolean) {
         latest = state
-        observer?.onState(state, running)
+        for (o in observers) o.onState(state, running)
     }
 }

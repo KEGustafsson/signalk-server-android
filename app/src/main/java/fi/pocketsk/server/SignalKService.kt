@@ -31,9 +31,6 @@ import fi.pocketsk.R
 import fi.pocketsk.WifiLockModes
 import fi.pocketsk.net.reporting
 import fi.pocketsk.node.NodeRuntime
-import java.net.Inet4Address
-import java.net.NetworkInterface
-import java.net.SocketException
 
 /**
  * The foreground service that keeps Signal K Server running with the screen off and the app
@@ -161,7 +158,7 @@ class SignalKService : Service() {
         prefs.running = true
         getSystemService(NotificationManager::class.java)?.cancel(ALERT_ID)
         acquireLocks()
-        address = lanAddress()
+        address = LanAddress.ofThisPhone()
         supervisor.start(rollbackFirst)
     }
 
@@ -214,7 +211,7 @@ class SignalKService : Service() {
         // Taken again, not kept: a lock taken on the network that went away does not carry over.
         multicastLock?.let { if (it.isHeld) it.release() }
         multicastLock?.acquire()
-        val now = lanAddress()
+        val now = LanAddress.ofThisPhone()
         if (now != address) {
             address = now
             log.note(now?.let { "reachable on the boat's network at $it" } ?: "no LAN address")
@@ -346,23 +343,6 @@ class SignalKService : Service() {
         multicastLock = null
     }
 
-    /** The phone's address on the boat's network ([LanAddress]), or null with none. */
-    private fun lanAddress(): String? {
-        val all = try {
-            NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
-        } catch (_: SocketException) {
-            return null
-        }
-        val candidates = all.filter {
-            try {
-                it.isUp
-            } catch (_: SocketException) {
-                false
-            }
-        }.flatMap { i -> i.inetAddresses.toList().filterIsInstance<Inet4Address>().mapNotNull { a -> a.hostAddress?.let { i.name to it } } }
-        return LanAddress.pick(candidates)
-    }
-
     companion object {
         private const val ACTION_START = "fi.pocketsk.action.START"
         private const val ACTION_STOP = "fi.pocketsk.action.STOP"
@@ -391,6 +371,11 @@ class SignalKService : Service() {
         fun stop(context: Context) {
             ServerPrefs(context).running = false
             if (ServerStatus.state.isActive) send(context, ACTION_STOP)
+        }
+
+        /** Restarts a running server; nothing to do when none runs. */
+        fun restart(context: Context) {
+            if (ServerStatus.state.isActive) send(context, ACTION_RESTART)
         }
 
         /**

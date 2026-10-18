@@ -49,6 +49,7 @@
              (docs/PLAN.md §4.1, spike R1); jniLibs.useLegacyPackaging in app/build.gradle.kts
              sets that, because AGP no longer takes it from the manifest. -->
 
+        <!-- The Dock and the setup wizard. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -59,10 +60,31 @@
             </intent-filter>
         </activity>
 
+        <!-- The runtime checks (spikes R1–R3), opened from the Dock. -->
+        <activity
+            android:name=".SpikeActivity"
+            android:exported="false"
+            android:label="@string/spike_title" />
+
         <service
             android:name=".server.SignalKService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- The Quick Settings tile: bound by the system UI only, which holds the permission. -->
+        <service
+            android:name=".server.ServerTile"
+            android:exported="true"
+            android:icon="@drawable/ic_notification"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
 
         <!-- Exported for the system's broadcasts; the permission keeps every other sender out. -->
         <receiver
