@@ -126,9 +126,11 @@ class MainActivity : AppCompatActivity() {
         val serving = SpikeServer.isRunning
         val idle = runtime.isAvailable && !nodeRunning && !installing && !serving
         run.isEnabled = idle
-        // An install that killed npm keeps the slot until the app is force-stopped.
-        install.isEnabled = idle && SpikeInstall.current?.mayHaveOrphans != true
-        server.isEnabled = idle || serving
+        // An install that killed npm keeps the slot until the app is force-stopped: a script it
+        // started may still be writing there, so neither a new install nor a server starts from it.
+        val slotHeld = SpikeInstall.current?.mayHaveOrphans == true
+        install.isEnabled = idle && !slotHeld
+        server.isEnabled = serving || (idle && !slotHeld)
         server.setText(if (serving) R.string.spike_server_stop else R.string.spike_server_start)
     }
 
