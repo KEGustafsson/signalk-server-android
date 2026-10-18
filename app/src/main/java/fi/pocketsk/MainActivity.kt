@@ -1,9 +1,13 @@
 package fi.pocketsk
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import fi.pocketsk.node.NodeRuntime
@@ -20,12 +24,51 @@ import kotlin.concurrent.thread
  * writable storage and requires each from there, the way npm leaves a plugin's native addon in
  * node_modules. It prints whatever comes back, including the exact exception when an exec or a
  * load is refused. The second button is spike R3 ([SpikeInstall]): npm installs signalk-server
- * into slot A, its output streamed onto the screen. It becomes the Dock once the service exists.
+ * into slot A, its output streamed onto the screen. The third is spike R4 ([SpikeServer]): it
+ * starts that server with sample data and opens its admin UI in the browser once it answers,
+ * and stops it again. It becomes the Dock once the service exists.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var runtime: NodeRuntime
     private lateinit var output: TextView
-    private var observer: SpikeInstall.Observer? = null
+    private lateinit var run: Button
+    private lateinit var install: Button
+    private lateinit var server: Button
+
+    /** Whether this screen's R1/R2 run is going. Unlike the other two, it dies with the screen. */
+    private var nodeRunning = false
+
+    private val installObserver = SpikeInstall.Observer { text, _ ->
+        runOnUiThread {
+            output.text = text.ifEmpty { getString(R.string.spike_installing) }
+            syncButtons()
+        }
+    }
+
+    private val serverObserver = object : SpikeServer.Observer {
+        override fun onProgress(text: String, running: Boolean) = runOnUiThread {
+            if (text.isNotEmpty()) output.text = text
+            syncButtons()
+        }
+
+        override fun onReady(ms: Long, generation: Long) = runOnUiThread {
+            // Checked again here: Stop may have been tapped while this waited for the main thread.
+            if (SpikeServer.isCurrent(generation)) openAdmin()
+        }
+    }
+
+    /**
+     * The admin UI in the phone's browser, the way it is used on any Signal K server: the app has
+     * no viewer of its own for it (docs/PLAN.md §8.2).
+     */
+    private fun openAdmin() {
+        val url = "${SpikeServer.BASE}/admin/"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.spike_server_no_browser, url), Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,51 +83,71 @@ class MainActivity : AppCompatActivity() {
         }
         runtime = NodeRuntime(this)
         output = findViewById(R.id.output)
-        val run = findViewById<Button>(R.id.run)
-        val install = findViewById<Button>(R.id.install)
-        run.isEnabled = runtime.isAvailable
-        install.isEnabled = runtime.isAvailable
+        run = findViewById(R.id.run)
+        install = findViewById(R.id.install)
+        server = findViewById(R.id.server)
         val intro = buildString {
             append(runtime.describe())
             if (!runtime.isAvailable) appendLine().append(getString(R.string.spike_missing))
         }
         output.text = intro
-        // One run at a time, of either kind: a second tap would start a second node and, the
-        // first time, a second unpack of npm. NodeRuntime serialises the unpack; this keeps the
-        // report whole and keeps two installs out of one slot.
-        val buttons = listOf(run, install)
-        fun idle() {
-            buttons.forEach { it.isEnabled = runtime.isAvailable }
-            // An install that killed npm keeps the slot until the app is force-stopped.
-            if (SpikeInstall.current?.mayHaveOrphans == true) install.isEnabled = false
-        }
         run.setOnClickListener {
-            buttons.forEach { it.isEnabled = false }
-            runNodeVersion { idle() }
-        }
-        val progress = SpikeInstall.Observer { text, finished ->
-            runOnUiThread {
-                output.text = text.ifEmpty { getString(R.string.spike_installing) }
-                if (finished) idle()
+            nodeRunning = true
+            syncButtons()
+            runNodeVersion {
+                nodeRunning = false
+                syncButtons()
             }
         }
-        observer = progress
         install.setOnClickListener {
-            buttons.forEach { it.isEnabled = false }
             output.text = getString(R.string.spike_installing)
-            SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(progress)
+            SpikeInstall.start(runtime, File(filesDir, "logs/spike-r3.log")).observe(installObserver)
+            syncButtons()
         }
-        // An install outlives the activity that started it (a rotation); this one takes it over,
-        // or shows its report when it has ended, since the report is what the spike is for.
-        SpikeInstall.current?.let {
-            if (it.isRunning) buttons.forEach { b -> b.isEnabled = false }
-            it.observe(progress)
+        server.setOnClickListener {
+            if (SpikeServer.isRunning) {
+                SpikeServer.stop()
+                return@setOnClickListener
+            }
+            output.text = getString(R.string.spike_server_starting)
+            SpikeServer.observe(serverObserver)
+            try {
+                SpikeServer.start(this, runtime, File(filesDir, "logs/spike-r4.log"))
+            } catch (e: IOException) {
+                output.text = getString(R.string.spike_server_failed, e.toString())
+            }
+            syncButtons()
         }
+        // An install or a server outlives the activity that started it (a rotation); this one
+        // takes it over, its output and its end. An install that has ended shows its report,
+        // since the report is what the spike is for; a running server's output wins over it.
+        SpikeInstall.current?.observe(installObserver)
+        if (SpikeServer.isRunning) SpikeServer.observe(serverObserver)
+        syncButtons()
     }
 
     override fun onDestroy() {
-        observer?.let { SpikeInstall.current?.detach(it) }
+        SpikeInstall.current?.detach(installObserver)
+        SpikeServer.detach(serverObserver)
         super.onDestroy()
+    }
+
+    /**
+     * One run at a time, of any kind: a second tap would start a second node and, the first time,
+     * a second unpack of npm (NodeRuntime serialises it; this keeps the report whole); an install
+     * deletes the slot a running server runs from. While the server runs its button stops it.
+     */
+    private fun syncButtons() {
+        val installing = SpikeInstall.current?.isRunning == true
+        val serving = SpikeServer.isRunning
+        val idle = runtime.isAvailable && !nodeRunning && !installing && !serving
+        run.isEnabled = idle
+        // An install that killed npm keeps the slot until the app is force-stopped: a script it
+        // started may still be writing there, so neither a new install nor a server starts from it.
+        val slotHeld = SpikeInstall.current?.mayHaveOrphans == true
+        install.isEnabled = idle && !slotHeld
+        server.isEnabled = serving || (idle && !slotHeld)
+        server.setText(if (serving) R.string.spike_server_stop else R.string.spike_server_start)
     }
 
     private fun runNodeVersion(done: () -> Unit) {

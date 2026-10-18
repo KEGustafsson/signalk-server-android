@@ -8,14 +8,14 @@ import java.net.URI
  * Android 17's local network protection, decided in one pure place. An app that targets API 37
  * (this one does) needs the runtime permission ACCESS_LOCAL_NETWORK, part of the Nearby devices
  * group, for any traffic to or from a local address: the server's own listeners reached by other
- * devices on the LAN, mDNS advertising and discovery, an NMEA gateway at 192.168.x.x, and the
- * WebView talking to a server at a LAN address. Without it TCP times out and UDP fails with EPERM,
+ * devices on the LAN (a browser on a tablet showing the admin UI), mDNS advertising and discovery,
+ * and an NMEA gateway at 192.168.x.x. Without it TCP times out and UDP fails with EPERM,
  * deep in the stack, so it has to be asked for before those are used, not diagnosed after.
  * Earlier releases grant it with INTERNET, so below [Build.VERSION_CODES.CINNAMON_BUN] nothing is
  * ever needed.
  *
- * Loopback is not the local network: the server, the WebView and the bridge talking to each other
- * on 127.0.0.1 never need it. (Ported from Crew Radio; whether a child process inherits the grant
+ * Loopback is not the local network: the server and the bridge talking to each other on 127.0.0.1,
+ * or the phone's own browser showing the admin UI from there, never need it. (Ported from Crew Radio; whether a child process inherits the grant
  * is spike R1b in docs/PLAN.md.)
  */
 internal object LocalNetwork {

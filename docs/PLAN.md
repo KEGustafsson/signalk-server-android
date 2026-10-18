@@ -22,9 +22,9 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 │  │ logs, kiosk  │  │    locks      │  │    baro / battery  │ │
 │  └──────────────┘  │  · log ring   │  │  · alarms out      │ │
 │  ┌──────────────┐  └───────┬───────┘  └─────────┬──────────┘ │
-│  │ WebView      │          │ spawn               │            │
-│  │ SK admin UI  │          ▼                     │            │
-│  │ + webapps    │  ┌──────────────────────────────┴─────────┐ │
+│  │ Opens admin  │          │ spawn               │            │
+│  │ UI + webapps │          ▼                     │            │
+│  │ in browser   │  ┌──────────────────────────────┴─────────┐ │
 │  └──────────────┘  │ child process: libnode.so (exec'd)     │ │
 │                    │  signalk-server (installed from npm)   │ │
 │                    │  + @pocketsk/android-bridge plugin     │ │
@@ -42,7 +42,7 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 | Upgrades | A/B slots, health-gated promotion, automatic rollback | A failed upgrade on a boat must never brick the hub |
 | Native addons | Prebuilt `android-arm64` / `armeabi-v7a` binaries from our own GitHub Releases, resolved by an npm `node-gyp` shim | No compiler on the phone; prebuild ecosystems have no Android targets |
 | Hardware I/O | Kotlin bridge exposing USB serial, BT SPP and phone sensors over a Unix domain socket to a small Signal K provider plugin | No `/dev/tty*` without root |
-| UI | Native Compose "Dock" for anything that must work when the server is down; WebView for admin UI and webapps | Don't reimplement Signal K's UI |
+| UI | Native Compose "Dock" for anything that must work when the server is down; the admin UI and webapps in a browser, the phone's own or any device's on the boat's network (§8.2) | Don't reimplement Signal K's UI, or wrap it: it already works in any browser |
 | Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.8, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
 | Distribution | GitHub Releases + F-Droid first (with in-app self-updater); Play Store later | Play's "downloaded executable code" policy is a gray area for plugins |
 
@@ -84,7 +84,7 @@ Each spike is a throwaway Android project. Stop and redesign if one fails.
 | R1b | Android 17 local-network protection (`ACCESS_LOCAL_NETWORK`, see Crew Radio `LocalNetwork.kt`): does a child process inherit the grant, and does Node's `listen(0.0.0.0)` plus mDNS work once granted? | LAN client reaches `:3000`; mDNS advert seen from another phone |
 | R2 | `dlopen` of a `.node` addon from `files/` (writable dir) | `require('./prebuilt.node')` works. SELinux blocks `execve` from app data, not `mmap PROT_EXEC` — verify |
 | R3 | `npm install signalk-server` using `/system/bin/sh` for lifecycle scripts, `HOME` and `TMPDIR` set to app dirs | Clean install, no scripts needing coreutils that toybox lacks |
-| R4 | Boot `signalk-server` with `--sample-nmea0183-data`, open `http://localhost:3000` in WebView | Admin UI loads, App Store lists plugins |
+| R4 | Boot `signalk-server` with `--sample-nmea0183-data`, open `http://127.0.0.1:3000/admin/` in the browser | Admin UI loads, App Store lists plugins |
 | R5 | Foreground service + wake lock survives 12 h screen-off on Samsung, Xiaomi, Pixel | Server still answering, no restarts in log |
 | R6 | 16 KB page size devices (Pixel 9+) | Spikes R1–R2 pass; nodejs-mobile is already 16 KB aligned |
 
@@ -266,17 +266,18 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 - **Logs**: live tail, filter, "Share diagnostics bundle" (logs + settings sans tokens + device info as zip via share sheet).
 - **Backup**: export/import `.signalk` as encrypted zip to SAF (works with Drive/Nextcloud).
 
-### 8.2 Server (WebView, tab 2)
+### 8.2 Server (in a browser)
 
-- Loads `http://127.0.0.1:3000` admin UI. Single WebView with JS enabled, DOM storage, file chooser (for Signal K's own restore), `WebChromeClient` for permissions.
-- Auth: app generates a device access token via the admin API on first run and injects it, so the WebView is logged in as admin without a password prompt. User can still enable Signal K security normally. Reuse Crew Radio's `SignalKClient.requestAccess`/`pollAccess` (Signal K's own access-request flow) and `SignalKUrl` for URL normalisation; the local server can auto-approve its own request through the admin API, so there is no prompt.
-- Deep links `pocketsk://webapp/<name>` open a webapp directly.
+- No viewer of the app's own (decided 2026-10-18, PR #12). The admin UI and every webapp are used in a browser, as on any Signal K server: `http://127.0.0.1:3000` on the phone itself, where the Dock's "Open admin UI" hands that URL to the default browser, and `http://<phone address>:3000` from any other device on the boat's network. Signal K's UI already works in any browser, uploads (Signal K's own restore) and all, and the app carries no WebView with JavaScript on, so there is no in-app web surface to secure (R4's WebView was CodeQL's one high alert).
+- The Dock's status card shows those URLs, one per address the phone has. Reaching the server from another device needs `ACCESS_LOCAL_NETWORK` on Android 17 (`LocalNetwork`), asked for before LAN access is turned on.
+- Auth: the admin UI logs in as on any Signal K server, and Signal K security is enabled from it as usual (§11). The app needs a token of its own only for its own API calls (Dock status, the bridge's provider, alarms): Crew Radio's `SignalKClient.requestAccess`/`pollAccess` (Signal K's own access-request flow) and `SignalKUrl` for URL normalisation; the local server can auto-approve its own request through the admin API, so there is no prompt.
+- Deep links `pocketsk://webapp/<name>` open that webapp's URL in the browser.
 
 ### 8.3 Helm / Kiosk mode (the novel bit)
 
-- Any installed webapp (Freeboard-SK, KIP, Instrument Panel) can be pinned as a **launcher shortcut** (`ShortcutManager`) with its own icon pulled from the webapp's manifest.
-- Full-screen immersive, screen kept on, brightness slider overlay, **red night filter** overlay (not just CSS — a system-level overlay so the status bar is red too).
-- Lock task mode (optional, for tablets at the helm): back/home disabled until unlocked with PIN.
+- Any installed webapp (Freeboard-SK, KIP, Instrument Panel) can be pinned as a **launcher shortcut** (`ShortcutManager`) with its own icon pulled from the webapp's manifest, that opens the webapp in the browser (§8.2). A webapp with a web app manifest can also be installed from the browser as a full-screen app of its own.
+- Screen kept on, brightness slider and **red night filter** as a system-level overlay (not just CSS: `TYPE_APPLICATION_OVERLAY`, so they work over the browser and the status bar is red too; the overlay window's keep-screen-on flag holds the screen).
+- Holding a tablet at the helm on one webapp is Android's own app pinning of the browser (optional, unpinned with the PIN); the app does not pin another app's task itself.
 - Home-screen **widgets**: 2×1 "depth / SOG / wind" cards fed by the local WebSocket, refresh every 2 s while visible.
 
 ### 8.4 Satellite mode (later)
@@ -366,7 +367,6 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 - R3's expected result, from the same install on desktop Linux (Node 22, signalk-server 2.33.0, 2026-10-17): 758 packages, six with install scripts. Four run `node …` (core-js, es5-ext, storage-engine, @scarf/scarf), which should work, `node` being the symlink into `nativeLibraryDir`. `@canboat/canboatjs` runs `node-gyp rebuild || echo …`, harmless if node-gyp cannot be exec'd. `@serialport/bindings-cpp` runs `node-gyp-build`, i.e. `node_modules/.bin/node-gyp-build`, a shebang script in app storage: the one W^X is expected to break, and a failed install script fails the install. If the phone shows that, the candidates are `script-shell` pointed at a launcher in `nativeLibraryDir` that runs shebang scripts as `node <script>`, or `--ignore-scripts` with §9's prebuilds put in place by the installer itself.
 - The same crawl answers the W^X question of §4.2: which of those scripts exec something by name from the app's data directory (`node_modules/.bin/*`, `node-gyp`, `prebuild-install`)? If many do, npm's `script-shell` can point at a small launcher in `nativeLibraryDir` that runs a shebang script as `node <script>`.
 - Memory ceiling on 3–4 GB phones with Freeboard + 10 plugins; choose `--max-old-space-size` policy.
-- Does the WebView need a custom scheme handler for `file://` uploads in Signal K's restore flow?
 - F-Droid reproducibility of nodejs-mobile; if not feasible, IzzyOnDroid.
 
 ## 16. First tasks for the coding agent
@@ -378,7 +378,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 5. ~~Spike activity~~ `MainActivity` already does this: it shows `nativeLibraryDir` and the environment, and runs `node -v` once `libnodeexec.so` is in the APK. **This is R1.**
 6. ~~Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it~~ **Done**, built by the app's own CMake rather than in a separate CI job (`native/spike-addon`): it is packaged in `lib/<abi>/`, and the spike screen copies it to `files/prebuilds/spike/` and requires it from there. **R2.** It is built twice, because R2 also settles how §9's prebuilds must be linked: `spike_napi` as prebuildify/node-gyp build for Linux (no link to Node, `napi_*` left undefined for the loading process to supply) and `spike_napi_linked` as nodejs-mobile's own addon test builds (`-lnode`). If only the linked one loads, §9 links every prebuild against `libnode.so`.
 7. ~~Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log~~ **Done** (`SpikeInstall`): the spike screen's second button wipes slot A, runs that install as a global one (`-g --prefix`, §5.1) with `--omit=dev --foreground-scripts`, streams the tail onto the screen, writes the whole log to `files/logs/spike-r3.log`, and on success prints the installed version, the package count and the packages with install scripts or a `binding.gyp`. **R3.**
-8. Button: start server, open WebView. **R4.**
+8. ~~Button: start server, open WebView~~ **Done** (`SpikeServer`): the third button starts `node <slot A>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data` with NodeRuntime's environment, streams its output (whole log in `files/logs/spike-r4.log`), polls `GET /signalk` once a second for up to 90 s, opens `http://127.0.0.1:3000/admin/` in the phone's browser when it answers, and stops the server on the next tap. A first version showed it in an in-app WebView; that was dropped (§8.2): the admin UI works as it is in a browser, and a WebView with JavaScript on was a surface to secure for nothing. On desktop the same start answered in 5 s, with the admin UI and sample navigation data. **R4.**
 9. Only then: `SignalKService`, `InstallManager`, wizard, bridge, per §5–§8.
 
 ## 17. Reuse from Crew Radio

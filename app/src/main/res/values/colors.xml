@@ -1,6 +1,6 @@
 <resources>
     <!-- Deep sea blue on near-black: readable at the helm at night, and not Signal K's own teal,
-         so the native Dock is told apart from the admin UI in the WebView at a glance. -->
+         so the native Dock is told apart from the admin UI in the browser at a glance. -->
     <color name="primary">#7FB8FF</color>
     <color name="on_primary">#00315F</color>
     <color name="surface">#0E1218</color>
