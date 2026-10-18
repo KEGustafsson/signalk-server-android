@@ -217,7 +217,7 @@ class SignalKService : Service() {
         val now = lanAddress()
         if (now != address) {
             address = now
-            log.note(now?.let { "reachable on the boat's network at http://$it:${Supervisor.PORT}" } ?: "no LAN address")
+            log.note(now?.let { "reachable on the boat's network at $it" } ?: "no LAN address")
             postNotification()
         }
     }
@@ -246,14 +246,16 @@ class SignalKService : Service() {
     private fun buildNotification(): Notification {
         val state = supervisor.state
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        val url = "http://${address ?: "127.0.0.1"}:${Supervisor.PORT}"
         val (title, text) = when (state) {
             is ServerState.Starting -> getString(R.string.server_title, state.version) to getString(R.string.server_starting)
-            is ServerState.Running -> getString(R.string.server_title, state.version) to when {
-                !state.answering -> getString(R.string.server_not_answering, url)
-                state.onTrial -> getString(R.string.server_on_trial, url)
-                else -> url
-            }
+            is ServerState.Running -> getString(R.string.server_title, state.version) to
+                "http://${address ?: "127.0.0.1"}:${state.port}".let { url ->
+                    when {
+                        !state.answering -> getString(R.string.server_not_answering, url)
+                        state.onTrial -> getString(R.string.server_on_trial, url)
+                        else -> url
+                    }
+                }
             is ServerState.Waiting -> getString(R.string.server_title, state.version) to
                 getString(R.string.server_waiting, state.reason, state.delayMs / 1000)
             ServerState.Stopping -> getString(R.string.app_name) to getString(R.string.server_stopping)

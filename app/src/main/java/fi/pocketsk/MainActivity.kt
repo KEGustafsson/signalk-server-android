@@ -24,8 +24,8 @@ import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
+import fi.pocketsk.server.ServerEndpoint
 import fi.pocketsk.server.SignalKService
-import fi.pocketsk.server.Supervisor
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -114,10 +114,12 @@ class MainActivity : AppCompatActivity() {
         val head = when (state) {
             ServerState.Stopped -> getString(R.string.spike_service_stopped)
             is ServerState.Starting -> getString(R.string.server_title, state.version) + "  " + getString(R.string.server_starting)
-            is ServerState.Running -> getString(R.string.server_title, state.version) + "  " + when {
-                !state.answering -> getString(R.string.server_not_answering, Supervisor.BASE)
-                state.onTrial -> getString(R.string.server_on_trial, Supervisor.BASE)
-                else -> Supervisor.BASE
+            is ServerState.Running -> getString(R.string.server_title, state.version) + "  " + localUrl(state.port).let {
+                when {
+                    !state.answering -> getString(R.string.server_not_answering, it)
+                    state.onTrial -> getString(R.string.server_on_trial, it)
+                    else -> it
+                }
             }
             is ServerState.Waiting -> getString(R.string.server_waiting, state.reason, state.delayMs / 1000)
             ServerState.Stopping -> getString(R.string.server_stopping)
@@ -126,12 +128,16 @@ class MainActivity : AppCompatActivity() {
         return head + "\n\n" + ServerStatus.log(this).tail(SpikeInstall.TAIL_LINES)
     }
 
+    /** The server on this phone, plain HTTP; with SSL on, the server redirects it to HTTPS itself. */
+    private fun localUrl(port: Int) = "http://127.0.0.1:$port"
+
     /**
      * The admin UI in the phone's browser, the way it is used on any Signal K server: the app has
      * no viewer of its own for it (docs/PLAN.md §8.2).
      */
     private fun openAdmin() {
-        val url = "${Supervisor.BASE}/admin/"
+        val port = (ServerStatus.state as? ServerState.Running)?.port ?: ServerEndpoint.DEFAULT_PORT
+        val url = "${localUrl(port)}/admin/"
         try {
             startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (_: ActivityNotFoundException) {

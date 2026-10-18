@@ -9,10 +9,17 @@ internal sealed interface ServerState {
     data class Starting(val version: String, val slot: String) : ServerState
 
     /**
-     * Up. [answering] is the last health poll's result; [onTrial] is true while a freshly
-     * promoted version is still inside its health gate and may yet be rolled back.
+     * Up, its plain HTTP on [port] ([ServerEndpoint]). [answering] is the last health poll's
+     * result; [onTrial] is true while a freshly promoted version is still inside its health gate
+     * and may yet be rolled back.
      */
-    data class Running(val version: String, val slot: String, val answering: Boolean, val onTrial: Boolean) : ServerState
+    data class Running(
+        val version: String,
+        val slot: String,
+        val port: Int,
+        val answering: Boolean,
+        val onTrial: Boolean,
+    ) : ServerState
 
     /** Exited unasked, [reason], and starts again after [delayMs]. */
     data class Waiting(val version: String, val delayMs: Long, val reason: String) : ServerState

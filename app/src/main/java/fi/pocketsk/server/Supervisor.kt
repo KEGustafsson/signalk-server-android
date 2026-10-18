@@ -10,6 +10,8 @@ import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.signalk.SignalKClient
+import org.json.JSONException
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -25,7 +27,10 @@ import kotlin.concurrent.thread
  *
  * - its output goes to [ServerLog] on an `sk-server-log` thread;
  * - an `sk-health` thread polls `GET /signalk` once a second until it answers, then every
- *   [HEALTH_POLL_MS] (§6's 30 s), and feeds the [HealthGate] while one is open;
+ *   [HEALTH_POLL_MS] (§6's 30 s), and feeds the [HealthGate] while one is open; on the port
+ *   `settings.json` names, read before the run, with SSL's redirect as the answer when SSL is
+ *   on ([ServerEndpoint]), so a server moved off Signal K's defaults in the admin UI is not
+ *   taken for a dead one and rolled back;
  * - when it ends, whatever is left of its process group is killed ([NodeProcess.reap]) before
  *   anything else, so no plugin's helper holds a port or a serial device against the next run.
  *
@@ -195,8 +200,13 @@ internal class Supervisor(
             if (slot == null || version == null) return failed("signalk-server is not installed")
             val main = runtime.serverMain(File(runtime.slots, slot))
             val trial = armGate(version)
+            val endpoint = readEndpoint()
             publish(ServerState.Starting(version, slot))
-            log.note("starting signalk-server $version from slot $slot" + if (trial) " (on trial after its promotion)" else "")
+            log.note(
+                "starting signalk-server $version from slot $slot, HTTP on port ${endpoint.port}" +
+                    (if (endpoint.ssl) " (redirecting to HTTPS)" else "") +
+                    if (trial) ", on trial after its promotion" else "",
+            )
             // A wake left over from a stop that came between runs would cut the next backoff short.
             waiter.await(0)
             val startedAt = SystemClock.elapsedRealtime()
@@ -225,7 +235,7 @@ internal class Supervisor(
                     }
                 }
             }
-            val health = thread(name = "sk-health", isDaemon = true) { watch(n, version, slot) }
+            val health = thread(name = "sk-health", isDaemon = true) { watch(n, version, slot, endpoint) }
             val code = n.process.waitFor()
             val whole = n.reap()
             health.interrupt()
@@ -275,12 +285,16 @@ internal class Supervisor(
      * [HEALTH_POLL_MS]; publishes [ServerState.Running] whenever the answer changes, and feeds
      * the gate. A failed gate ends the run, and [runLoop] rolls back.
      */
-    private fun watch(n: NodeProcess, version: String, slot: String) {
-        val client = SignalKClient(app, BASE, null)
+    private fun watch(n: NodeProcess, version: String, slot: String, endpoint: ServerEndpoint) {
+        val base = "http://127.0.0.1:${endpoint.port}"
+        val client = SignalKClient(app, base, null)
         var answering: Boolean? = null
         var trial = false
         while (n.process.isAlive) {
-            val ok = client.endpoints() is SignalKClient.Result.Ok
+            val ok = when (val r = client.endpoints()) {
+                is SignalKClient.Result.Ok -> true
+                is SignalKClient.Result.Failed -> endpoint.alive(ok = false, httpCode = r.httpCode)
+            }
             val now = SystemClock.elapsedRealtime()
             // Decided and published under the lock, so a stop that has published Stopping is
             // never followed by a Running from a poll that was already under way.
@@ -307,8 +321,8 @@ internal class Supervisor(
                 val onTrial = gate != null
                 // Nothing before the first answer: until then the run is Starting.
                 if ((ok || answering != null) && (ok != answering || onTrial != trial)) {
-                    if (answering == true && !ok) log.note("not answering on $BASE")
-                    publish(ServerState.Running(version, slot, ok, onTrial))
+                    if (answering == true && !ok) log.note("not answering on $base")
+                    publish(ServerState.Running(version, slot, endpoint.port, ok, onTrial))
                     answering = ok
                     trial = onTrial
                 }
@@ -368,6 +382,20 @@ internal class Supervisor(
         return state
     }
 
+    /**
+     * The live configuration's HTTP port and SSL setting; Signal K's defaults when there is no
+     * `settings.json` yet (a first start) or it cannot be read, which is what the server then
+     * falls back to as well.
+     */
+    private fun readEndpoint(): ServerEndpoint = try {
+        val json = JSONObject(File(runtime.configDir, "settings.json").readText())
+        ServerEndpoint.of(json.opt("port"), json.opt("ssl"))
+    } catch (_: IOException) {
+        ServerEndpoint.DEFAULT
+    } catch (_: JSONException) {
+        ServerEndpoint.DEFAULT
+    }
+
     /** The version a rollback would make live, when there is one that was not rolled back as bad. */
     private fun rollbackTarget(): String? {
         val live = installs.liveSlot() ?: return null
@@ -381,10 +409,6 @@ internal class Supervisor(
     }
 
     companion object {
-        /** Signal K's default port, on the loopback, where the health watch asks. */
-        const val PORT = 3000
-        const val BASE = "http://127.0.0.1:$PORT"
-
         const val HEALTH_POLL_MS = 30_000L
         private const val FIRST_POLL_MS = 1_000L
         private const val STOP_TIMEOUT_S = 10L

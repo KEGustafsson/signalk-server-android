@@ -46,7 +46,8 @@ app/                 the Android app
                      Slots, ServerVersion, InstallHistory, HealthGate (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
                      health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver;
-                     RestartPolicy, LogRing, LogFiles, LanAddress (pure, tested)
+                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
+                     tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
