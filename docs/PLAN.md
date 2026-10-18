@@ -140,7 +140,7 @@ class NodeRuntime(ctx: Context) {
   fun ensureLayout()                          // directories, and files/bin/node pointed at this install's launcher
   fun ensureExtracted()                       // ensureLayout + npm unpacked from assets; idempotent, stamped with npm's version and SHA-256
   fun env(): Map<String,String>               // HOME, TMPDIR, PATH, LD_LIBRARY_PATH, SIGNALK_NODE_CONFIG_DIR, NODE_OPTIONS
-  fun spawn(vararg args: String, cwd: File): NodeProcess   // stderr merged into stdout; leads its own process group (§4.1)
+  fun spawn(vararg args: String, cwd: File, extraEnv: Map<String,String>): NodeProcess   // stderr merged into stdout; leads its own process group (§4.1)
   fun npm(vararg args: String, cwd: File): NodeProcess     // node files/npm/bin/npm-cli.js args
 }
 
@@ -149,6 +149,7 @@ class NodeProcess {
   fun terminate(): Boolean    // SIGTERM to the whole group; false when only the process could be reached
   fun kill(): Boolean         // SIGKILL to the whole group
   fun reap(): Boolean         // once it has ended: SIGKILL what is left of the group, then forget it
+  fun drain(timeoutS: Long, onLine: (String) -> Unit): Int?   // read to the end, wait, reap; null = timed out, group killed
 }
 ```
 
@@ -181,20 +182,25 @@ Order of preference, all producing the same slot layout:
 ### 5.2 `InstallManager`
 
 ```kotlin
-sealed class InstallState { Idle, Downloading(pct), Installing(log), Verifying, Promoting, Done(version), Failed(reason, log) }
-
-class InstallManager {
-  suspend fun listAvailable(): List<Version>          // npm view signalk-server versions --json, cached 24h
-  suspend fun install(version: Version, source: Source): Flow<InstallState>
-  suspend fun rollback()
+class InstallManager(context: Context, runtime: NodeRuntime) {   // everything blocks; one install or rollback at a time
+  sealed interface Source { Registry(version: String?), Tarball(file: File) }
+  sealed interface State { Installing(slot, tail), Verifying(slot, tail), Done(version, slot, history), Failed(reason, tail) }
+  fun liveSlot(): String?                               // what files/sk/current points at
+  fun installedVersion(slot: String): String?
+  fun history(): InstallHistory                         // files/sk/install-history.json
+  fun listAvailable(withPrereleases: Boolean = false): List<ServerVersion>   // npm view signalk-server versions --json, kept 24 h
+  fun install(source: Source, allowBad: Boolean = false, listener: Listener): State
+  fun rollback(bad: Boolean, reason: String?): String?  // the other slot made live again
 }
 ```
+
+**Done** (§16 step 9.2), as a blocking API with a listener rather than the first sketch's suspend function and Flow: the app has no coroutines and adds no library for one caller. `InstallJob` runs it on a thread of its own for the screens, one install per process, so a rotation or the wizard's next page sees the same one. There is no `Downloading(pct)`: npm reports no progress, only lines. The pure parts are unit-tested: `Slots` (which slot an install goes to), `ServerVersion` (npm's versions in semver order, betas only when asked), `InstallHistory` (what happened, and which versions the health gate rolled back as bad) and `HealthGate` (step 6's rules, for the supervisor to feed).
 
 Algorithm:
 
 1. Pick the inactive slot; wipe it.
 2. Run npm install into it, streaming log lines to UI.
-3. **Smoke test**: spawn `node <slot>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data --port 3999` with a temporary config dir copied from the live one (`cp -r .signalk → cache/verify`). Poll `GET /signalk` until `{"endpoints":...}` or 60 s timeout. Kill its process group (§4.1), so no plugin it started keeps running from the slot about to go live. npm itself runs the same way: an install that runs out of time is killed with every lifecycle script it started, and only then is the slot wiped for the next try.
+3. **Smoke test**: spawn `node <slot>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data` with `PORT=3999` and a temporary config dir copied from the live one (`cp -a .signalk → cache/verify`). signalk-server takes its ports from the environment, not from arguments (`PORT`, `TCPSTREAMPORT` for its 8375 stream, `NMEA0183PORT` for its 10110 feed; 2.33.0's `dist/ports.js` and `dist/interfaces`), so all three move beside the live server's, and the copy's `settings.json` gets `mdns: false` and `ssl: false`: the test server must neither announce a second Signal K server on the boat's network nor move to its HTTPS port. Poll `GET /signalk` until `{"endpoints":...}` or 60 s timeout. Kill its process group (§4.1), so no plugin it started keeps running from the slot about to go live. npm itself runs the same way: an install that runs out of time is killed with every lifecycle script it started, and only then is the slot wiped for the next try.
 4. **Promote**: atomically repoint `current` symlink (rename of a temp symlink).
 5. Signal the supervisor to restart the server from the new slot.
 6. **Health gate**: if the live server fails to answer `GET /signalk` within 90 s of promotion, or crash-loops 3× in 5 min, flip `current` back and mark the version bad (stored in `install-history.json`, shown in UI).
@@ -391,7 +397,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 8. ~~Button: start server, open WebView~~ **Done** (`SpikeServer`): the third button starts `node <slot A>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data` with NodeRuntime's environment, streams its output (whole log in `files/logs/spike-r4.log`), polls `GET /signalk` once a second for up to 90 s, opens `http://127.0.0.1:3000/admin/` in the phone's browser when it answers, and stops the server on the next tap. A first version showed it in an in-app WebView; that was dropped (§8.2): the admin UI works as it is in a browser, and a WebView with JavaScript on was a surface to secure for nothing. On desktop the same start answered in 5 s, with the admin UI and sample navigation data. **R4.**
 9. Only then: `SignalKService`, `InstallManager`, wizard, bridge, per §5–§8. Too much for one pull request, so in these parts, one each:
    1. ~~Process groups~~ **Done** (`NodeProcess`, the launcher's `POCKETSK_GROUP_FILE`, §4.1): every spawn leads a process group of its own, and the spike screen's npm, summary and server are stopped and reaped with theirs. The R4 server's Start stays off until its group is reaped, and Stop kills the group 10 s after SIGTERM, as §6 will. R3's force-stop guard is left only for a phone where the group cannot be made.
-   2. `InstallManager` (§5.1–5.2): slots, the `current` link, the smoke test on port 3999, promotion, the health gate and `install-history.json`, with the pure parts (slot choice, version order, history) unit-tested.
+   2. ~~`InstallManager` (§5.1–5.2)~~ **Done** (`fi.pocketsk.install`): slots, the `current` link, the smoke test on port 3999, promotion, rollback and `install-history.json`, from the registry or a sideloaded `.tgz`; the health gate's rules as `HealthGate`, for the supervisor of part 3 to feed. The spike screen's third button runs it (the latest release into the slot that is not live), so it can be tried on a phone before the wizard exists. The GitHub mirror (§5.1, source 2) is not in yet.
    3. `SignalKService` (§6): the supervisor, locks, notification, restart policy, log ring and health watch.
    4. The first-run wizard and the Dock's first screen (§5.3, §8.1), with Compose, replacing the spike screen.
    5. The bridge (§7) belongs to milestone M4 and follows once M3's soak (§13) has passed.

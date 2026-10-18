@@ -4,6 +4,11 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 /**
  * A node that [NodeRuntime.spawn] started, with everything it starts in turn.
@@ -34,6 +39,54 @@ class NodeProcess internal constructor(val process: Process, private val groupFi
      */
     val hasGroup: Boolean
         @Synchronized get() = group != null || groupId() != null
+
+    /**
+     * Reads the output to its end, line by line, waits for the process, reaps the group and
+     * returns the exit code; null when the reading had not ended after [timeoutS] seconds and
+     * the group was killed. Blocking, so never on the main thread.
+     *
+     * The deadline runs on its own thread, because a reader blocks for as long as the pipe is
+     * open, and it counts the reading rather than the process: npm can exit while a lifecycle
+     * script it started still holds the pipe, so the deadline closes the stream too. Whichever of
+     * the two finishes first decides the outcome, so a reading that ends as the deadline passes
+     * is not also called a timeout. The group is killed and waited for on every way out, a
+     * failure of [onLine] included (a log that cannot be written), and reaped once it has ended,
+     * so nothing outlives the call. (Moved here from spike R3, where it was written.)
+     */
+    fun drain(timeoutS: Long, onLine: (String) -> Unit): Int? {
+        val settled = AtomicBoolean(false)
+        val drained = CountDownLatch(1)
+        thread(name = "node-deadline", isDaemon = true) {
+            if (!drained.await(timeoutS, TimeUnit.SECONDS) && settled.compareAndSet(false, true)) {
+                kill()
+                try {
+                    process.inputStream.close()
+                } catch (_: IOException) {
+                    // Closed already; the reader ends either way.
+                }
+            }
+        }
+        var read = false
+        var timedOut = false
+        try {
+            process.inputStream.bufferedReader().forEachLine(onLine)
+            read = true
+        } catch (e: IOException) {
+            // The deadline closing the stream under the reader is a timeout, not a failure.
+            if (settled.get()) timedOut = true else throw e
+        } finally {
+            if (!settled.compareAndSet(false, true)) timedOut = true
+            drained.countDown()
+            // Only when the reading failed or ran out of time: after a clean end of the stream
+            // the process may not have exited yet, and killing it then would lose its code.
+            if (!read || timedOut) kill()
+            // The group is reaped only once the process has ended, or its exit code would be lost too.
+            process.waitFor()
+            reap()
+        }
+        val code = process.exitValue()
+        return if (timedOut) null else code
+    }
 
     /** SIGTERM to the whole group, which Signal K and npm both end on cleanly; true if it reached the group. */
     fun terminate(): Boolean = signal(OsConstants.SIGTERM) { process.destroy() }

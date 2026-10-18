@@ -68,6 +68,9 @@ class NodeRuntime(context: Context) {
      */
     val groups = File(app.noBackupFilesDir, "groups")
 
+    /** signalk-server's own start script in [slot], where a global install puts it (PLAN §5.1). */
+    fun serverMain(slot: File): File = File(slot, "lib/node_modules/signalk-server/bin/signalk-server")
+
     /** npm's entry point, once [ensureExtracted] has unpacked it. */
     val npmCli = File(npmDir, "bin/npm-cli.js")
 
@@ -172,11 +175,12 @@ class NodeRuntime(context: Context) {
      * process group of its own ([NodeProcess]). The caller owns it: reads its output on its own
      * thread, waits for it, stops it with [NodeProcess.terminate] or [NodeProcess.kill] (never
      * through [Process.destroy], which would leave whatever it started running) and calls
-     * [NodeProcess.reap] once it has ended. Throws [java.io.IOException] when the executable
-     * cannot be run, which on Android reads as "Permission denied" (EACCES) rather than
-     * "not found" when SELinux refuses the exec.
+     * [NodeProcess.reap] once it has ended. [extraEnv] is laid over [env], for a run that needs
+     * something else (the installer's smoke test: another config directory, other ports). Throws
+     * [java.io.IOException] when the executable cannot be run, which on Android reads as
+     * "Permission denied" (EACCES) rather than "not found" when SELinux refuses the exec.
      */
-    fun spawn(vararg args: String, cwd: File = home): NodeProcess {
+    fun spawn(vararg args: String, cwd: File = home, extraEnv: Map<String, String> = emptyMap()): NodeProcess {
         ensureLayout()
         val groupFile = File(groups, "${System.nanoTime()}-${SPAWNS.incrementAndGet()}")
         val pb = ProcessBuilder(listOf(executable.absolutePath) + args)
@@ -184,7 +188,12 @@ class NodeRuntime(context: Context) {
             .redirectErrorStream(true)
         // Only here, not in env(): the launcher removes it before Node starts, so the nodes this
         // one runs join its group rather than leading their own.
-        pb.environment().apply { clear(); putAll(env()); put(GROUP_FILE_ENV, groupFile.absolutePath) }
+        pb.environment().apply {
+            clear()
+            putAll(env())
+            putAll(extraEnv)
+            put(GROUP_FILE_ENV, groupFile.absolutePath)
+        }
         return NodeProcess(pb.start(), groupFile)
     }
 

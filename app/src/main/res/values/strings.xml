@@ -8,6 +8,12 @@
     <string name="spike_running">Running…</string>
     <string name="spike_install">Install signalk-server with npm (R3)</string>
     <string name="spike_installing">Installing signalk-server into slot A…</string>
+    <string name="spike_upgrade">Install into the other slot and make it live (9.2)</string>
+    <string name="spike_upgrade_starting">Installing the latest signalk-server with InstallManager…</string>
+    <string name="spike_upgrade_installing">npm is installing signalk-server into slot %1$s…\n\n%2$s</string>
+    <string name="spike_upgrade_verifying">Smoke test of slot %1$s on port %2$d…\n\n%3$s</string>
+    <string name="spike_upgrade_done">signalk-server %1$s is live in slot %2$s. Its history:\n\n%3$s</string>
+    <string name="spike_upgrade_failed">The install failed: %1$s\n\n%2$s</string>
     <string name="spike_server_start">Start signalk-server and open it (R4)</string>
     <string name="spike_server_stop">Stop signalk-server</string>
     <string name="spike_server_starting">Starting signalk-server from slot A…</string>
