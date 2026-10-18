@@ -322,7 +322,7 @@ internal class Supervisor(
                     HealthGate.Verdict.HEALTHY -> {
                         gate = null
                         gateFor = null
-                        prefs.gateVersion = null
+                        prefs.settle(version)
                         log.note("signalk-server $version passed its health gate")
                     }
                     HealthGate.Verdict.PENDING, null -> Unit
@@ -380,7 +380,7 @@ internal class Supervisor(
             }
             gateFailure = null
         }
-        if (prefs.gateVersion == version) prefs.gateVersion = null
+        prefs.settle(version)
         val to = installs.rollback(bad = true, reason = why, onlyFrom = version)
         if (to == null) {
             val live = installs.liveSlot()?.let { installs.installedVersion(it) }

@@ -398,7 +398,7 @@ class SignalKService : Service() {
          * under the installer's lock, before `current` moves, so no run can start it ungated.
          */
         internal fun owesGate(context: Context, version: String) {
-            ServerPrefs(context).gateVersion = version
+            ServerPrefs(context).owe(version)
         }
 
         /**
