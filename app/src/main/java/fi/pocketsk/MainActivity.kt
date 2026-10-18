@@ -1,10 +1,13 @@
 package fi.pocketsk
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import fi.pocketsk.node.NodeRuntime
@@ -22,7 +25,7 @@ import kotlin.concurrent.thread
  * node_modules. It prints whatever comes back, including the exact exception when an exec or a
  * load is refused. The second button is spike R3 ([SpikeInstall]): npm installs signalk-server
  * into slot A, its output streamed onto the screen. The third is spike R4 ([SpikeServer]): it
- * starts that server with sample data and opens its admin UI ([ServerActivity]) once it answers,
+ * starts that server with sample data and opens its admin UI in the browser once it answers,
  * and stops it again. It becomes the Dock once the service exists.
  */
 class MainActivity : AppCompatActivity() {
@@ -50,7 +53,20 @@ class MainActivity : AppCompatActivity() {
 
         override fun onReady(ms: Long, generation: Long) = runOnUiThread {
             // Checked again here: Stop may have been tapped while this waited for the main thread.
-            if (SpikeServer.isCurrent(generation)) startActivity(Intent(this@MainActivity, ServerActivity::class.java))
+            if (SpikeServer.isCurrent(generation)) openAdmin()
+        }
+    }
+
+    /**
+     * The admin UI in the phone's browser, the way it is used on any Signal K server: the app has
+     * no viewer of its own for it (docs/PLAN.md §8.2).
+     */
+    private fun openAdmin() {
+        val url = "${SpikeServer.BASE}/admin/"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.spike_server_no_browser, url), Toast.LENGTH_LONG).show()
         }
     }
 

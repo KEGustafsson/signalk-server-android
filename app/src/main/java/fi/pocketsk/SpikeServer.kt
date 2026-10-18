@@ -23,7 +23,7 @@ import kotlin.concurrent.thread
  */
 object SpikeServer {
 
-    /** Where the spike server answers; Signal K's default port, on the loopback the WebView uses. */
+    /** Where the spike server answers; Signal K's default port, on the loopback the browser opens. */
     const val BASE = "http://127.0.0.1:3000"
 
     /** The screen's view of the server. Both calls come from worker threads. */

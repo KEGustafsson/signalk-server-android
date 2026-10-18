@@ -40,8 +40,8 @@ pipeline and several files were lifted (PLAN §17).
 ## Layout
 ```
 app/                 the Android app
-  fi.pocketsk        MainActivity (currently the R1–R4 spike screen), SpikeInstall (R3), SpikeServer and
-                     ServerActivity (R4), App, LocalNetwork, WifiLockModes, LegacyPlatform
+  fi.pocketsk        MainActivity (currently the R1–R4 spike screen), SpikeInstall (R3), SpikeServer (R4),
+                     App, LocalNetwork, WifiLockModes, LegacyPlatform
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
