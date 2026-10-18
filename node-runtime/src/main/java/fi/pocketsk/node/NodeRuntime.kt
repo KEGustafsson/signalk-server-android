@@ -6,6 +6,7 @@ import android.system.ErrnoException
 import android.system.Os
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Where the Node runtime lives and how it is run (docs/PLAN.md §4).
@@ -26,6 +27,7 @@ import java.io.IOException
  *     files/bin             node, a symlink into nativeLibraryDir; later the node-gyp shim
  *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
  *     cache/tmp             $TMPDIR
+ *     cache/groups          one file per running [spawn], the id of its process group ([NodeProcess])
  *
  * Nothing here is created until [ensureLayout], and npm is not unpacked until [ensureExtracted].
  * The executable comes from this module's native build; on an ABI it does not build for,
@@ -58,6 +60,9 @@ class NodeRuntime(context: Context) {
     val prebuilds = File(files, "prebuilds")
     val tmp = File(cache, "tmp")
 
+    /** Where the launcher records each spawned node's process group; see [NodeProcess]. */
+    val groups = File(cache, "groups")
+
     /** npm's entry point, once [ensureExtracted] has unpacked it. */
     val npmCli = File(npmDir, "bin/npm-cli.js")
 
@@ -76,7 +81,14 @@ class NodeRuntime(context: Context) {
      */
     @Throws(IOException::class)
     fun ensureLayout(): Unit = synchronized(LAYOUT_LOCK) {
-        for (d in listOf(home, configDir, slots, npmDir, binDir, prebuilds, tmp)) d.mkdirs()
+        for (d in listOf(home, configDir, slots, npmDir, binDir, prebuilds, tmp, groups)) d.mkdirs()
+        // Group records left by an earlier app process: nothing in them is alive any more, since
+        // Android ends an app's processes, its children's too, with the app. Their ids are pids
+        // that may since belong to someone else, so they are dropped once, before any spawn here.
+        if (!groupsSwept) {
+            groups.listFiles()?.forEach { it.delete() }
+            groupsSwept = true
+        }
         if (!isAvailable) return
         // A symlink into nativeLibraryDir, so `node` is on PATH for npm's lifecycle scripts.
         // Whether exec follows it across the SELinux label boundary is part of spike R1.
@@ -151,25 +163,31 @@ class NodeRuntime(context: Context) {
     }
 
     /**
-     * Starts `node args...` in [cwd] with [env], stderr merged into stdout. The caller owns the
-     * process: reads its output on its own thread, waits for it, kills it. Throws
-     * [java.io.IOException] when the executable cannot be run, which on Android reads as
-     * "Permission denied" (EACCES) rather than "not found" when SELinux refuses the exec.
+     * Starts `node args...` in [cwd] with [env], stderr merged into stdout, as the leader of a
+     * process group of its own ([NodeProcess]). The caller owns it: reads its output on its own
+     * thread, waits for it, stops it with [NodeProcess.terminate] or [NodeProcess.kill] (never
+     * through [Process.destroy], which would leave whatever it started running) and calls
+     * [NodeProcess.reap] once it has ended. Throws [java.io.IOException] when the executable
+     * cannot be run, which on Android reads as "Permission denied" (EACCES) rather than
+     * "not found" when SELinux refuses the exec.
      */
-    fun spawn(vararg args: String, cwd: File = home): Process {
+    fun spawn(vararg args: String, cwd: File = home): NodeProcess {
         ensureLayout()
+        val groupFile = File(groups, "${System.nanoTime()}-${SPAWNS.incrementAndGet()}")
         val pb = ProcessBuilder(listOf(executable.absolutePath) + args)
             .directory(cwd)
             .redirectErrorStream(true)
-        pb.environment().apply { clear(); putAll(env()) }
-        return pb.start()
+        // Only here, not in env(): the launcher removes it before Node starts, so the nodes this
+        // one runs join its group rather than leading their own.
+        pb.environment().apply { clear(); putAll(env()); put(GROUP_FILE_ENV, groupFile.absolutePath) }
+        return NodeProcess(pb.start(), groupFile)
     }
 
     /**
      * Starts `npm args...` the way the npm shell wrapper would on a Pi, as node running
      * npm-cli.js. [ensureExtracted] must have run; [spawn]'s rules apply.
      */
-    fun npm(vararg args: String, cwd: File = home): Process = spawn(npmCli.absolutePath, *args, cwd = cwd)
+    fun npm(vararg args: String, cwd: File = home): NodeProcess = spawn(npmCli.absolutePath, *args, cwd = cwd)
 
     /** A one-paragraph description of the runtime situation, for the spike screen and diagnostics. */
     fun describe(): String = buildString {
@@ -209,5 +227,14 @@ class NodeRuntime(context: Context) {
          * NodeRuntime, and both lay out and unpack into the same directories.
          */
         private val LAYOUT_LOCK = Any()
+
+        /** Whether this process has dropped the group records of the one before; under [LAYOUT_LOCK]. */
+        private var groupsSwept = false
+
+        /** Numbers each spawn's group record, so two in the same nanosecond do not share one. */
+        private val SPAWNS = AtomicLong()
+
+        /** Read and removed by the launcher (native/launcher/main.cc). */
+        private const val GROUP_FILE_ENV = "POCKETSK_GROUP_FILE"
     }
 }

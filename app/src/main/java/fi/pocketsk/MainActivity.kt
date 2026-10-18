@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import java.io.File
 import java.io.IOException
@@ -186,13 +187,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Runs the process [start] makes, appends its output and exit to [report]; true when it exited 0. */
-    private fun exec(report: StringBuilder, start: () -> Process): Boolean = try {
-        val process = start()
+    /** Runs the node [start] makes, appends its output and exit to [report]; true when it exited 0. */
+    private fun exec(report: StringBuilder, start: () -> NodeProcess): Boolean = try {
+        val node = start()
+        val process = node.process
         val text = process.inputStream.bufferedReader().readText()
         val finished = process.waitFor(SPIKE_TIMEOUT_S, TimeUnit.SECONDS)
-        if (!finished) process.destroyForcibly()
+        if (!finished) {
+            node.kill()
+            process.waitFor()
+        }
+        val grouped = node.reap()
         report.appendLine(text.trimEnd())
+        if (!grouped) report.appendLine("(no process group: the launcher could not make one)")
         report.appendLine(if (finished) "exit ${process.exitValue()}" else "timed out after ${SPIKE_TIMEOUT_S}s")
         finished && process.exitValue() == 0
     } catch (e: IOException) {

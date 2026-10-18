@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
 - Links against `libnode.so` from the nodejs-mobile release zip (download in Gradle task, verify SHA-256). **Done**: the Node 24 line is published by digidem's fork as `nodejs-mobile-android-<A.B.C-R>.zip` (upstream `nodejs-mobile/nodejs-mobile` stops at 18.20.4, and signalk-server needs Node ≥ 22). It holds `bin/<abi>/libnode.so` for arm64-v8a, armeabi-v7a and x86_64 plus `include/node`; the version and SHA-256 are pinned in `gradle.properties`, the zip is cached in the Gradle user home and recorded in the SBOM. The `full` flavour, not `lite`: lite drops `node:sqlite` and changes V8's pointer compression, and plugins vary too much to bet on either.
 - Also package `libc++_shared.so`. **Done** (`ANDROID_STL=c++_shared`). It has to come from the NDK libnode.so was built with, **r27d (27.3.13750724)**, so `ndkVersion` is pinned to it.
 - The launcher carries `RUNPATH $ORIGIN`, so it finds `libnode.so` beside it even in a child process whose environment lost `LD_LIBRARY_PATH`. CMake is pinned to 3.31.6: AGP's default 3.22.1 writes that RPATH as a bare `$`.
+- **Process groups.** `java.lang.Process` signals only the pid it forked, and Android gives an app no way to find that pid's children, so killing npm left its lifecycle scripts running (R3) and stopping the server would leave a plugin's helpers holding their ports and serial devices. So the node that `NodeRuntime.spawn` starts leads a process group of its own: the launcher reads `POCKETSK_GROUP_FILE`, removes it from the environment (a node that a script runs joins its parent's group instead of leading one), calls `setpgid(0, 0)` and writes its pid, the group's id, to that file under `cache/groups/` before Node starts. `NodeProcess` signals the whole group with `kill(-id)` and falls back to the one process when there is no record (not written yet, which means nothing else has started either, or the group could not be made). The id is a pid and pids are reused, so the group is forgotten once the process has ended and whatever it left running has been killed (`reap`). A script that makes a session or group of its own escapes this, as it would on Linux; Android still ends it with the app. **Done** (§16 step 9.1).
 - `extractNativeLibs="true"` comes from `jniLibs.useLegacyPackaging = true` in the app's Gradle build; AGP warns about the attribute in a source manifest, so it is not there.
 - APK cost: about 26 MB compressed per ABI (libnode.so is 80–87 MB uncompressed), so the universal release APK is about 80 MB. ABI splits for the release are a §10 decision.
 
@@ -138,8 +139,15 @@ class NodeRuntime(ctx: Context) {
   fun ensureLayout()                          // directories, and files/bin/node pointed at this install's launcher
   fun ensureExtracted()                       // ensureLayout + npm unpacked from assets; idempotent, stamped with npm's version and SHA-256
   fun env(): Map<String,String>               // HOME, TMPDIR, PATH, LD_LIBRARY_PATH, SIGNALK_NODE_CONFIG_DIR, NODE_OPTIONS
-  fun spawn(vararg args: String, cwd: File): Process   // stderr merged into stdout; the caller reads it
-  fun npm(vararg args: String, cwd: File): Process     // node files/npm/bin/npm-cli.js args
+  fun spawn(vararg args: String, cwd: File): NodeProcess   // stderr merged into stdout; leads its own process group (§4.1)
+  fun npm(vararg args: String, cwd: File): NodeProcess     // node files/npm/bin/npm-cli.js args
+}
+
+class NodeProcess {
+  val process: Process
+  fun terminate(): Boolean    // SIGTERM to the whole group; false when only the process could be reached
+  fun kill(): Boolean         // SIGKILL to the whole group
+  fun reap(): Boolean         // once it has ended: SIGKILL what is left of the group, then forget it
 }
 ```
 
@@ -185,7 +193,7 @@ Algorithm:
 
 1. Pick the inactive slot; wipe it.
 2. Run npm install into it, streaming log lines to UI.
-3. **Smoke test**: spawn `node <slot>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data --port 3999` with a temporary config dir copied from the live one (`cp -r .signalk → cache/verify`). Poll `GET /signalk` until `{"endpoints":...}` or 60 s timeout. Kill.
+3. **Smoke test**: spawn `node <slot>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data --port 3999` with a temporary config dir copied from the live one (`cp -r .signalk → cache/verify`). Poll `GET /signalk` until `{"endpoints":...}` or 60 s timeout. Kill its process group (§4.1), so no plugin it started keeps running from the slot about to go live. npm itself runs the same way: an install that runs out of time is killed with every lifecycle script it started, and only then is the slot wiped for the next try.
 4. **Promote**: atomically repoint `current` symlink (rename of a temp symlink).
 5. Signal the supervisor to restart the server from the new slot.
 6. **Health gate**: if the live server fails to answer `GET /signalk` within 90 s of promotion, or crash-loops 3× in 5 min, flip `current` back and mark the version bad (stored in `install-history.json`, shown in UI).
@@ -208,6 +216,7 @@ Start from Crew Radio's `PttService`: keep its startForeground-first-then-slow-w
 
 - Holds `PARTIAL_WAKE_LOCK`, the Wi-Fi locks from `WifiLockModes.forSdk()` (LOW_LATENCY + HIGH_PERF where it still exists) and `WifiManager.MulticastLock` (mDNS). Request `ACCESS_LOCAL_NETWORK` on API 37+ before the first start (`LocalNetwork` rules).
 - Spawns `node <current>/lib/node_modules/signalk-server/bin/signalk-server`.
+- Stop: SIGTERM to the server's process group (§4.1), the server and everything its plugins started; SIGKILL to the group after 10 s if the server is still there. After every exit, a stop, a crash or Signal K's own restart, whatever is left of the group is killed (`NodeProcess.reap`) before the next start, so a plugin's helper never holds a port or a serial device against its next instance.
 - Restart policy: exit code 0 → immediate restart (this is Signal K's own "restart" button); non-zero → exponential backoff 2 s → 60 s; after 5 failures in 10 min → stop, notify, offer rollback.
 - Captures stdout/stderr into a 2 MB ring buffer + rotating files in `files/logs/`.
 - Watches `/signalk` health every 30 s; exposes `StateFlow<ServerState>` to UI.
@@ -379,7 +388,12 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 6. ~~Add `.node` test addon (hello-world N-API built in CI) to `assets/`, copy to `files/`, `require` it~~ **Done**, built by the app's own CMake rather than in a separate CI job (`native/spike-addon`): it is packaged in `lib/<abi>/`, and the spike screen copies it to `files/prebuilds/spike/` and requires it from there. **R2.** It is built twice, because R2 also settles how §9's prebuilds must be linked: `spike_napi` as prebuildify/node-gyp build for Linux (no link to Node, `napi_*` left undefined for the loading process to supply) and `spike_napi_linked` as nodejs-mobile's own addon test builds (`-lnode`). If only the linked one loads, §9 links every prebuild against `libnode.so`.
 7. ~~Button: `npm install --prefix files/sk/slots/A signalk-server`, stream log~~ **Done** (`SpikeInstall`): the spike screen's second button wipes slot A, runs that install as a global one (`-g --prefix`, §5.1) with `--omit=dev --foreground-scripts`, streams the tail onto the screen, writes the whole log to `files/logs/spike-r3.log`, and on success prints the installed version, the package count and the packages with install scripts or a `binding.gyp`. **R3.**
 8. ~~Button: start server, open WebView~~ **Done** (`SpikeServer`): the third button starts `node <slot A>/lib/node_modules/signalk-server/bin/signalk-server --sample-nmea0183-data` with NodeRuntime's environment, streams its output (whole log in `files/logs/spike-r4.log`), polls `GET /signalk` once a second for up to 90 s, opens `http://127.0.0.1:3000/admin/` in the phone's browser when it answers, and stops the server on the next tap. A first version showed it in an in-app WebView; that was dropped (§8.2): the admin UI works as it is in a browser, and a WebView with JavaScript on was a surface to secure for nothing. On desktop the same start answered in 5 s, with the admin UI and sample navigation data. **R4.**
-9. Only then: `SignalKService`, `InstallManager`, wizard, bridge, per §5–§8.
+9. Only then: `SignalKService`, `InstallManager`, wizard, bridge, per §5–§8. Too much for one pull request, so in these parts, one each:
+   1. ~~Process groups~~ **Done** (`NodeProcess`, the launcher's `POCKETSK_GROUP_FILE`, §4.1): every spawn leads a process group of its own, and the spike screen's npm, summary and server are stopped and reaped with theirs. R3's force-stop guard is left only for a phone where the group cannot be made.
+   2. `InstallManager` (§5.1–5.2): slots, the `current` link, the smoke test on port 3999, promotion, the health gate and `install-history.json`, with the pure parts (slot choice, version order, history) unit-tested.
+   3. `SignalKService` (§6): the supervisor, locks, notification, restart policy, log ring and health watch.
+   4. The first-run wizard and the Dock's first screen (§5.3, §8.1), with Compose, replacing the spike screen.
+   5. The bridge (§7) belongs to milestone M4 and follows once M3's soak (§13) has passed.
 
 ## 17. Reuse from Crew Radio
 

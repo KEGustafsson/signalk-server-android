@@ -1,6 +1,7 @@
 package fi.pocketsk
 
 import android.content.Context
+import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.signalk.SignalKClient
 import java.io.File
@@ -39,7 +40,7 @@ object SpikeServer {
         fun onReady(ms: Long, generation: Long)
     }
 
-    @Volatile private var process: Process? = null
+    @Volatile private var process: NodeProcess? = null
     @Volatile private var observer: Observer? = null
     @Volatile private var latest = ""
 
@@ -53,7 +54,7 @@ object SpikeServer {
     private val tail = ArrayDeque<String>()
     private var lastPost = 0L
 
-    val isRunning: Boolean get() = process?.isAlive == true
+    val isRunning: Boolean get() = process?.process?.isAlive == true
 
     /** True while run [generation] is the one running, neither stopped nor replaced. */
     fun isCurrent(generation: Long): Boolean = generation == this.generation && isRunning
@@ -93,8 +94,9 @@ object SpikeServer {
         pendingReady = null
         val run = ++generation
         val started = System.nanoTime()
-        val p = runtime.spawn(main.absolutePath, "--sample-nmea0183-data")
-        process = p
+        val node = runtime.spawn(main.absolutePath, "--sample-nmea0183-data")
+        val p = node.process
+        process = node
         thread(name = "spike-server-log") {
             try {
                 logFile.bufferedWriter().use { log ->
@@ -108,11 +110,14 @@ object SpikeServer {
                 // Broadly, as on any plain thread. A server nobody reads fills its pipe and
                 // stalls, so it goes when its reader does.
                 add("log failed: $e", now = true)
-                p.destroyForcibly()
+                node.kill()
             }
             val code = p.waitFor()
-            if (process === p) process = null
-            add("exit $code", now = true)
+            // A plugin's helper outlives the server otherwise, and the next start finds it still
+            // holding a port or a serial device.
+            val whole = node.reap()
+            if (process === node) process = null
+            add(if (whole) "exit $code" else "exit $code (no process group: anything it started may still run)", now = true)
         }
         thread(name = "spike-server-ready") {
             val client = SignalKClient(context, BASE, null)
@@ -130,14 +135,16 @@ object SpikeServer {
     }
 
     /**
-     * Stops the server, if one runs: SIGTERM, which Signal K shuts down on cleanly. A readiness
-     * still on its way belongs to the run stopped here, so it opens nothing.
+     * Stops the server, if one runs: SIGTERM to its process group, the server and whatever its
+     * plugins started, which Signal K shuts down on cleanly; what is still there when the server
+     * has gone is killed then. A readiness still on its way belongs to the run stopped here, so
+     * it opens nothing.
      */
     @Synchronized
     fun stop() {
         generation++
         pendingReady = null
-        process?.destroy()
+        process?.terminate()
     }
 
     /**

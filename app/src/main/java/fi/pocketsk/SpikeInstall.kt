@@ -1,5 +1,6 @@
 package fi.pocketsk
 
+import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import java.io.File
 import java.io.IOException
@@ -48,11 +49,13 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
     val isRunning: Boolean get() = !finished
 
     /**
-     * True once npm had to be killed (out of time, or its log could not be written). Killing npm
-     * does not kill the lifecycle scripts it started, and Android gives an app no handle on them:
-     * no child pids, and once npm is gone they belong to init. They end with the app's process
-     * group, which Android kills on a force stop, so until then [start] refuses another install
-     * into the slot they may still be writing to. The real installer kills the whole group (PLAN §5).
+     * True once npm had to be killed (out of time, or its log could not be written) without a
+     * process group to kill with it ([NodeProcess.hasGroup]: the launcher could not make one).
+     * Then the lifecycle scripts npm started may still be running, and Android gives an app no
+     * other handle on them: no child pids, and once npm is gone they belong to init. They end
+     * with the app, which Android stops whole on a force stop, so until then [start] refuses
+     * another install into the slot they may still be writing to. With the group, killing npm
+     * kills them too, and this stays false.
      */
     @Volatile var mayHaveOrphans = false
         private set
@@ -102,8 +105,8 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
         val code = logFile.bufferedWriter().use { log ->
             val npm = runtime.npm("install", "-g", "--prefix", slot.absolutePath, *INSTALL_ARGS)
             // From here until drain() says npm ended by itself, it may be killed with scripts still
-            // running. Not before: a log that cannot be opened or an npm that never started leaves
-            // nothing behind.
+            // running, unless they are killed with it. Not before: a log that cannot be opened or
+            // an npm that never started leaves nothing behind.
             mayHaveOrphans = true
             drain(npm, INSTALL_TIMEOUT_S) { line ->
                 log.appendLine(line)
@@ -116,7 +119,7 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
             }.also {
                 // Cleared here, inside the block: closing the log flushes it and can throw, and
                 // npm has ended by then whatever the log does.
-                if (it != null) mayHaveOrphans = false
+                if (it != null || npm.hasGroup) mayHaveOrphans = false
             }
         }
         add(if (code == null) "timed out after ${INSTALL_TIMEOUT_S / 60} min" else "exit $code")
@@ -134,16 +137,18 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
      * counts the reading rather than the process: npm can exit while a lifecycle script it
      * started still holds the pipe, so the deadline closes the stream too. Whichever of the two
      * finishes first decides the outcome, so a reading that ends as the deadline passes is not
-     * also called a timeout. The process is killed and reaped on every way out, a failed log
-     * write included, so nothing outlives the run and a retry never shares the slot with the
-     * last one.
+     * also called a timeout. The process is killed with its group and waited for on every way
+     * out, a failed log write included, and what is left of the group is killed once it has
+     * ended ([NodeProcess.reap]), so nothing outlives the run and a retry never shares the slot
+     * with the last one.
      */
-    private fun drain(process: Process, timeoutS: Long, onLine: (String) -> Unit): Int? {
+    private fun drain(node: NodeProcess, timeoutS: Long, onLine: (String) -> Unit): Int? {
+        val process = node.process
         val settled = AtomicBoolean(false)
         val drained = CountDownLatch(1)
         thread(name = "spike-deadline", isDaemon = true) {
             if (!drained.await(timeoutS, TimeUnit.SECONDS) && settled.compareAndSet(false, true)) {
-                process.destroyForcibly()
+                node.kill()
                 try {
                     process.inputStream.close()
                 } catch (_: IOException) {
@@ -164,12 +169,12 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
             drained.countDown()
             // Only when the reading failed or ran out of time: after a clean end of the stream
             // the process may not have exited yet, and killing it then would lose its code.
-            if (!read || timedOut) {
-                process.destroyForcibly()
-                process.waitFor()
-            }
+            if (!read || timedOut) node.kill()
+            // Its group is reaped only once it has ended, or its exit code would be lost too.
+            process.waitFor()
+            node.reap()
         }
-        val code = process.waitFor()
+        val code = process.exitValue()
         return if (timedOut) null else code
     }
 
@@ -216,8 +221,8 @@ class SpikeInstall private constructor(private val runtime: NodeRuntime, private
         private const val UPDATE_INTERVAL_NS = 500_000_000L
         private const val INSTALL_TIMEOUT_S = 20 * 60L
         private const val SUMMARY_TIMEOUT_S = 60L
-        private const val ORPHANS = "npm was killed: scripts it started may still be running in slot A. " +
-            "Force-stop the app before installing again."
+        private const val ORPHANS = "npm was killed without its process group: scripts it started may " +
+            "still be running in slot A. Force-stop the app before installing again."
 
         /**
          * Walks the installed tree (argv[1] is the slot, the tree is its lib/node_modules, as a

@@ -45,8 +45,10 @@ app/                 the Android app
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
-  fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), Tar (unpacks npm)
-native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs;
+  fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
+                     process group), Tar (unpacks npm)
+native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
+                     (leads a process group when NodeRuntime asks);
                      spike-addon/ (R2 test addon, two builds; leaves with the spike screen)
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
