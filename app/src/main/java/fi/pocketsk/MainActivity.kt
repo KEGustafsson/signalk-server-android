@@ -188,25 +188,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Runs the node [start] makes, appends its output and exit to [report]; true when it exited 0. */
-    private fun exec(report: StringBuilder, start: () -> NodeProcess): Boolean = try {
-        val node = start()
-        val process = node.process
-        val text = process.inputStream.bufferedReader().readText()
-        val finished = process.waitFor(SPIKE_TIMEOUT_S, TimeUnit.SECONDS)
-        if (!finished) {
-            node.kill()
-            process.waitFor()
+    private fun exec(report: StringBuilder, start: () -> NodeProcess): Boolean {
+        val node = try {
+            start()
+        } catch (e: IOException) {
+            // EACCES here is SELinux refusing the exec; ENOENT is the file not being there; a
+            // Tar.TarException is a damaged npm asset.
+            report.appendLine("failed: $e")
+            return false
         }
-        val grouped = node.reap()
-        report.appendLine(text.trimEnd())
-        if (!grouped) report.appendLine("(no process group: the launcher could not make one)")
-        report.appendLine(if (finished) "exit ${process.exitValue()}" else "timed out after ${SPIKE_TIMEOUT_S}s")
-        finished && process.exitValue() == 0
-    } catch (e: IOException) {
-        // EACCES here is SELinux refusing the exec; ENOENT is the file not being there; a
-        // Tar.TarException is a damaged npm asset.
-        report.appendLine("failed: $e")
-        false
+        val process = node.process
+        var finished = false
+        var failure: IOException? = null
+        try {
+            report.appendLine(process.inputStream.bufferedReader().readText().trimEnd())
+            finished = process.waitFor(SPIKE_TIMEOUT_S, TimeUnit.SECONDS)
+        } catch (e: IOException) {
+            failure = e
+        } finally {
+            // However the reading ended, nothing the run started outlives it.
+            if (!finished) {
+                node.kill()
+                process.waitFor()
+            }
+            if (!node.reap()) report.appendLine("(no process group: the launcher could not make one)")
+        }
+        report.appendLine(
+            when {
+                failure != null -> "failed: $failure"
+                finished -> "exit ${process.exitValue()}"
+                else -> "timed out after ${SPIKE_TIMEOUT_S}s"
+            },
+        )
+        return finished && process.exitValue() == 0
     }
 
     private companion object {

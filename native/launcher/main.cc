@@ -31,37 +31,52 @@ namespace {
 
 constexpr const char* kGroupFile = "POCKETSK_GROUP_FILE";
 
-// Leads a new process group and records it, when NodeRuntime asked for that. The file is written
-// whole and renamed into place, so a reader sees a complete id or nothing; it is written only
-// once the group exists, so its presence means exactly that. Nothing has been started yet at
-// this point, so a reader that finds no file has nothing but this process to signal. A failure
-// is reported on stderr, which is the server's log, and Node still starts: a process that can
-// only be stopped by itself is better than none.
-void LeadGroup() {
-  const char* path = getenv(kGroupFile);
-  if (path == nullptr) return;
-  const std::string target(path);
-  unsetenv(kGroupFile);
-  if (setpgid(0, 0) != 0) {
-    fprintf(stderr, "pocketsk launcher: setpgid: %s\n", strerror(errno));
-    return;
-  }
+// Writes this process's pid to `target`, whole and renamed into place, so a reader sees a
+// complete id or nothing. False, said on stderr, when it could not.
+bool Record(const std::string& target) {
   const std::string partial = target + ".part";
   FILE* f = fopen(partial.c_str(), "w");
   if (f == nullptr) {
     fprintf(stderr, "pocketsk launcher: %s: %s\n", partial.c_str(), strerror(errno));
-    return;
+    return false;
   }
   const bool written = fprintf(f, "%d\n", static_cast<int>(getpid())) > 0;
   if (fclose(f) != 0 || !written || rename(partial.c_str(), target.c_str()) != 0) {
     fprintf(stderr, "pocketsk launcher: %s: %s\n", target.c_str(), strerror(errno));
     unlink(partial.c_str());
+    return false;
   }
+  return true;
+}
+
+// Leads a new process group and records it, when NodeRuntime asked for that. A record exists
+// exactly when this process leads a group of its own, and nothing has been started yet when it
+// is written, so a reader that finds none has nothing but this process to signal. That holds on
+// every failure too: when the record cannot be written the group is given up again (this
+// process rejoins its parent's, as a node started without the variable would be), since a group
+// nobody can name would hide whatever is started in it. Failures are reported on stderr, which is
+// the server's log, and Node still starts, stoppable as a single process. Only when the group can
+// neither be recorded nor left is there no truthful state to start in; false then.
+bool LeadGroup() {
+  const char* path = getenv(kGroupFile);
+  if (path == nullptr) return true;
+  const std::string target(path);
+  unsetenv(kGroupFile);
+  const pid_t parentGroup = getpgrp();
+  if (setpgid(0, 0) != 0) {
+    fprintf(stderr, "pocketsk launcher: setpgid: %s\n", strerror(errno));
+    return true;
+  }
+  if (Record(target)) return true;
+  if (setpgid(0, parentGroup) == 0) return true;
+  fprintf(stderr, "pocketsk launcher: rejoining group %d: %s\n", static_cast<int>(parentGroup),
+          strerror(errno));
+  return false;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  LeadGroup();
+  if (!LeadGroup()) return 1;
   return node::Start(argc, argv);
 }
