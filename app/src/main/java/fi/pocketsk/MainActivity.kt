@@ -10,10 +10,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 /**
@@ -186,25 +188,56 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Runs the process [start] makes, appends its output and exit to [report]; true when it exited 0. */
-    private fun exec(report: StringBuilder, start: () -> Process): Boolean = try {
-        val process = start()
-        val text = process.inputStream.bufferedReader().readText()
+    /** Runs the node [start] makes, appends its output and exit to [report]; true when it exited 0. */
+    private fun exec(report: StringBuilder, start: () -> NodeProcess): Boolean {
+        val node = try {
+            start()
+        } catch (e: IOException) {
+            // EACCES here is SELinux refusing the exec; ENOENT is the file not being there; a
+            // Tar.TarException is a damaged npm asset.
+            report.appendLine("failed: $e")
+            return false
+        }
+        val process = node.process
+        // Read on a thread of its own, so the timeout runs while the node does: a read on this
+        // thread ends only at end of stream, which a hung node, or a child holding its output,
+        // never reaches, so the run would never end and every button would stay off.
+        val out = StringBuilder()
+        val failure = AtomicReference<IOException?>()
+        val reader = thread(name = "spike-node-out", isDaemon = true) {
+            try {
+                process.inputStream.bufferedReader().forEachLine { synchronized(out) { out.appendLine(it) } }
+            } catch (e: IOException) {
+                failure.set(e)
+            }
+        }
         val finished = process.waitFor(SPIKE_TIMEOUT_S, TimeUnit.SECONDS)
-        if (!finished) process.destroyForcibly()
-        report.appendLine(text.trimEnd())
-        report.appendLine(if (finished) "exit ${process.exitValue()}" else "timed out after ${SPIKE_TIMEOUT_S}s")
-        finished && process.exitValue() == 0
-    } catch (e: IOException) {
-        // EACCES here is SELinux refusing the exec; ENOENT is the file not being there; a
-        // Tar.TarException is a damaged npm asset.
-        report.appendLine("failed: $e")
-        false
+        if (!finished) {
+            node.kill()
+            process.waitFor()
+        }
+        // Nothing the run started outlives it, and reaping closes the pipe for the reader.
+        val grouped = node.reap()
+        reader.join(DRAIN_MS)
+        report.appendLine(synchronized(out) { out.toString() }.trimEnd())
+        if (!grouped) report.appendLine("(no process group: the launcher could not make one)")
+        val failed = failure.get()
+        report.appendLine(
+            when {
+                failed != null -> "failed: $failed"
+                finished -> "exit ${process.exitValue()}"
+                else -> "timed out after ${SPIKE_TIMEOUT_S}s"
+            },
+        )
+        return failed == null && finished && process.exitValue() == 0
     }
 
     private companion object {
         const val PAD_DP = 16
         const val SPIKE_TIMEOUT_S = 20L
+
+        /** How long a run's report waits for the last of its output once its group is gone. */
+        const val DRAIN_MS = 2_000L
 
         /** native/spike-addon: one build linked like a generic prebuild, one linked to libnode.so. */
         val ADDONS = listOf("spike_napi", "spike_napi_linked")

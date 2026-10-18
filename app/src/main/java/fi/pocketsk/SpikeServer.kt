@@ -1,10 +1,12 @@
 package fi.pocketsk
 
 import android.content.Context
+import fi.pocketsk.node.NodeProcess
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.signalk.SignalKClient
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -39,7 +41,7 @@ object SpikeServer {
         fun onReady(ms: Long, generation: Long)
     }
 
-    @Volatile private var process: Process? = null
+    @Volatile private var process: NodeProcess? = null
     @Volatile private var observer: Observer? = null
     @Volatile private var latest = ""
 
@@ -53,7 +55,12 @@ object SpikeServer {
     private val tail = ArrayDeque<String>()
     private var lastPost = 0L
 
-    val isRunning: Boolean get() = process?.isAlive == true
+    /**
+     * True from the start until the run has ended and what was left of its group has been killed
+     * ([NodeProcess.reap]), not only while the server itself is alive: a plugin's helper can
+     * outlive it, still holding a port or a serial device, and a new start must not race it.
+     */
+    val isRunning: Boolean get() = process != null
 
     /** True while run [generation] is the one running, neither stopped nor replaced. */
     fun isCurrent(generation: Long): Boolean = generation == this.generation && isRunning
@@ -93,9 +100,10 @@ object SpikeServer {
         pendingReady = null
         val run = ++generation
         val started = System.nanoTime()
-        val p = runtime.spawn(main.absolutePath, "--sample-nmea0183-data")
-        process = p
-        thread(name = "spike-server-log") {
+        val node = runtime.spawn(main.absolutePath, "--sample-nmea0183-data")
+        val p = node.process
+        process = node
+        val reader = thread(name = "spike-server-log") {
             try {
                 logFile.bufferedWriter().use { log ->
                     p.inputStream.bufferedReader().forEachLine { line ->
@@ -108,11 +116,19 @@ object SpikeServer {
                 // Broadly, as on any plain thread. A server nobody reads fills its pipe and
                 // stalls, so it goes when its reader does.
                 add("log failed: $e", now = true)
-                p.destroyForcibly()
+                node.kill()
             }
+        }
+        // The end is waited for here, not after the reading: a plugin's helper that outlives the
+        // server holds its output open, so the reading would never end and the helper never be
+        // killed. Reaping it closes the pipe, and the reader then drains what is left.
+        thread(name = "spike-server-exit") {
             val code = p.waitFor()
-            if (process === p) process = null
-            add("exit $code", now = true)
+            val whole = node.reap()
+            reader.join(DRAIN_MS)
+            // Freed before the last report, so the screen it reaches already offers Start again.
+            ended(node)
+            add(if (whole) "exit $code" else "exit $code (no process group: anything it started may still run)", now = true)
         }
         thread(name = "spike-server-ready") {
             val client = SignalKClient(context, BASE, null)
@@ -130,14 +146,28 @@ object SpikeServer {
     }
 
     /**
-     * Stops the server, if one runs: SIGTERM, which Signal K shuts down on cleanly. A readiness
-     * still on its way belongs to the run stopped here, so it opens nothing.
+     * Stops the server, if one runs: SIGTERM to its process group, the server and whatever its
+     * plugins started, which Signal K shuts down on cleanly, and SIGKILL to the group if the
+     * server is still there [STOP_TIMEOUT_S] seconds later; what is left once it has gone is
+     * killed then. A readiness still on its way belongs to the run stopped here, so
+     * it opens nothing.
      */
     @Synchronized
     fun stop() {
         generation++
         pendingReady = null
-        process?.destroy()
+        val node = process ?: return
+        node.terminate()
+        // PLAN §6: a server that has not ended 10 s after SIGTERM is killed, with its group.
+        thread(name = "spike-server-stop", isDaemon = true) {
+            if (!node.process.waitFor(STOP_TIMEOUT_S, TimeUnit.SECONDS)) node.kill()
+        }
+    }
+
+    /** Frees the slot for the next start once run [node] has ended and been reaped. */
+    @Synchronized
+    private fun ended(node: NodeProcess) {
+        if (process === node) process = null
     }
 
     /**
@@ -169,4 +199,8 @@ object SpikeServer {
     private const val UPDATE_INTERVAL_NS = 500_000_000L
     /** PLAN §5.2 gives the smoke test 60 s and promotion 90 s; a first start on a phone gets the longer. */
     private const val READY_TIMEOUT_NS = 90_000_000_000L
+    private const val STOP_TIMEOUT_S = 10L
+
+    /** How long the exit report waits for the last of the output once the group is gone. */
+    private const val DRAIN_MS = 2_000L
 }
