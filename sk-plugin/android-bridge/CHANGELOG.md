@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Bluetooth serial devices: the phone's paired NMEA 0183 senders and AIS receivers that the owner
+  switched on in the app's Serial devices card, read like USB ones, under
+  `$source: android.bt-<address>.<talker>`. Setting: Bluetooth on or off. The status line shows
+  whether each is connected or being dialled again.
+
 ## 0.4.0
 
 - USB serial devices plugged into the phone: their NMEA 0183, parsed with the server's own parser,

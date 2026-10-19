@@ -129,6 +129,7 @@ class SignalKService : Service() {
             ACTION_PROMOTED -> if (supervisor.isActive) supervisor.promoted() else stopIfIdle()
             ACTION_PERMISSIONS -> if (foreground) permissionsChanged() else stopIfIdle()
             ACTION_LEVEL -> if (foreground) bridge.level() else stopIfIdle()
+            ACTION_DEVICES -> if (foreground) bridge.devicesChanged() else stopIfIdle()
         }
         return START_STICKY
     }
@@ -399,6 +400,7 @@ class SignalKService : Service() {
         private const val ACTION_PROMOTED = "fi.pocketsk.action.PROMOTED"
         private const val ACTION_PERMISSIONS = "fi.pocketsk.action.PERMISSIONS"
         private const val ACTION_LEVEL = "fi.pocketsk.action.LEVEL"
+        private const val ACTION_DEVICES = "fi.pocketsk.action.DEVICES"
         private const val CHANNEL = "server"
         private const val ALERT_CHANNEL = "server-alerts"
         private const val NOTIFICATION_ID = 1
@@ -465,6 +467,14 @@ class SignalKService : Service() {
          */
         fun level(context: Context) {
             if (ServerPrefs(context).running) send(context, ACTION_LEVEL)
+        }
+
+        /**
+         * The owner chose or dropped a Bluetooth device in the Dock: a running server's bridge
+         * looks at its serial devices again. Gated like [permissionsChanged].
+         */
+        fun devicesChanged(context: Context) {
+            if (ServerPrefs(context).running) send(context, ACTION_DEVICES)
         }
 
         /**

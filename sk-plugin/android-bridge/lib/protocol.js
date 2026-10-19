@@ -12,14 +12,15 @@
  *   {"t":"sensor","path":"navigation.courseOverGroundTrue","value":null,"src":"android.gnss","ts":1760000000000}
  *     (null: the sensor has no reading now, so the server stops showing the last one as current)
  *   {"t":"devices","list":[{"id":"usb-1a86-7523","kind":"usb","name":"USB Serial","baud":4800,"state":"open"}]}
- *     (the serial devices plugged into the phone, whenever that changes; state is open,
- *     needs-permission, idle or error, with a detail for an error)
+ *     (the serial devices plugged into the phone or chosen among its paired Bluetooth ones, kind
+ *     usb or bt, whenever that changes; state is open, connecting, needs-permission, idle or
+ *     error, with a detail for an error or a redial)
  *   {"t":"serial","id":"usb-1a86-7523","data":"JEdQUk1DLC4uLg0K"}
  *     (bytes a device sent, as they came, base64; lib/serial.js makes sentences of them)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment"],
  *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1},"bowOffsetDeg":0,
- *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400}}}
+ *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400},"bt":true}}
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -43,7 +44,7 @@ const DEVICE_ID = /^[a-z]+-[a-z0-9-]{1,64}$/;
 /** NMEA 0183's own rate, and those a device may be read at (the app ignores any other). */
 const DEFAULT_BAUD = 4800;
 const BAUD_RATES = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800];
-const DEVICE_STATES = ["open", "needs-permission", "idle", "error"];
+const DEVICE_STATES = ["open", "connecting", "needs-permission", "idle", "error"];
 /** More devices than this in one list is a broken peer; more rates than the app takes, too. */
 const MAX_DEVICES = 32;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -163,8 +164,9 @@ function baud(value, fallback = DEFAULT_BAUD) {
 }
 
 /**
- * The serial part of a subscribe: USB on unless turned off, the default rate, and the rate of
- * each device the settings name (an entry without a known id or rate is left out).
+ * The serial part of a subscribe: USB on unless turned off, the default rate, the rate of each
+ * device the settings name (an entry without a known id or rate is left out), and Bluetooth on
+ * unless turned off (the app dials only the paired devices the owner chose in it).
  */
 function serialMessage(options = {}) {
   const devices = {};
@@ -175,7 +177,7 @@ function serialMessage(options = {}) {
       devices[d.id.trim()] = Number(d.baud);
     }
   }
-  return { usb: options.usb !== false, baud: baud(options.serialBaud), devices };
+  return { usb: options.usb !== false, baud: baud(options.serialBaud), devices, bt: options.bluetooth !== false };
 }
 
 /**

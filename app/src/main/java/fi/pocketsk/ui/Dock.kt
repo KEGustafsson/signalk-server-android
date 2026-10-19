@@ -13,6 +13,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,8 +34,8 @@ import java.util.Date
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, what the phone grants it, the phone's sensors, its USB devices and the newest of its
- * log. The Power card, the diagnostics bundle and backup come with their own steps.
+ * rollback, what the phone grants it, the phone's sensors, its serial devices and the newest of
+ * its log. The Power card, the diagnostics bundle and backup come with their own steps.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier = Modifier) {
@@ -78,37 +79,63 @@ private fun SensorsCard(model: AppModel, actions: AppActions) {
 }
 
 /**
- * The USB serial devices plugged into the phone (docs/PLAN.md §8.1, Devices): how each stands,
- * the bytes read, and Allow for one waiting for the owner's permission. The baud rates are the
- * bridge plugin's settings, since the plugin is what reads the devices' sentences.
+ * The serial devices (docs/PLAN.md §8.1, Devices): the USB ones plugged in, each with how it
+ * stands, the bytes read and Allow for one waiting for the owner's permission, and the paired
+ * Bluetooth ones, each with a switch that chooses it, since pairing alone says nothing (headsets
+ * and cars are paired too). The USB baud rates are the bridge plugin's settings, since the plugin
+ * is what reads the devices' sentences.
  */
 @Composable
 private fun DevicesCard(model: AppModel, actions: AppActions) {
-    val context = LocalContext.current
+    val usb = model.devices.filter { it.kind == BridgeProtocol.USB }
+    val bluetooth = model.devices.filter { it.kind == BridgeProtocol.BLUETOOTH }
     Section(stringResource(R.string.dock_devices_title)) {
         Text(stringResource(R.string.dock_devices_body), style = MaterialTheme.typography.bodySmall)
-        when {
-            !model.server.isActive -> Text(stringResource(R.string.dock_devices_stopped))
-            model.devices.isEmpty() -> Text(stringResource(R.string.dock_devices_none))
+        if (!model.server.isActive) {
+            Text(stringResource(R.string.dock_devices_stopped))
+            return@Section
         }
-        for (d in model.devices) {
-            val label = "${d.name} (${d.id})"
+        Text(stringResource(R.string.dock_devices_usb), style = MaterialTheme.typography.titleSmall)
+        if (usb.isEmpty()) Text(stringResource(R.string.dock_devices_none))
+        for (d in usb) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    when (d.state) {
-                        BridgeProtocol.Device.OPEN ->
-                            stringResource(R.string.dock_device_open, label, d.baud, Formatter.formatShortFileSize(context, d.bytes))
-                        BridgeProtocol.Device.NEEDS_PERMISSION -> stringResource(R.string.dock_device_permission, label)
-                        BridgeProtocol.Device.IDLE -> stringResource(R.string.dock_device_idle, label)
-                        else -> stringResource(R.string.dock_device_error, label, d.detail.orEmpty())
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+                Text(deviceText(d), modifier = Modifier.weight(1f))
                 if (d.state == BridgeProtocol.Device.NEEDS_PERMISSION) {
                     OutlinedButton(onClick = { actions.allowDevice(d.address) }) { Text(stringResource(R.string.dock_device_allow)) }
                 }
             }
         }
+        Text(stringResource(R.string.dock_devices_bluetooth), style = MaterialTheme.typography.titleSmall)
+        when {
+            !model.permissions.bluetooth -> {
+                Text(stringResource(R.string.dock_bluetooth_why), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = actions::askBluetooth) { Text(stringResource(R.string.dock_bluetooth_allow)) }
+            }
+            bluetooth.isEmpty() -> Text(stringResource(R.string.dock_bluetooth_none))
+        }
+        for (d in bluetooth) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (d.chosen) deviceText(d) else "${d.name} (${d.id})", modifier = Modifier.weight(1f))
+                Switch(checked = d.chosen, onCheckedChange = { actions.chooseBluetooth(d.address, it) })
+            }
+        }
+    }
+}
+
+/** One device's line: its name and id, then how it stands. */
+@Composable
+private fun deviceText(d: BridgeProtocol.Device): String {
+    val label = "${d.name} (${d.id})"
+    val read = Formatter.formatShortFileSize(LocalContext.current, d.bytes)
+    return when (d.state) {
+        BridgeProtocol.Device.OPEN ->
+            if (d.kind == BridgeProtocol.BLUETOOTH) stringResource(R.string.dock_device_connected, label, read)
+            else stringResource(R.string.dock_device_open, label, d.baud, read)
+        BridgeProtocol.Device.CONNECTING ->
+            d.detail?.let { stringResource(R.string.dock_device_retrying, label, it) } ?: stringResource(R.string.dock_device_connecting, label)
+        BridgeProtocol.Device.NEEDS_PERMISSION -> stringResource(R.string.dock_device_permission, label)
+        BridgeProtocol.Device.IDLE -> stringResource(R.string.dock_device_idle, label)
+        else -> stringResource(R.string.dock_device_error, label, d.detail.orEmpty())
     }
 }
 

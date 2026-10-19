@@ -60,6 +60,8 @@ internal data class PermissionsView(
     val notifications: Boolean? = null,
     val localNetwork: Boolean? = null,
     val location: Boolean = false,
+    /** Talking to paired Bluetooth devices (BLUETOOTH_CONNECT, Android 12+), for the serial devices. */
+    val bluetooth: Boolean = true,
     val batteryUnrestricted: Boolean = false,
     val autostart: Boolean = false,
 )
@@ -83,4 +85,8 @@ internal interface AppActions {
     fun levelAttitude()
     /** Android's dialog that allows the app the USB device at [address]. */
     fun allowDevice(address: String)
+    /** Reads the paired Bluetooth device at [address], or stops reading it. */
+    fun chooseBluetooth(address: String, chosen: Boolean)
+    /** Asks for the Bluetooth permission the serial devices need. */
+    fun askBluetooth()
 }
