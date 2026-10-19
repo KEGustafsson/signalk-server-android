@@ -199,9 +199,7 @@ class MainActivity : ComponentActivity() {
             SignalKService.devicesChanged(this@MainActivity)
         }
 
-        override fun askBluetooth() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) askBluetoothLauncher.launch(android.Manifest.permission.BLUETOOTH_CONNECT)
-        }
+        override fun askBluetooth() = askBluetoothPermission()
     }
 
     private fun startServer() {
@@ -273,6 +271,25 @@ class MainActivity : ComponentActivity() {
         }
         prefs.locationAsked = true
         askLocationLauncher.launch(arrayOf(fine, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+
+    /**
+     * Asks for Bluetooth (Nearby devices) on Android 12 and later, or, once Android has stopped
+     * showing the dialog, opens this app's settings page, as [askLocation] does.
+     */
+    private fun askBluetoothPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val connect = android.Manifest.permission.BLUETOOTH_CONNECT
+        if (prefs.bluetoothAsked && !shouldShowRequestPermissionRationale(connect)) {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // No settings page on this build: the request below is all there is.
+            }
+        }
+        prefs.bluetoothAsked = true
+        askBluetoothLauncher.launch(connect)
     }
 
     /**

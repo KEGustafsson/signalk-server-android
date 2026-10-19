@@ -81,10 +81,16 @@ internal class BluetoothSerial(
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED &&
-                intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR) == BluetoothAdapter.STATE_ON
-            ) {
-                for (l in links.values) l.waiter.wake()
+            if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
+                when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                    // Every link closed and forgotten, so none stays blocked in a read on a dead
+                    // socket; the look below dials them afresh, to wait for the adapter to come back.
+                    BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> {
+                        for (l in links.values.toList()) shut(l)
+                        links.clear()
+                    }
+                    BluetoothAdapter.STATE_ON -> for (l in links.values) l.waiter.wake()
+                }
             }
             look()
         }
