@@ -107,11 +107,13 @@ android {
         // Most of the APK is libnode.so, once per ABI. Every build also makes an arm64-only APK,
         // which fits nearly every phone at minSdk 29 at a fraction of the size, next to the
         // universal one for 32-bit phones, the emulator and ChromeOS. Both carry the same
-        // versionCode and signer, so a phone can move from one to the other.
+        // versionCode and signer, so a phone can move from one to the other. The x86_64 split is
+        // built for Lint's ChromeOsAbiSupport check, which wants it in the list; it is not
+        // published, since the universal APK covers ChromeOS already.
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a")
+            include("arm64-v8a", "x86_64")
             isUniversalApk = true
         }
     }
