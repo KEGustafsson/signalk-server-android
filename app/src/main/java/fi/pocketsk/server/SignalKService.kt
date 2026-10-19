@@ -449,9 +449,12 @@ class SignalKService : Service() {
          * From a screen of the app in front: a permission may have been granted (location, from
          * the Dock or the system settings). A running server renews its foreground service with
          * the types it may now hold, and the bridge's sensors try again; nothing when none runs.
+         * Gated on [ServerPrefs.running] like [promoted], not on the published state, which reads
+         * Stopped while a start at boot has not yet reported; a service with nothing in the
+         * foreground ignores the command.
          */
         fun permissionsChanged(context: Context) {
-            if (ServerStatus.state.isActive) send(context, ACTION_PERMISSIONS)
+            if (ServerPrefs(context).running) send(context, ACTION_PERMISSIONS)
         }
 
         /**
