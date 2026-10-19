@@ -1,5 +1,6 @@
 package fi.pocketsk.ui
 
+import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -17,11 +18,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
 import fi.pocketsk.ServerActions
+import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.server.ServerState
@@ -30,9 +33,8 @@ import java.util.Date
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, what the phone grants it, the phone's sensors and the newest of its log. The cards
- * the bridge brings later (Devices, Power) and the diagnostics bundle and backup come with their
- * own steps.
+ * rollback, what the phone grants it, the phone's sensors, its USB devices and the newest of its
+ * log. The Power card, the diagnostics bundle and backup come with their own steps.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier = Modifier) {
@@ -48,6 +50,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         UpdatesCard(model, actions)
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
         SensorsCard(model, actions)
+        DevicesCard(model, actions)
         Section(stringResource(R.string.dock_log_title)) {
             LogText(model.log.ifEmpty { stringResource(R.string.dock_log_empty) })
         }
@@ -70,6 +73,41 @@ private fun SensorsCard(model: AppModel, actions: AppActions) {
         Text(stringResource(R.string.dock_level_why), style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = actions::levelAttitude, enabled = model.server is ServerState.Running) {
             Text(stringResource(R.string.dock_level))
+        }
+    }
+}
+
+/**
+ * The USB serial devices plugged into the phone (docs/PLAN.md §8.1, Devices): how each stands,
+ * the bytes read, and Allow for one waiting for the owner's permission. The baud rates are the
+ * bridge plugin's settings, since the plugin is what reads the devices' sentences.
+ */
+@Composable
+private fun DevicesCard(model: AppModel, actions: AppActions) {
+    val context = LocalContext.current
+    Section(stringResource(R.string.dock_devices_title)) {
+        Text(stringResource(R.string.dock_devices_body), style = MaterialTheme.typography.bodySmall)
+        when {
+            !model.server.isActive -> Text(stringResource(R.string.dock_devices_stopped))
+            model.devices.isEmpty() -> Text(stringResource(R.string.dock_devices_none))
+        }
+        for (d in model.devices) {
+            val label = "${d.name} (${d.id})"
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when (d.state) {
+                        BridgeProtocol.Device.OPEN ->
+                            stringResource(R.string.dock_device_open, label, d.baud, Formatter.formatShortFileSize(context, d.bytes))
+                        BridgeProtocol.Device.NEEDS_PERMISSION -> stringResource(R.string.dock_device_permission, label)
+                        BridgeProtocol.Device.IDLE -> stringResource(R.string.dock_device_idle, label)
+                        else -> stringResource(R.string.dock_device_error, label, d.detail.orEmpty())
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                if (d.state == BridgeProtocol.Device.NEEDS_PERMISSION) {
+                    OutlinedButton(onClick = { actions.allowDevice(d.address) }) { Text(stringResource(R.string.dock_device_allow)) }
+                }
+            }
         }
     }
 }

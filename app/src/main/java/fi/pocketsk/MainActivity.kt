@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import fi.pocketsk.bridge.UsbSerial
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.Slots
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity() {
         val wasActive = model.server.isActive
         model.server = state
         model.log = ServerStatus.log(this).tail(LOG_LINES)
+        model.devices = ServerStatus.devices
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
@@ -181,6 +183,8 @@ class MainActivity : ComponentActivity() {
         override fun finishSetup(startServer: Boolean) = this@MainActivity.finishSetup(startServer)
         override fun openRuntimeChecks() = this@MainActivity.openRuntimeChecks()
         override fun levelAttitude() = SignalKService.level(this@MainActivity)
+
+        override fun allowDevice(address: String) = UsbSerial.askPermission(this@MainActivity, address)
     }
 
     private fun startServer() {

@@ -93,6 +93,15 @@
     <string name="dock_sensors_body">The phone\'s battery, barometer, GPS, attitude, rate of turn, compass and cabin sensors reach Signal K through the Pocket SK Android bridge plugin. Turn each on or off, set its period and the bow offset in the plugin\'s settings in the admin UI.</string>
     <string name="dock_level_why">With the phone in its holder and the boat lying level and still, tap Level now: roll and pitch then read zero as the phone sits. Until then the phone is taken to lie flat, screen up, with its top towards the bow.</string>
     <string name="dock_level">Level now</string>
+    <string name="dock_devices_title">USB devices</string>
+    <string name="dock_devices_body">Plug a USB serial adapter (a GPS or AIS receiver, an NMEA 0183 interface) into the phone and allow Pocket SK to use it: its NMEA 0183 reaches Signal K through the Android bridge plugin, as the source android.&lt;device&gt;. Set each device\'s baud rate in the plugin\'s settings in the admin UI; 4800 unless set.</string>
+    <string name="dock_devices_none">No USB serial device is plugged in.</string>
+    <string name="dock_devices_stopped">USB devices are read while the server runs.</string>
+    <string name="dock_device_open">%1$s · baud rate %2$d · %3$s read</string>
+    <string name="dock_device_permission">%1$s · waiting for your permission</string>
+    <string name="dock_device_idle">%1$s · USB is off in the bridge plugin\'s settings</string>
+    <string name="dock_device_error">%1$s · %2$s</string>
+    <string name="dock_device_allow">Allow</string>
     <string name="dock_log_title">Log</string>
     <string name="dock_log_empty">Nothing logged yet</string>
     <string name="dock_app_version">App %1$s (%2$s)</string>

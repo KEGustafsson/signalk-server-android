@@ -3,6 +3,7 @@ package fi.pocketsk.bridge
 import fi.pocketsk.bridge.BridgeProtocol.Incoming
 import fi.pocketsk.bridge.BridgeProtocol.Subscription
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,6 +77,50 @@ class BridgeProtocolTest {
             BridgeProtocol.parse("""{"t":"subscribe","sensors":["attitude"],"bowOffsetDeg":"aft"}"""),
         )
     }
+
+    @Test
+    fun theSerialDevicesAreToldOfAndTheirBytesPassedOnAsBase64() {
+        val devices = listOf(
+            BridgeProtocol.Device("usb-1a86-7523", BridgeProtocol.USB, "USB Serial", 4800, BridgeProtocol.Device.OPEN, bytes = 99, address = "/dev/bus/usb/001/002"),
+            BridgeProtocol.Device("usb-0403-6001-a1", BridgeProtocol.USB, "FT232R \"AIS\"", 38400, BridgeProtocol.Device.ERROR, "gone"),
+        )
+        // The byte counts and where Android has the device are the Dock's, not the plugin's.
+        assertEquals(
+            """{"t":"devices","list":[{"id":"usb-1a86-7523","kind":"usb","name":"USB Serial","baud":4800,"state":"open"},""" +
+                """{"id":"usb-0403-6001-a1","kind":"usb","name":"FT232R \"AIS\"","baud":38400,"state":"error","detail":"gone"}]}""",
+            BridgeProtocol.devices(devices),
+        )
+        assertEquals("""{"t":"devices","list":[]}""", BridgeProtocol.devices(emptyList()))
+        val read = "${'$'}GPRMC,1\r\n".toByteArray() + ByteArray(8)
+        assertEquals(
+            """{"t":"serial","id":"usb-1a86-7523","data":"JEdQUk1DLDENCg=="}""",
+            BridgeProtocol.serial("usb-1a86-7523", read, 10),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BridgeProtocol.serial("usb-1a86-7523", ByteArray(BridgeProtocol.MAX_SERIAL_BYTES + 1), BridgeProtocol.MAX_SERIAL_BYTES + 1)
+        }
+    }
+
+    @Test
+    fun aSubscribeSaysWhichSerialDevicesToReadAndAtWhatRate() {
+        assertEquals(
+            BridgeProtocol.Serial(usb = true, baud = 9600, bauds = mapOf("usb-0403-6001-a1" to 38400)),
+            serialOf("""{"usb":true,"baud":9600,"devices":{"usb-0403-6001-a1":38400,"usb-1a86-7523":1234,"../etc":4800,"usb-x":"fast"}}"""),
+        )
+        val s = serialOf("""{"usb":true,"baud":4801}""")
+        assertEquals(BridgeProtocol.Serial(usb = true), s)
+        assertEquals(4800, s.baudFor("usb-1a86-7523"))
+        assertEquals(BridgeProtocol.Serial.NONE, serialOf("""{"usb":"yes"}"""))
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("gnss"))),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["gnss"],"serial":[1]}"""),
+        )
+        val many = (1..40).joinToString(",") { """"usb-0000-%04d":4800""".format(it) }
+        assertEquals(BridgeProtocol.MAX_DEVICE_RATES, serialOf("""{"usb":true,"devices":{$many}}""").bauds.size)
+    }
+
+    private fun serialOf(serial: String): BridgeProtocol.Serial =
+        (BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"serial":$serial}""") as Incoming.Subscribe).subscription.serial
 
     @Test
     fun anythingElseIsDroppedWithAReason() {

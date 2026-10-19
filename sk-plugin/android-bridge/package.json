@@ -1,7 +1,7 @@
 {
   "name": "@pocketsk/android-bridge",
-  "version": "0.3.0",
-  "description": "Pocket SK: the Android phone that runs this Signal K server, as a source of data (its battery, barometer, GPS, attitude, compass and cabin sensors) for the server.",
+  "version": "0.4.0",
+  "description": "Pocket SK: the Android phone that runs this Signal K server, as a source of data (its battery, barometer, GPS, attitude, compass and cabin sensors, and the USB serial devices plugged into it) for the server.",
   "main": "index.js",
   "license": "EUPL-1.2",
   "author": "Karl-Erik Gustafsson",

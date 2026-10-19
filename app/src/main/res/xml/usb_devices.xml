@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The USB serial adapters the bridge reads (fi.pocketsk.bridge.UsbSerial), as Android matches
+     them when one is plugged in: it then offers to open the app, and allowing that also allows
+     the app the device. The chip makers' vendor ids, as usb-serial-for-android's drivers know
+     them, and any CDC-ACM device (GPS receivers such as u-blox ones, which name the class on an
+     interface rather than on the device; Android matches either). -->
+<resources>
+    <!-- FTDI (FT232, FT2232; an Actisense NGT-1 is one too) -->
+    <usb-device vendor-id="1027" />
+    <!-- Prolific PL2303 -->
+    <usb-device vendor-id="1659" />
+    <!-- Silicon Labs CP210x -->
+    <usb-device vendor-id="4292" />
+    <!-- QinHeng CH340, CH341 -->
+    <usb-device vendor-id="6790" />
+    <!-- CDC-ACM -->
+    <usb-device class="2" />
+</resources>

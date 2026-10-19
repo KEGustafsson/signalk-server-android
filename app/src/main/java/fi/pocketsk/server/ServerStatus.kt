@@ -3,6 +3,7 @@ package fi.pocketsk.server
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import fi.pocketsk.bridge.BridgeProtocol
 import java.io.File
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -16,11 +17,15 @@ internal object ServerStatus {
 
     /** A screen's view of the server. Called on the main thread. */
     fun interface Observer {
-        /** [state] changed, or the log grew; read [ServerLog.tail] for the latter. */
+        /** [state] changed, or the log grew, or [devices] did; read [ServerLog.tail] for the log. */
         fun onChange(state: ServerState)
     }
 
     @Volatile var state: ServerState = ServerState.Stopped
+        private set
+
+    /** The serial devices the bridge sees, with their byte counts; empty while no server runs. */
+    @Volatile var devices: List<BridgeProtocol.Device> = emptyList()
         private set
 
     private val observers = CopyOnWriteArraySet<Observer>()
@@ -53,6 +58,12 @@ internal object ServerStatus {
     /** From the supervisor, on its threads. */
     fun publish(state: ServerState) {
         this.state = state
+        main.post(::tell)
+    }
+
+    /** From the bridge's USB thread: the devices plugged in, or their byte counts, changed. */
+    fun publishDevices(list: List<BridgeProtocol.Device>) {
+        devices = list
         main.post(::tell)
     }
 

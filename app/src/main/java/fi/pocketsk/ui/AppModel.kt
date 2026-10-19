@@ -3,6 +3,7 @@ package fi.pocketsk.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ServerVersion
@@ -26,6 +27,7 @@ internal class AppModel {
     var available by mutableStateOf<Available>(Available.Unknown)
     var lanAddress by mutableStateOf<String?>(null)
     var permissions by mutableStateOf(PermissionsView())
+    var devices by mutableStateOf<List<BridgeProtocol.Device>>(emptyList())
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -79,4 +81,6 @@ internal interface AppActions {
     fun finishSetup(startServer: Boolean)
     fun openRuntimeChecks()
     fun levelAttitude()
+    /** Android's dialog that allows the app the USB device at [address]. */
+    fun allowDevice(address: String)
 }

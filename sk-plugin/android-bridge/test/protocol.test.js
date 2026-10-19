@@ -3,7 +3,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, toDelta, subscribeMessage, MAX_LINE } = require("../lib/protocol");
+const { parseLine, toDelta, subscribeMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
 
 test("a sensor line becomes a message", () => {
   const r = parseLine('{"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}');
@@ -71,12 +71,14 @@ test("subscribe follows the settings", () => {
     sensors: ["battery", "baro", "gnss", "attitude", "environment"],
     rateHz: { baro: 0.1, gnss: 1, attitude: 1, environment: 0.1 },
     bowOffsetDeg: 0,
+    serial: { usb: true, baud: 4800, devices: {} },
   });
   assert.deepEqual(subscribeMessage({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 2 }), {
     t: "subscribe",
     sensors: ["baro"],
     rateHz: { baro: 0.5, gnss: 1, attitude: 1, environment: 0.1 },
     bowOffsetDeg: 0,
+    serial: { usb: true, baud: 4800, devices: {} },
   });
   assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, attitude: false, environment: false, barometerSeconds: -1 }).sensors, ["battery"]);
   assert.equal(subscribeMessage({ barometerSeconds: "x" }).rateHz.baro, 0.1);
@@ -117,4 +119,62 @@ test("a GNSS position is a sensor value, altitude or not", () => {
   const r = parseLine('{"t":"sensor","path":"navigation.position","value":{"latitude":60.45,"longitude":22.27},"src":"android.gnss","ts":1}');
   assert.equal(r.ok, true);
   assert.deepEqual(toDelta(r.msg).updates[0].values[0], { path: "navigation.position", value: { latitude: 60.45, longitude: 22.27 } });
+});
+
+test("the device list is read, an entry that is not a device left out", () => {
+  const line = JSON.stringify({
+    t: "devices",
+    list: [
+      { id: "usb-1a86-7523", kind: "usb", name: "USB\u0007 Serial", baud: 4800, state: "open" },
+      { id: "usb-0403-6001-a1", kind: "usb", name: "", baud: 38400, state: "error", detail: "gone\n" },
+      { id: "../etc", kind: "usb", name: "x", baud: 4800, state: "open" },
+      { id: "usb-1a86-7524", kind: "USB", name: "x", baud: 4800, state: "open" },
+      { id: "usb-1a86-7525", kind: "usb", name: "x", baud: 4800, state: "lost" },
+      { id: "usb-1a86-7526", kind: "usb", name: "x", baud: "fast", state: "open" },
+      null,
+    ],
+  });
+  assert.deepEqual(parseLine(line), {
+    ok: true,
+    msg: {
+      t: "devices",
+      list: [
+        { id: "usb-1a86-7523", kind: "usb", name: "USB Serial", baud: 4800, state: "open" },
+        { id: "usb-0403-6001-a1", kind: "usb", name: "usb-0403-6001-a1", baud: 38400, state: "error", detail: "gone" },
+      ],
+    },
+  });
+  assert.deepEqual(parseLine('{"t":"devices"}'), { ok: false, reason: "devices without a list" });
+  const many = Array.from({ length: MAX_DEVICES + 1 }, () => ({}));
+  assert.equal(parseLine(JSON.stringify({ t: "devices", list: many })).ok, false);
+});
+
+test("a serial line carries a device's bytes as base64", () => {
+  const r = parseLine('{"t":"serial","id":"usb-1a86-7523","data":"JEdQUk1DLDENCg=="}');
+  assert.equal(r.ok, true);
+  assert.equal(r.msg.id, "usb-1a86-7523");
+  assert.equal(r.msg.data.toString("latin1"), "$GPRMC,1\r\n");
+  assert.deepEqual(parseLine('{"t":"serial","id":"usb 1","data":""}'), { ok: false, reason: "serial with a bad device id" });
+  assert.deepEqual(parseLine('{"t":"serial","id":"usb-1","data":"not base64!"}'), { ok: false, reason: "serial from usb-1 that is not base64" });
+  assert.equal(parseLine('{"t":"serial","id":"usb-1","data":"abc"}').ok, false);
+  assert.equal(parseLine('{"t":"serial","id":"usb-1","data":7}').ok, false);
+});
+
+test("subscribe says which serial devices to read and at what rate", () => {
+  const m = subscribeMessage({
+    usb: false,
+    serialBaud: 38400,
+    serialDevices: [
+      { id: " usb-0403-6001-a1 ", baud: 9600 },
+      { id: "usb-1a86-7523", baud: 1234 },
+      { id: "bad id", baud: 4800 },
+      null,
+      { baud: 4800 },
+    ],
+  });
+  assert.deepEqual(m.serial, { usb: false, baud: 38400, devices: { "usb-0403-6001-a1": 9600 } });
+  assert.equal(subscribeMessage({ serialBaud: 1000 }).serial.baud, 4800);
+  assert.deepEqual(subscribeMessage({ serialDevices: "all" }).serial.devices, {});
+  const lots = Array.from({ length: MAX_DEVICES + 5 }, (_, i) => ({ id: `usb-0000-${i}`, baud: 4800 }));
+  assert.equal(Object.keys(subscribeMessage({ serialDevices: lots }).serial.devices).length, MAX_DEVICES);
 });

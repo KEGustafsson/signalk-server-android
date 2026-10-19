@@ -16,7 +16,8 @@ pipeline and several files were lifted (PLAN §17).
   Material, and nodejs-mobile's `libnode.so` (MIT, Node 24 from digidem's fork; PLAN §4.1) and npm
   (Artistic-2.0, the registry tarball; §4.3), which `node-runtime` downloads pinned by version and
   SHA-256 in `gradle.properties`.
-  `usb-serial-for-android` (MIT) joins with the bridge (PLAN §7).
+  `usb-serial-for-android` (MIT, PLAN §7), which is published on JitPack only: `settings.gradle.kts`
+  takes that repository for the `com.github.mik3y` group alone.
 - Native: NDK r27d (27.3.13750724), the release libnode.so was built with, and CMake 3.31.6,
   the NDK pinned as `nodejsMobile.ndk` in `gradle.properties` (node-runtime builds with it, the
   app strips native libraries with it), CMake in `node-runtime/build.gradle.kts`; AGP fetches
@@ -57,11 +58,12 @@ app/                 the Android app
                      ServerTile (Quick Settings);
                      RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
                      tested)
-  fi.pocketsk.bridge Bridge (the socket and the sensors, run by the service), BridgeServer (Unix
-                     socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
+  fi.pocketsk.bridge Bridge (the socket, the sensors and USB, run by the service), BridgeServer
+                     (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors), SensorPrefs (the level),
-                     BridgePlugin (puts the plugin in place before every start);
-                     BridgeProtocol, Json, Readings, Attitude (pure, tested)
+                     UsbSerial (USB serial adapters, their bytes to the plugin), BridgePlugin (puts
+                     the plugin in place before every start);
+                     BridgeProtocol, Json, Readings, Attitude, SerialIds (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
@@ -73,7 +75,9 @@ native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `n
                      spike-addon/ (R2 test addon, two builds; leaves with the spike screen)
 sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: plain CommonJS, no
                      dependencies, `node --test`; packed into the APK as assets/android-bridge.tar.
-                     lib/protocol.js mirrors BridgeProtocol: change both together
+                     lib/protocol.js mirrors BridgeProtocol: change both together; lib/serial.js
+                     parses USB devices' NMEA 0183 with the server's own parser (found through
+                     require.main, the signalk-server script)
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
 Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `prebuilds/`.

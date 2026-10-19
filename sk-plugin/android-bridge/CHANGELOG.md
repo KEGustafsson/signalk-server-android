@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- USB serial devices plugged into the phone: their NMEA 0183, parsed with the server's own parser,
+  under `$source: android.<device id>.<talker>`, and every sentence given to the server's
+  `nmea0183` event (so its NMEA 0183 TCP server passes it on). Settings: USB on or off, the baud
+  rate (4800 by default) and a rate per device. The status line shows each device and how it stands.
+
 ## 0.3.0
 
 - The boat's attitude from the phone's rotation sensor: `navigation.attitude` roll and pitch, and
