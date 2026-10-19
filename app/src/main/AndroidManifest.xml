@@ -65,6 +65,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- A USB serial adapter plugged in: Android offers the app, and allowing it allows
+                 the bridge the device (UsbSerial). The Dock's coming to the front looks again. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_devices" />
         </activity>
 
         <!-- The runtime checks (spikes R1–R3), opened from the Dock. -->

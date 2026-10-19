@@ -305,5 +305,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.13.0")
+    // USB serial adapters (FTDI, Prolific, Silicon Labs, CH34x, CDC-ACM) for the bridge; MIT.
+    implementation("com.github.mik3y:usb-serial-for-android:3.11.0")
     testImplementation("junit:junit:4.13.2")
 }

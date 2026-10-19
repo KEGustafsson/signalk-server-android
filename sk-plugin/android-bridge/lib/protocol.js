@@ -11,9 +11,15 @@
  *   {"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}
  *   {"t":"sensor","path":"navigation.courseOverGroundTrue","value":null,"src":"android.gnss","ts":1760000000000}
  *     (null: the sensor has no reading now, so the server stops showing the last one as current)
+ *   {"t":"devices","list":[{"id":"usb-1a86-7523","kind":"usb","name":"USB Serial","baud":4800,"state":"open"}]}
+ *     (the serial devices plugged into the phone, whenever that changes; state is open,
+ *     needs-permission, idle or error, with a detail for an error)
+ *   {"t":"serial","id":"usb-1a86-7523","data":"JEdQUk1DLC4uLg0K"}
+ *     (bytes a device sent, as they came, base64; lib/serial.js makes sentences of them)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment"],
- *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1},"bowOffsetDeg":0}
+ *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1},"bowOffsetDeg":0,
+ *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400}}}
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -31,6 +37,16 @@ const MAX_TIME_MS = 8.64e15;
 
 const PATH = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$/;
 const SOURCE = /^android\.[a-z0-9_]+$/;
+
+/** A serial device's id, as the app makes them (fi.pocketsk.bridge.SerialIds): its kind, then its USB ids. */
+const DEVICE_ID = /^[a-z]+-[a-z0-9-]{1,64}$/;
+/** NMEA 0183's own rate, and those a device may be read at (the app ignores any other). */
+const DEFAULT_BAUD = 4800;
+const BAUD_RATES = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800];
+const DEVICE_STATES = ["open", "needs-permission", "idle", "error"];
+/** More devices than this in one list is a broken peer; more rates than the app takes, too. */
+const MAX_DEVICES = 32;
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
 /**
  * Reads one line from the app: `{ok: true, msg}` for a message this plugin knows, `{ok: false,
@@ -51,6 +67,10 @@ function parseLine(line) {
       return { ok: true, msg: { t: "hello", v: msg.v, app: typeof msg.app === "string" ? msg.app : "" } };
     case "sensor":
       return parseSensor(msg);
+    case "devices":
+      return parseDevices(msg);
+    case "serial":
+      return parseSerial(msg);
     default:
       return { ok: false, reason: `unknown type ${JSON.stringify(String(msg.t)).slice(0, 40)}` };
   }
@@ -63,6 +83,40 @@ function parseSensor(msg) {
   // A time no Date can hold would throw in toDelta, inside the socket's data listener: taken as missing.
   const ts = Number.isFinite(msg.ts) && Math.abs(msg.ts) <= MAX_TIME_MS ? msg.ts : null;
   return { ok: true, msg: { t: "sensor", path: msg.path, value: msg.value, src: msg.src, ts } };
+}
+
+/**
+ * The device list. An entry that is not a device is left out rather than losing the others; a
+ * name is cut and cleared of control characters, as it ends up in the plugin's status line.
+ */
+function parseDevices(msg) {
+  if (!Array.isArray(msg.list) || msg.list.length > MAX_DEVICES) return { ok: false, reason: "devices without a list" };
+  const list = [];
+  for (const d of msg.list) {
+    if (d === null || typeof d !== "object") continue;
+    if (typeof d.id !== "string" || !DEVICE_ID.test(d.id)) continue;
+    if (typeof d.kind !== "string" || !/^[a-z]+$/.test(d.kind)) continue;
+    if (!DEVICE_STATES.includes(d.state) || !Number.isInteger(d.baud)) continue;
+    const device = { id: d.id, kind: d.kind, name: text(d.name, 64) || d.id, baud: d.baud, state: d.state };
+    if (typeof d.detail === "string") device.detail = text(d.detail, 200);
+    list.push(device);
+  }
+  return { ok: true, msg: { t: "devices", list } };
+}
+
+/** Bytes from a device, decoded: what Buffer.from would make of anything else is not trusted. */
+function parseSerial(msg) {
+  if (typeof msg.id !== "string" || !DEVICE_ID.test(msg.id)) return { ok: false, reason: "serial with a bad device id" };
+  if (typeof msg.data !== "string" || msg.data.length % 4 !== 0 || !BASE64.test(msg.data)) {
+    return { ok: false, reason: `serial from ${msg.id} that is not base64` };
+  }
+  return { ok: true, msg: { t: "serial", id: msg.id, data: Buffer.from(msg.data, "base64") } };
+}
+
+/** A string for the status line: no control characters, at most `max` long. */
+function text(value, max) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, max);
 }
 
 /**
@@ -102,6 +156,28 @@ function degrees(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** A baud rate from the settings, or `fallback` when it is not one a device may be read at. */
+function baud(value, fallback = DEFAULT_BAUD) {
+  const n = Number(value);
+  return BAUD_RATES.includes(n) ? n : fallback;
+}
+
+/**
+ * The serial part of a subscribe: USB on unless turned off, the default rate, and the rate of
+ * each device the settings name (an entry without a known id or rate is left out).
+ */
+function serialMessage(options = {}) {
+  const devices = {};
+  const entries = Array.isArray(options.serialDevices) ? options.serialDevices : [];
+  for (const d of entries) {
+    if (Object.keys(devices).length >= MAX_DEVICES) break;
+    if (d && typeof d.id === "string" && DEVICE_ID.test(d.id.trim()) && BAUD_RATES.includes(Number(d.baud))) {
+      devices[d.id.trim()] = Number(d.baud);
+    }
+  }
+  return { usb: options.usb !== false, baud: baud(options.serialBaud), devices };
+}
+
 /**
  * What to ask the app for, from the plugin's settings; the app clamps the rates to its own bounds.
  * Everything is on unless turned off, but the heading, which is off unless turned on: a phone's
@@ -125,7 +201,20 @@ function subscribeMessage(options = {}) {
       environment: 1 / seconds(options.environmentSeconds, 10),
     },
     bowOffsetDeg: degrees(options.bowOffset),
+    serial: serialMessage(options),
   };
 }
 
-module.exports = { VERSION, MAX_LINE, SENSORS, parseLine, toDelta, subscribeMessage, validValue };
+module.exports = {
+  VERSION,
+  MAX_LINE,
+  SENSORS,
+  DEFAULT_BAUD,
+  BAUD_RATES,
+  DEVICE_ID,
+  MAX_DEVICES,
+  parseLine,
+  toDelta,
+  subscribeMessage,
+  validValue,
+};

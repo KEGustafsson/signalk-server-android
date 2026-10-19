@@ -69,6 +69,13 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
      */
     private var sogSent = false
     private var cogSent = false
+    /**
+     * The log has said the GPS is waiting for a fix, and whether one has come, since the plugin
+     * asked for GNSS: a receiver indoors may never get one, and without these lines a GPS that
+     * is on and a GPS that is not look the same in the log. A [reapply] keeps them.
+     */
+    private var toldWaiting = false
+    private var hadFix = false
     /** Satellites used in the last fix, from the GNSS status; null until the receiver says. */
     private var satellites: Int? = null
     private val locationManager = app.getSystemService(LocationManager::class.java)
@@ -265,7 +272,11 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         }
         val wantGnss = BridgeProtocol.GNSS in next.sensors
         if (wantGnss && (!gnssOn || gnssRateChanged)) startGnss(next.gnssHz)
-        else if (!wantGnss && gnssOn) stopGnss()
+        else if (!wantGnss && gnssOn) {
+            stopGnss()
+            toldWaiting = false
+            hadFix = false
+        }
         switchMotion(next)
         switchEnvironment(next, rateChanged = next.environmentHz != previousEnvironmentHz)
         previousEnvironmentHz = next.environmentHz
@@ -426,6 +437,12 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         gnssOn = true
         gnssHzOn = hz
         toldNoLocation = false
+        if (!hadFix && !toldWaiting) {
+            toldWaiting = true
+            // Requested anyway: the fixes start once location is turned on.
+            if (!LocationManagerCompat.isLocationEnabled(manager)) note("gnss: location is turned off in the phone's settings; no fixes until it is on")
+            note("gnss: the phone's GPS is on; waiting for a fix, which needs a view of the sky")
+        }
         // The satellites in each fix; a phone that cannot tell, or a grant taken back just now,
         // costs only the count, never the fixes.
         try {
@@ -459,6 +476,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             ),
         ) ?: return
         val ts = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
+        if (!hadFix) {
+            hadFix = true
+            note("gnss: first fix" + (satellites?.let { ", $it satellites" } ?: ""))
+        }
         send(BridgeProtocol.sensor(Readings.POSITION_PATH, fix.position, Readings.SRC_GNSS, ts))
         // A fix without speed or course (a bearing is often dropped at rest) clears the last one sent.
         if (fix.speedOverGround != null || sogSent) send(BridgeProtocol.sensor(Readings.SOG_PATH, fix.speedOverGround, Readings.SRC_GNSS, ts))
