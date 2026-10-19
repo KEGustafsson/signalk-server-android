@@ -90,6 +90,13 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     private val cabinTemperature = Readings.Mean()
     private val cabinHumidity = Readings.Mean()
     private val cabinLight = Readings.Mean()
+    /**
+     * The last value each cabin sensor gave. They report on change only, so a steady cabin sends
+     * nothing for a period, and the value then is still the last one.
+     */
+    private var lastTemperature: Double? = null
+    private var lastHumidity: Double? = null
+    private var lastLight: Double? = null
     private var toldNoEnvironment = false
 
     private val gnssListener = LocationListenerCompat { location -> gnss(location) }
@@ -339,6 +346,9 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             }
             environmentOn = true
             for (m in listOf(cabinTemperature, cabinHumidity, cabinLight)) m.take()
+            lastTemperature = null
+            lastHumidity = null
+            lastLight = null
             for (s in present) manager.registerListener(environmentListener, s, ENVIRONMENT_SAMPLING_US, handler)
             handler.postDelayed(environmentTick, periodMs(next.environmentHz))
         } else if (!want && environmentOn) {
@@ -367,11 +377,21 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         if (northed) send(BridgeProtocol.sensor(Readings.HEADING_MAGNETIC_PATH, e.yaw, Readings.SRC_COMPASS, ts))
     }
 
+    /** Each cabin sensor's mean for the period, or its last value when it reported no change. */
     private fun environment() {
         val ts = System.currentTimeMillis()
-        cabinTemperature.take()?.let { send(BridgeProtocol.sensor(Readings.INSIDE_TEMPERATURE_PATH, it, Readings.SRC_ENVIRONMENT, ts)) }
-        cabinHumidity.take()?.let { send(BridgeProtocol.sensor(Readings.INSIDE_HUMIDITY_PATH, it, Readings.SRC_ENVIRONMENT, ts)) }
-        cabinLight.take()?.let { send(BridgeProtocol.sensor(Readings.INSIDE_ILLUMINANCE_PATH, it, Readings.SRC_ENVIRONMENT, ts)) }
+        (cabinTemperature.take() ?: lastTemperature)?.let {
+            lastTemperature = it
+            send(BridgeProtocol.sensor(Readings.INSIDE_TEMPERATURE_PATH, it, Readings.SRC_ENVIRONMENT, ts))
+        }
+        (cabinHumidity.take() ?: lastHumidity)?.let {
+            lastHumidity = it
+            send(BridgeProtocol.sensor(Readings.INSIDE_HUMIDITY_PATH, it, Readings.SRC_ENVIRONMENT, ts))
+        }
+        (cabinLight.take() ?: lastLight)?.let {
+            lastLight = it
+            send(BridgeProtocol.sensor(Readings.INSIDE_ILLUMINANCE_PATH, it, Readings.SRC_ENVIRONMENT, ts))
+        }
     }
 
     private fun startGnss(hz: Double) {
