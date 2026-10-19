@@ -26,6 +26,17 @@ test("the plugin has a schema whose defaults start it", () => {
   assert.equal(p.id, "pocketsk-android-bridge");
 });
 
+test("the schema shares no object between its parts, as the Signal K plugin CI checks", () => {
+  // Its check takes an object met twice for a circular reference, even when it is only shared.
+  const seen = new WeakSet();
+  (function walk(node, path) {
+    if (node === null || typeof node !== "object") return;
+    assert.ok(!seen.has(node), `${path} is met twice`);
+    seen.add(node);
+    for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`);
+  })(plugin(fakeApp(), { env: {} }).schema(), "schema");
+});
+
 test("without the app's socket the plugin says so and does nothing", () => {
   const app = fakeApp();
   const p = plugin(app, { env: {} });

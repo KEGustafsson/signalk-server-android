@@ -137,7 +137,7 @@ module.exports = function androidBridge(app, deps = {}) {
           title: "Baud rate",
           description: "The rate USB devices are read at, unless set for the device below: 4800 for most NMEA 0183, 38400 for AIS",
           default: DEFAULT_BAUD,
-          enum: BAUD_RATES,
+          enum: [...BAUD_RATES],
         },
         serialDevices: {
           type: "array",
@@ -149,7 +149,7 @@ module.exports = function androidBridge(app, deps = {}) {
             required: ["id", "baud"],
             properties: {
               id: { type: "string", title: "Device id", description: "e.g. usb-0403-6001-a10k1b2c" },
-              baud: { type: "number", title: "Baud rate", default: 38400, enum: BAUD_RATES },
+              baud: { type: "number", title: "Baud rate", default: 38400, enum: [...BAUD_RATES] },
             },
           },
         },
