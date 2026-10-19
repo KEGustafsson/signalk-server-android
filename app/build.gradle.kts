@@ -5,6 +5,7 @@ import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import javax.inject.Inject
 
 plugins {
     id("com.android.application")      // brings the Kotlin compiler with it (AGP built-in Kotlin)
@@ -127,6 +128,52 @@ android {
 // not a silent download from wherever the current foojay index points.
 java {
     toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
+}
+
+// The Android bridge's server half, sk-plugin/android-bridge (docs/PLAN.md §7.2), goes into the
+// APK as a plain tar, its tests left out: it has no dependencies, so BridgePlugin can put it in
+// place for the server before every start with no npm and no network.
+val bridgePluginTar = tasks.register<Tar>("bridgePluginTar") {
+    from(rootProject.file("sk-plugin/android-bridge")) {
+        include("package.json", "index.js", "lib/**", "README.md", "CHANGELOG.md", "LICENSE")
+    }
+    archiveFileName.set("android-bridge.tar")
+    destinationDirectory.set(layout.buildDirectory.dir("intermediates/bridge-plugin"))
+    compression = Compression.NONE
+    // The same tar for the same sources, so BridgePlugin's checksum changes only with them.
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
+/** Puts the bridge plugin's tar into a generated assets directory as BridgePlugin.ASSET. */
+abstract class BridgePluginAsset : DefaultTask() {
+    @get:InputFile abstract val tarball: RegularFileProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:Inject abstract val fs: FileSystemOperations
+
+    @TaskAction
+    fun copy() {
+        fs.sync {
+            from(tarball)
+            into(outputDir)
+        }
+    }
+}
+
+val bridgePluginAsset = tasks.register<BridgePluginAsset>("bridgePluginAsset") {
+    tarball.set(bridgePluginTar.flatMap { it.archiveFile })
+    outputDir.set(layout.buildDirectory.dir("generated/bridge-plugin-asset"))
+}
+
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(bridgePluginAsset, BridgePluginAsset::outputDir) }
+}
+
+// BridgePluginTarTest unpacks the very tar the APK carries with the app's own reader.
+tasks.withType<Test>().configureEach {
+    val tarball = bridgePluginTar.flatMap { it.archiveFile }
+    inputs.file(tarball)
+    doFirst { systemProperty("pocketsk.bridgeTar", tarball.get().asFile.absolutePath) }
 }
 
 /** Hex SHA-256 of a file, for the SBOM. */

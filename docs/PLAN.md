@@ -275,7 +275,7 @@ Plugin → bridge:
 - **Sensors**: fused GNSS (`FusedLocationProvider` or raw `LocationManager`), rotation vector → roll/pitch (device mounting calibration stored in prefs), barometer, battery as `electrical.batteries.phone.*`, cellular signal as `communication.cellular.*`.
 - **Alarms in**: Signal K notifications with `emergency`/`alarm` state → full-screen intent notification with alarm-channel sound, vibration pattern, and a "silence" action that writes back to Signal K. This gives an anchor alarm that wakes a sleeping phone, something no webapp can do.
 
-### 7.2 Plugin side (`@pocketsk/android-bridge`, TypeScript)
+### 7.2 Plugin side (`@pocketsk/android-bridge`, JavaScript)
 
 Published to npm with Signal K keywords so it also appears in the App Store, but the app auto-installs and auto-enables it on first run.
 
@@ -416,7 +416,12 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
    2. ~~`InstallManager` (§5.1–5.2)~~ **Done** (`fi.pocketsk.install`): slots, the `current` link, the smoke test on port 3999, promotion, rollback and `install-history.json`, from the registry or a sideloaded `.tgz`; the health gate's rules as `HealthGate`, for the supervisor of part 3 to feed. The spike screen's third button runs it (the latest release into the slot that is not live), so it can be tried on a phone before the wizard exists. The GitHub mirror (§5.1, source 2) is not in yet.
    3. ~~`SignalKService` (§6)~~ **Done** (`fi.pocketsk.server`): the supervisor, locks, notification, restart policy, log ring and health watch, the health gate fed and rolling back, boot and update restarts. The spike screen's fourth button starts and stops it in place of R4's, the fifth opens the admin UI, and the installer's button moves a running server to the new version. The Quick Settings tile moves to part 4.
    4. ~~The first-run wizard and the Dock's first screen (§5.3, §8.1), with Compose~~ **Done** (`fi.pocketsk.ui`, `MainActivity`): Compose (BOM 2026.09.00, Material 3, activity-compose) joins the build; the wizard, the Dock's first screen and the Quick Settings tile (§6). The spike screen is not removed but moved behind the Dock's "Runtime checks", since the spikes of §3 have still to pass on real phones; it goes when they have.
-   5. The bridge (§7) belongs to milestone M4 and follows once M3's soak (§13) has passed.
+   5. The bridge (§7), in parts. The owner chose to start it before M3's soak (§13) rather than after; runtime and service fixes the phones find are carried into it.
+      1. ~~The socket, the plugin and the first sensors~~ **Done** (`fi.pocketsk.bridge`, `sk-plugin/android-bridge`): `BridgeServer` serves `files/bridge.sock` (a filesystem Unix socket, so only the app's own user reaches it, and each peer's uid is checked), one peer at a time, NDJSON lines of at most 64 KiB, a bounded send queue that drops the oldest; `PhoneSensors` reports the battery (`electrical.batteries.phone.capacity.stateOfCharge`, `.voltage`, `.temperature`, on change, at most every 10 s and at least every 5 min) and the barometer (`environment.outside.pressure`, averaged per subscribed period) while the plugin subscribes to them; `BridgeProtocol` and the plugin's `lib/protocol.js` are the two halves of one protocol (hello, sensor, subscribe). Decisions: the plugin is **plain JavaScript with no dependencies**, not TypeScript, so the APK can carry it as a tar and `BridgePlugin` can put it in place before every start with no build step, no npm and no network; it lives in `files/plugins/android-bridge`, is symlinked into `.signalk/node_modules/@pocketsk/android-bridge` and declared as a `file:` dependency in `.signalk/package.json`, so an App Store install (an `npm install` there) keeps it instead of pruning it; its settings file is written enabled only when there is none. The server finds the socket through `POCKETSK_BRIDGE`.
+      2. GNSS and attitude (the location permission with them, the mounting calibration).
+      3. USB serial (`usb-serial-for-android`, a TCP port per device, providers through the plugin).
+      4. Bluetooth SPP.
+      5. Alarms in: notifications to a full-screen alarm that wakes the phone, and the silence action.
 
 ## 17. Reuse from Crew Radio
 
@@ -448,7 +453,7 @@ Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotl
 | `StatusActivity.kt` | Dock › Logs | Last-N status lines with timestamps, packet-style counters become delta/s, restarts, bytes per device, "Check for updates" row |
 | `MainActivity.kt` permission flow | First-run wizard (§5.3) | Ask-when-needed pattern, "App settings" fallback row when a permission is permanently denied |
 | `ask/AskSheet.kt`, `AskVoice.kt`, `AskRecognizer.kt` | Optional **Ask boat data** in Pocket SK | Same feature against `localhost`; no pairing needed because the server is local. Cheap win once the bridge exists |
-| `.github/workflows/build.yml`, `codeql.yml`, `signalk-ci.yml` | same names | See §10. `build.yml` and `codeql.yml` are in; `signalk-ci.yml` returns with `sk-plugin/android-bridge` |
+| `.github/workflows/build.yml`, `codeql.yml`, `signalk-ci.yml` | same names | See §10. all three are in; `signalk-ci.yml` runs Signal K's plugin CI on `sk-plugin/android-bridge` |
 | `app/build.gradle.kts` | same | Git-derived version, signing guard, SBOM task, lint gates. Add `node-runtime` download task and `extractNativeLibs=true` |
 | `docs/SECURITY.md`, `docs/cra/*` | `docs/` | Threat model and CRA mapping templates; Pocket SK is a network-facing hub, so Annex I mapping matters more here, not less |
 | `CLAUDE.md` | `CLAUDE.md` | Same structure: stack, architecture diagram, threading rules, how to test on devices |
