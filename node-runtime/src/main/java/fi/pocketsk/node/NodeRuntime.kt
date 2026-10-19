@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong
  *     files/sk/slots/{A,B}  npm global prefixes: lib/node_modules/signalk-server, as on a Pi
  *     files/sk/current      symlink to the live slot
  *     files/npm             npm itself (bin/npm-cli.js, lib, node_modules), extracted from the APK
- *     files/bin             node, a symlink into nativeLibraryDir; later the node-gyp shim
+ *     files/bin             node and npm, symlinks to the executable; later the node-gyp shim
  *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
  *     cache/tmp             $TMPDIR
  *     no_backup/groups      one file per running [spawn], the id of its process group ([NodeProcess])
@@ -33,11 +33,13 @@ import java.util.concurrent.atomic.AtomicLong
  * The executable comes from this module's native build; on an ABI it does not build for,
  * [executable] is absent and [isAvailable] false, which is what the spike screen reports.
  *
- * There is no `files/bin/npm` wrapper script, though the plan once drew one. An app that targets
- * API 29 or later may not exec() a file in its own data directory, so a script there could be
- * run only as `sh files/bin/npm`, never by name from a lifecycle script; npm is started as
- * `node files/npm/bin/npm-cli.js` ([npm]) instead. Whether npm's lifecycle scripts get by under
- * that rule is spike R3 (docs/PLAN.md §3, §15).
+ * `files/bin/npm` is not npm's shell wrapper script. An app that targets API 29 or later may not
+ * exec() a file in its own data directory, so a script there could be run only as
+ * `sh files/bin/npm`, never by name, and Signal K Server runs npm by name (`npm --version`, its
+ * App Store's installs). It is a second link to the executable, which runs npm-cli.js
+ * ([NPM_CLI_ENV]) when started under that name. The app itself starts npm as
+ * `node files/npm/bin/npm-cli.js` ([npm]). Whether npm's lifecycle scripts get by under the same
+ * rule is spike R3 (docs/PLAN.md §3, §15).
  */
 class NodeRuntime(context: Context) {
     private val app = context.applicationContext
@@ -75,10 +77,10 @@ class NodeRuntime(context: Context) {
     val npmCli = File(npmDir, "bin/npm-cli.js")
 
     /**
-     * Creates the directories and points `files/bin/node` at this install's executable.
-     * Idempotent, and cheap enough to call on every start.
+     * Creates the directories and points `files/bin/node` and `files/bin/npm` at this install's
+     * executable. Idempotent, and cheap enough to call on every start.
      *
-     * The link is checked every time, not only created once: nativeLibraryDir is a new random
+     * The links are checked every time, not only created once: nativeLibraryDir is a new random
      * path after every app update, so a link made by the previous install dangles. A dangling
      * link is not [File.exists], and creating the link again over it fails with EEXIST, which
      * would leave `node` off PATH for good after the first update. Throws [IOException] when the
@@ -98,21 +100,27 @@ class NodeRuntime(context: Context) {
             groupsSwept = true
         }
         if (!isAvailable) return
-        // A symlink into nativeLibraryDir, so `node` is on PATH for npm's lifecycle scripts.
-        // Whether exec follows it across the SELinux label boundary is part of spike R1.
-        val node = File(binDir, "node")
+        // Symlinks into nativeLibraryDir: `node` is on PATH for npm's lifecycle scripts, `npm`
+        // for Signal K Server, which runs it by name. Whether exec follows them across the
+        // SELinux label boundary is part of spike R1.
+        linkExecutable(File(binDir, "node"))
+        linkExecutable(File(binDir, "npm"))
+    }
+
+    /** Points [link] at [executable] unless it already does; under [LAYOUT_LOCK]. */
+    private fun linkExecutable(link: File) {
         val target = executable.absolutePath
         val current = try {
-            Os.readlink(node.absolutePath)
+            Os.readlink(link.absolutePath)
         } catch (_: ErrnoException) {
             null
         }
         if (current == target) return
-        if (current != null || node.exists()) node.delete()
+        if (current != null || link.exists()) link.delete()
         try {
-            Os.symlink(target, node.absolutePath)
+            Os.symlink(target, link.absolutePath)
         } catch (e: ErrnoException) {
-            throw IOException("could not link $node to $target", e)
+            throw IOException("could not link $link to $target", e)
         }
     }
 
@@ -162,6 +170,7 @@ class NodeRuntime(context: Context) {
             "LD_LIBRARY_PATH" to nativeLibraryDir.absolutePath,
             "SIGNALK_NODE_CONFIG_DIR" to configDir.absolutePath,
             "NODE_OPTIONS" to "--max-old-space-size=$heapMb",
+            NPM_CLI_ENV to npmCli.absolutePath,
             "npm_config_cache" to File(home, ".npm").absolutePath,
             "npm_config_prefix" to current.absolutePath,
             "npm_config_update_notifier" to "false",
@@ -229,6 +238,9 @@ class NodeRuntime(context: Context) {
     companion object {
         /** Named like a library so the build packages it in lib/<abi>/ and the installer extracts it. */
         const val EXEC_NAME = "libnodeexec.so"
+
+        /** Where `files/bin/npm` (the executable started under that name) finds npm-cli.js. */
+        const val NPM_CLI_ENV = "POCKETSK_NPM_CLI"
 
         /** npm's registry tarball, put into the APK's assets by this module's build. */
         const val NPM_ASSET = "npm.tgz"
