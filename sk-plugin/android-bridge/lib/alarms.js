@@ -25,7 +25,8 @@ const LEVELS = ["warn", "alarm", "emergency"];
 const MAX_ALARMS = 32;
 const MAX_MESSAGE = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PATH = /^notifications(\.[A-Za-z0-9_-]+)+$/;
+/** A notification's path; a colon is allowed, since a closest-approach alarm names a vessel by URN. */
+const PATH = /^notifications(\.[A-Za-z0-9_:-]+)+$/;
 const MAX_PATH = 256;
 
 /** The rank of a state, 0 for one that is no alarm or not a state at all. */
@@ -79,12 +80,6 @@ class Alarms {
   /** The phone has just connected: it hears the list, which is otherwise sent on change only. */
   resend() {
     this.told = null;
-    this.publish();
-  }
-
-  /** Every alarm forgotten (the plugin stops): the phone is told there are none. */
-  clear() {
-    this.byPath.clear();
     this.publish();
   }
 

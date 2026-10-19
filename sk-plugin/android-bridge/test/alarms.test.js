@@ -75,8 +75,6 @@ test("the phone hears of changes only, and the whole list again on resend", () =
   assert.equal(sent.length, 1);
   a.resend();
   assert.equal(sent.length, 2);
-  a.clear();
-  assert.deepEqual(sent.at(-1).list, []);
 });
 
 test("the most urgent come first, then by path, and only so many", () => {
@@ -88,6 +86,13 @@ test("the most urgent come first, then by path, and only so many", () => {
   for (let i = 0; i < MAX_ALARMS + 5; i++) a.update(`notifications.n${i}`, anchor({ id: undefined }));
   assert.equal(sent.at(-1).list.length, MAX_ALARMS);
   assert.equal(sent.at(-1).list[0].path, "notifications.z");
+});
+
+test("a closest-approach alarm, its path naming a vessel by URN, is kept and known by its path", () => {
+  const { a, sent } = alarms();
+  const path = "notifications.navigation.closestApproach.urn:mrn:imo:mmsi:230099999";
+  a.update(path, anchor({ id: undefined, message: "Vessel close" }));
+  assert.deepEqual(sent.at(-1).list.map((x) => [x.id, x.path]), [[path, path]]);
 });
 
 test("a path that is not a notification's is ignored", () => {

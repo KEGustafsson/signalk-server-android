@@ -186,6 +186,8 @@ test("a silence from the app names the alarm by an id the plugin gave it", () =>
   const id = "0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f";
   assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id })), { ok: true, msg: { t: "silence", id } });
   assert.deepEqual(parseLine('{"t":"silence","id":"notifications.navigation.anchor"}').msg.id, "notifications.navigation.anchor");
+  const urn = "notifications.navigation.closestApproach.urn:mrn:imo:mmsi:230099999";
+  assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id: urn })).msg.id, urn);
   for (const bad of [undefined, 7, "", "a b", "x".repeat(257)]) {
     assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id: bad })), { ok: false, reason: "silence with a bad id" });
   }

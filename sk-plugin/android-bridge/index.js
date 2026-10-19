@@ -218,8 +218,9 @@ module.exports = function androidBridge(app, deps = {}) {
     stop() {
       for (const u of unsubscribes) u();
       unsubscribes = [];
-      // A phone still connected hears that no alarm is left, before the link goes.
-      alarms?.clear();
+      // The link goes first, with no word of the alarms: a server restart stops the plugin, and an
+      // empty list would end an anchor alarm on the phone only for it to ring again moments later.
+      // The phone keeps them a while after the link drops and clears them if the plugin stays away.
       if (link) link.stop();
       link = null;
       input = null;

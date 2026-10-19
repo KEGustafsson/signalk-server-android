@@ -53,12 +53,14 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     }
 
     /**
-     * A permission may have been granted (location, a USB device, Bluetooth): the sensors try
-     * again what they could not start, and the serial devices are looked at again.
+     * A permission may have been granted (location, a USB device, Bluetooth, notifications): the
+     * sensors try again what they could not start, the serial devices are looked at again, and an
+     * alarm that could not be shown is posted.
      */
     fun permissionsChanged() {
         sensors.reapply()
         devicesChanged()
+        alarms.refresh()
     }
 
     /** The owner chose or dropped a Bluetooth device in the Dock: the serial devices are looked at again. */

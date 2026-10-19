@@ -145,9 +145,13 @@ internal object BridgeProtocol {
     /** Longest alarm message kept, as the plugin cuts it. */
     private const val MAX_MESSAGE = 200
 
-    /** An alarm's id: the server's notification id (a UUID), or its path where the server gives none. */
-    private val ALARM_ID = Regex("^[A-Za-z0-9._-]{1,256}$")
-    private val NOTIFICATION_PATH = Regex("^notifications(\\.[A-Za-z0-9_-]+)+$")
+    /**
+     * An alarm's id: the server's notification id (a UUID), or its path where the server gives
+     * none. A path may carry a colon: a closest-approach alarm names the other vessel by its URN
+     * (`notifications.navigation.closestApproach.urn:mrn:imo:mmsi:230099999`).
+     */
+    private val ALARM_ID = Regex("^[A-Za-z0-9._:-]{1,256}$")
+    private val NOTIFICATION_PATH = Regex("^notifications(\\.[A-Za-z0-9_:-]+)+$")
 
     /**
      * One of the boat's alarms, a Signal K notification: [id] to silence it by, its [path], its

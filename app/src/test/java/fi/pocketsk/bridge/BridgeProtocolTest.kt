@@ -142,6 +142,11 @@ class BridgeProtocolTest {
             BridgeProtocol.parse(line),
         )
         assertEquals(Incoming.Alarms(emptyList()), BridgeProtocol.parse("""{"t":"alarms","list":[]}"""))
+        val urn = "notifications.navigation.closestApproach.urn:mrn:imo:mmsi:230099999"
+        assertEquals(
+            Incoming.Alarms(listOf(BridgeProtocol.Alarm(urn, urn, "alarm", "", sound = true, action = null))),
+            BridgeProtocol.parse("""{"t":"alarms","list":[{"id":"$urn","path":"$urn","state":"alarm"}]}"""),
+        )
         assertEquals(Incoming.Dropped("alarms without a list"), BridgeProtocol.parse("""{"t":"alarms"}"""))
         val many = (0..BridgeProtocol.MAX_ALARMS).joinToString(",", "[", "]") { """{"id":"a$it","path":"notifications.a$it","state":"alarm"}""" }
         assertEquals(Incoming.Dropped("alarms with 33 entries"), BridgeProtocol.parse("""{"t":"alarms","list":$many}"""))

@@ -235,8 +235,14 @@ test("the boat's alarms reach the phone, and its Silence is done through the ser
   onDelta({});
   await until(() => alarmLines().length === 2);
   assert.deepEqual(alarmLines()[1].list, []);
+  // A stop (a server restart) closes the link without telling the phone the alarms ended.
+  onDelta({ updates: [{ values: [{ path: "notifications.navigation.anchor", value: { id, state: "alarm", method: ["sound"], message: "Again" } }] }] });
+  await until(() => alarmLines().length === 3);
   p.stop();
   assert.equal(unsubscribed, 1);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(alarmLines().length, 3);
+  assert.equal(alarmLines()[2].list.length, 1);
 });
 
 test("with alarms off, or no subscription manager, the phone hears of none", async (t) => {

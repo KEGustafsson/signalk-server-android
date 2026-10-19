@@ -55,7 +55,7 @@ const DEVICE_STATES = ["open", "connecting", "needs-permission", "idle", "error"
 const MAX_DEVICES = 32;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 /** An alarm's id, as lib/alarms.js gives them: the server's notification id, or the path. */
-const ALARM_ID = /^[A-Za-z0-9._-]{1,256}$/;
+const ALARM_ID = /^[A-Za-z0-9._:-]{1,256}$/;
 
 /**
  * Reads one line from the app: `{ok: true, msg}` for a message this plugin knows, `{ok: false,

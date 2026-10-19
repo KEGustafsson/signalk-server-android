@@ -96,6 +96,12 @@ internal class PhoneAlarm(
         show(book.view())
     }
 
+    /**
+     * A permission may have been granted (notifications, full-screen alarms): an alarm that could
+     * not be shown is posted now, as if it had just begun.
+     */
+    fun refresh() = handler.post { if (posted == null) notify(shown, alert = shown.ring) }
+
     /** The plugin went: the alarms stand a while for it to come back. */
     fun lost() = handler.post {
         handler.removeCallbacks(forget)
@@ -143,8 +149,9 @@ internal class PhoneAlarm(
         }
         val key = listOf(head.id, head.state, head.message, head.action, view.alarms.size, view.ring, head.id in view.quiet)
         if (key == posted && !alert) return
-        posted = key
+        // Recorded only once posted, so a permission granted while the alarm stands posts it ([refresh]).
         if (!mayNotify()) return
+        posted = key
         reporting({ note("alarm: cannot show the alarm: $it") }) { nm.notify(ID, build(view, head, alert)) }
     }
 
