@@ -17,15 +17,25 @@ internal object BridgeProtocol {
     /** The sensors a subscribe may name, as the plugin calls them. */
     const val BATTERY = "battery"
     const val BARO = "baro"
-    val SENSORS = setOf(BATTERY, BARO)
+    const val GNSS = "gnss"
+    val SENSORS = setOf(BATTERY, BARO, GNSS)
 
     /** The barometer's averaging period, at most once a second and at least once every ten minutes. */
     const val BARO_MIN_HZ = 1.0 / 600
     const val BARO_MAX_HZ = 1.0
     const val BARO_DEFAULT_HZ = 0.1
 
+    /** GNSS fixes, five a second at most (what phone receivers give) and one every ten seconds at least. */
+    const val GNSS_MIN_HZ = 0.1
+    const val GNSS_MAX_HZ = 5.0
+    const val GNSS_DEFAULT_HZ = 1.0
+
     /** What the plugin wants: the sensors it named that the app knows, at clamped rates. */
-    data class Subscription(val sensors: Set<String>, val baroHz: Double = BARO_DEFAULT_HZ) {
+    data class Subscription(
+        val sensors: Set<String>,
+        val baroHz: Double = BARO_DEFAULT_HZ,
+        val gnssHz: Double = GNSS_DEFAULT_HZ,
+    ) {
         companion object {
             val NONE = Subscription(emptySet())
         }
@@ -39,9 +49,12 @@ internal object BridgeProtocol {
 
     fun hello(appVersion: String): String = """{"t":"hello","v":$VERSION,"app":${Json.quote(appVersion)}}"""
 
-    /** A one-number reading. */
-    fun sensor(path: String, value: Double, src: String, ts: Long): String =
-        """{"t":"sensor","path":${Json.quote(path)},"value":${Json.number(value)},"src":${Json.quote(src)},"ts":$ts}"""
+    /**
+     * A one-number reading; null says the sensor no longer has one, which Signal K stores as null
+     * rather than keeping the last value as if it were current.
+     */
+    fun sensor(path: String, value: Double?, src: String, ts: Long): String =
+        """{"t":"sensor","path":${Json.quote(path)},"value":${value?.let(Json::number) ?: "null"},"src":${Json.quote(src)},"ts":$ts}"""
 
     /** A reading of several named numbers (a position, an attitude); a null one is unknown. */
     fun sensor(path: String, value: Map<String, Double?>, src: String, ts: Long): String {
@@ -67,10 +80,17 @@ internal object BridgeProtocol {
     private fun subscribe(msg: Map<*, *>): Incoming {
         val named = msg["sensors"] as? List<*> ?: return Incoming.Dropped("subscribe without a sensor list")
         val sensors = named.filterIsInstance<String>().filter { it in SENSORS }.toSet()
-        val baro = ((msg["rateHz"] as? Map<*, *>)?.get(BARO) as? Double)
-            ?.takeIf { it.isFinite() && it > 0 }
-            ?.coerceIn(BARO_MIN_HZ, BARO_MAX_HZ)
-            ?: BARO_DEFAULT_HZ
-        return Incoming.Subscribe(Subscription(sensors, baro))
+        val rates = msg["rateHz"] as? Map<*, *>
+        return Incoming.Subscribe(
+            Subscription(
+                sensors,
+                baroHz = rate(rates, BARO, BARO_MIN_HZ, BARO_MAX_HZ, BARO_DEFAULT_HZ),
+                gnssHz = rate(rates, GNSS, GNSS_MIN_HZ, GNSS_MAX_HZ, GNSS_DEFAULT_HZ),
+            ),
+        )
     }
+
+    /** A sensor's rate from the subscribe, within its bounds; its default when missing or not a rate. */
+    private fun rate(rates: Map<*, *>?, sensor: String, min: Double, max: Double, default: Double): Double =
+        (rates?.get(sensor) as? Double)?.takeIf { it.isFinite() && it > 0 }?.coerceIn(min, max) ?: default
 }

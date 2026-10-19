@@ -12,8 +12,12 @@ internal object Readings {
     /** Where the phone's own battery lives in the Signal K tree. */
     const val BATTERY_PATH = "electrical.batteries.phone"
     const val PRESSURE_PATH = "environment.outside.pressure"
+    const val POSITION_PATH = "navigation.position"
+    const val SOG_PATH = "navigation.speedOverGround"
+    const val COG_PATH = "navigation.courseOverGroundTrue"
     const val SRC_BATTERY = "android.battery"
     const val SRC_BARO = "android.baro"
+    const val SRC_GNSS = "android.gnss"
 
     /** The battery is told at most this often, however often Android announces a change. */
     const val BATTERY_MIN_GAP_MS = 10_000L
@@ -49,6 +53,36 @@ internal object Readings {
             }
             abs(v - last.getValue(k)) >= step - 1e-9
         }
+    }
+
+    /**
+     * One GNSS fix as the platform's Location reports it: degrees, metres, m/s; speed, bearing
+     * and altitude only when the fix has them.
+     */
+    data class Fix(
+        val latitude: Double,
+        val longitude: Double,
+        val altitudeM: Double? = null,
+        val speedMs: Float? = null,
+        val bearingDeg: Float? = null,
+    )
+
+    /** A fix in Signal K's terms: the position, and speed and course over ground where known. */
+    data class Gnss(val position: Map<String, Double?>, val speedOverGround: Double?, val courseOverGroundTrue: Double?)
+
+    /**
+     * The fix as Signal K wants it: the position with altitude only when known, speed in m/s,
+     * course in radians in [0, 2π). A fix with a latitude or longitude outside the Earth is no
+     * fix and gives null; a speed or bearing that is not a number is left out, not passed on.
+     */
+    fun gnss(f: Fix): Gnss? {
+        if (!f.latitude.isFinite() || !f.longitude.isFinite()) return null
+        if (f.latitude !in -90.0..90.0 || f.longitude !in -180.0..180.0) return null
+        val position = linkedMapOf<String, Double?>("latitude" to f.latitude, "longitude" to f.longitude)
+        f.altitudeM?.takeIf { it.isFinite() }?.let { position["altitude"] = it }
+        val speed = f.speedMs?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
+        val course = f.bearingDeg?.takeIf { it.isFinite() }?.let { Math.toRadians((((it % 360f) + 360f) % 360f).toDouble()) }
+        return Gnss(position, speed, course)
     }
 
     /**

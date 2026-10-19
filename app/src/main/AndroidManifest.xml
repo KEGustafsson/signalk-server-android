@@ -18,6 +18,13 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- The phone's GNSS for Signal K through the Android bridge (docs/PLAN.md §7.1). Precise
+         location while in use only: no ACCESS_BACKGROUND_LOCATION. The service adds the location
+         foreground type when the permission is granted, so a server started from the screen keeps
+         its fixes with the screen off. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -69,7 +76,7 @@
         <service
             android:name=".server.SignalKService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|location" />
 
         <!-- The Quick Settings tile: bound by the system UI only, which holds the permission. -->
         <service

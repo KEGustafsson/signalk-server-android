@@ -37,6 +37,9 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         sensors.apply(BridgeProtocol.Subscription.NONE)
     }
 
+    /** A permission was granted (location): the sensors try again what they could not start. */
+    fun permissionsChanged() = sensors.reapply()
+
     /** For good, when the service goes. */
     fun close() {
         control.execute {

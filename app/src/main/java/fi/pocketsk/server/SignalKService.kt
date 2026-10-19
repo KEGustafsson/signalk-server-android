@@ -127,6 +127,7 @@ class SignalKService : Service() {
             }
             ACTION_RESTART -> if (supervisor.isActive) supervisor.restart() else stopIfIdle()
             ACTION_PROMOTED -> if (supervisor.isActive) supervisor.promoted() else stopIfIdle()
+            ACTION_PERMISSIONS -> if (foreground) permissionsChanged() else stopIfIdle()
         }
         return START_STICKY
     }
@@ -151,7 +152,7 @@ class SignalKService : Service() {
      */
     private fun begin(rollbackFirst: Boolean = false) {
         try {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            enterForeground()
         } catch (e: Exception) {
             // ForegroundServiceStartNotAllowedException and friends; broadly, as nothing else can be done.
             log.note("cannot run in the foreground: $e")
@@ -166,6 +167,45 @@ class SignalKService : Service() {
         address = LanAddress.ofThisPhone()
         bridge.start()
         supervisor.start(rollbackFirst)
+    }
+
+    /**
+     * Connected device always; location too once precise location is granted, which a service
+     * must declare to keep receiving fixes while no screen of the app is in front. Asking for the
+     * location type without the permission throws on Android 14 and later.
+     */
+    private fun foregroundTypes(): Int {
+        val location = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+            (if (location) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0)
+    }
+
+    /**
+     * A screen of the app is in front and a permission may have changed: the service takes the
+     * foreground types it is now allowed (a server started at boot gains location only like this,
+     * since while-in-use access is granted to a foreground service started or renewed while the
+     * app is visible), and the bridge's sensors try again.
+     */
+    private fun permissionsChanged() {
+        reporting({ log.note("cannot renew the foreground service: $it") }) { enterForeground() }
+        bridge.permissionsChanged()
+    }
+
+    /**
+     * Into the foreground with [foregroundTypes]. Android 14 and later refuse the location type
+     * to a service started while no screen of the app is in front (at boot), with a
+     * SecurityException: the server then runs as a connected device alone, and the GNSS waits
+     * for the app to be opened ([permissionsChanged]). Anything else is the caller's to handle.
+     */
+    private fun enterForeground() {
+        val types = foregroundTypes()
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), types)
+        } catch (e: SecurityException) {
+            if (types == ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) throw e
+            log.note("location is allowed only with the app in front: the phone's GNSS starts once the app is opened")
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        }
     }
 
     /** From the supervisor's threads. */
@@ -356,6 +396,7 @@ class SignalKService : Service() {
         private const val ACTION_RESTART = "fi.pocketsk.action.RESTART"
         private const val ACTION_ROLLBACK = "fi.pocketsk.action.ROLLBACK"
         private const val ACTION_PROMOTED = "fi.pocketsk.action.PROMOTED"
+        private const val ACTION_PERMISSIONS = "fi.pocketsk.action.PERMISSIONS"
         private const val CHANNEL = "server"
         private const val ALERT_CHANNEL = "server-alerts"
         private const val NOTIFICATION_ID = 1
@@ -402,6 +443,18 @@ class SignalKService : Service() {
          */
         internal fun promoted(context: Context) {
             if (ServerPrefs(context).running) send(context, ACTION_PROMOTED)
+        }
+
+        /**
+         * From a screen of the app in front: a permission may have been granted (location, from
+         * the Dock or the system settings). A running server renews its foreground service with
+         * the types it may now hold, and the bridge's sensors try again; nothing when none runs.
+         * Gated on [ServerPrefs.running] like [promoted], not on the published state, which reads
+         * Stopped while a start at boot has not yet reported; a service with nothing in the
+         * foreground ignores the command.
+         */
+        fun permissionsChanged(context: Context) {
+            if (ServerPrefs(context).running) send(context, ACTION_PERMISSIONS)
         }
 
         /**

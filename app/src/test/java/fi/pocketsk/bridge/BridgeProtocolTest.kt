@@ -18,13 +18,25 @@ class BridgeProtocolTest {
             """{"t":"sensor","path":"navigation.attitude","value":{"roll":0.02,"yaw":null},"src":"android.imu","ts":0}""",
             BridgeProtocol.sensor("navigation.attitude", linkedMapOf("roll" to 0.02, "yaw" to null), "android.imu", 0),
         )
+        assertEquals(
+            """{"t":"sensor","path":"navigation.speedOverGround","value":null,"src":"android.gnss","ts":7}""",
+            BridgeProtocol.sensor("navigation.speedOverGround", null, "android.gnss", 7),
+        )
     }
 
     @Test
     fun aSubscribeIsReadAndClamped() {
         assertEquals(
-            Incoming.Subscribe(Subscription(setOf("battery", "baro"), 0.5)),
-            BridgeProtocol.parse("""{"t":"subscribe","sensors":["battery","baro","gnss",7],"rateHz":{"baro":0.5}}"""),
+            Incoming.Subscribe(Subscription(setOf("battery", "baro", "gnss"), baroHz = 0.5)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["battery","baro","gnss","imu",7],"rateHz":{"baro":0.5}}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("gnss"), gnssHz = BridgeProtocol.GNSS_MAX_HZ)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["gnss"],"rateHz":{"gnss":100}}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("gnss"), gnssHz = 0.5)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["gnss"],"rateHz":{"gnss":0.5}}"""),
         )
         assertEquals(
             Incoming.Subscribe(Subscription(setOf("baro"), 1.0)),

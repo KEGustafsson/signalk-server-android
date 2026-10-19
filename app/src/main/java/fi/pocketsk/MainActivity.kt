@@ -97,6 +97,12 @@ class MainActivity : ComponentActivity() {
         refreshPermissions()
     }
 
+    /** Precise and approximate together, as Android asks; GNSS needs the precise one. */
+    private val askLocationLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        refreshPermissions()
+        SignalKService.permissionsChanged(this)
+    }
+
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) copyTarball(uri)
     }
@@ -141,6 +147,9 @@ class MainActivity : ComponentActivity() {
         // Settings opened from here (battery, an app permission) may have changed something.
         refreshPermissions()
         refreshAddress()
+        // With the app in front a running server may take location, which it could not when it
+        // was started at boot; or it must give it up, taken back in the settings.
+        SignalKService.permissionsChanged(this)
     }
 
     override fun onDestroy() {
@@ -166,6 +175,7 @@ class MainActivity : ComponentActivity() {
         override fun pickTarball() = this@MainActivity.pickTarball()
         override fun rollBack() = this@MainActivity.rollBack()
         override fun askPermissions() = this@MainActivity.askPermissions()
+        override fun askLocation() = this@MainActivity.askLocation()
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
         override fun setAutostart(on: Boolean) = this@MainActivity.setAutostart(on)
         override fun finishSetup(startServer: Boolean) = this@MainActivity.finishSetup(startServer)
@@ -221,6 +231,26 @@ class MainActivity : ComponentActivity() {
     private fun askPermissions() {
         val wanted = ServerActions.missingPermissions(this)
         if (wanted.isNotEmpty()) askOnly.launch(wanted.toTypedArray())
+    }
+
+    /**
+     * Asks for precise location, or, once Android has stopped showing the dialog (refused twice,
+     * or "don't ask again"), opens this app's own settings page, where it can still be allowed.
+     * Asked before and no rationale is how that refusal looks; the first request looks the same
+     * but for [ServerPrefs.locationAsked].
+     */
+    private fun askLocation() {
+        val fine = android.Manifest.permission.ACCESS_FINE_LOCATION
+        if (prefs.locationAsked && !shouldShowRequestPermissionRationale(fine)) {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // No settings page on this build: the request below is all there is.
+            }
+        }
+        prefs.locationAsked = true
+        askLocationLauncher.launch(arrayOf(fine, android.Manifest.permission.ACCESS_COARSE_LOCATION))
     }
 
     /**
@@ -289,6 +319,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 null
             },
+            location = granted(android.Manifest.permission.ACCESS_FINE_LOCATION),
             batteryUnrestricted = getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true,
             autostart = prefs.autostart,
         )

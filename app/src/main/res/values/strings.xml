@@ -56,6 +56,9 @@
     <string name="perm_allow">Allow</string>
     <string name="perm_granted">Allowed</string>
     <string name="perm_not_granted">Not allowed</string>
+    <string name="perm_location">Precise location (the phone\'s GPS)</string>
+    <string name="perm_location_why">Gives Signal K this phone\'s position, speed and course. Only while the server runs; never asked for in the background.</string>
+    <string name="perm_location_allow">Allow location</string>
     <string name="perm_battery">Unrestricted battery</string>
     <string name="perm_battery_why">In the list that opens, choose All apps, then Signal K Server, then Don\'t optimise.</string>
     <string name="perm_battery_open">Open battery settings</string>
