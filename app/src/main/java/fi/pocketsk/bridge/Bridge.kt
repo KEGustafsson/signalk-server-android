@@ -4,13 +4,15 @@ import android.content.Context
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.net.reporting
 import fi.pocketsk.server.ServerLog
+import fi.pocketsk.server.ServerStatus
 import java.io.File
 import java.util.concurrent.Executors
 
 /**
  * The Android bridge's app half (docs/PLAN.md §7.1): the socket the server's plugin connects to
- * ([BridgeServer]), the phone's sensors it asks for ([PhoneSensors]) and the USB serial devices
- * plugged into the phone ([UsbSerial]). Started with the server
+ * ([BridgeServer]), the phone's sensors it asks for ([PhoneSensors]), and the serial devices:
+ * USB ones plugged into the phone ([UsbSerial]) and paired Bluetooth ones ([BluetoothSerial]),
+ * listed together for the plugin and the Dock by a [DeviceList]. Started with the server
  * and stopped with it by [fi.pocketsk.server.SignalKService]; the plugin itself is put in place by
  * [BridgePlugin] before every start and finds the socket through [ENV].
  *
@@ -19,7 +21,9 @@ import java.util.concurrent.Executors
  */
 internal class Bridge(context: Context, private val log: ServerLog) {
     private val sensors = PhoneSensors(context, ::sendToPeer, log::note)
-    private val usb = UsbSerial(context, ::sendToPeer, log::note)
+    private val devices = DeviceList(::sendToPeer, ServerStatus::publishDevices)
+    private val usb = UsbSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.USB, it) }, log::note)
+    private val bluetooth = BluetoothSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.BLUETOOTH, it) }, log::note)
     private val server = BridgeServer(socketFile(context), ::connected, ::line, ::disconnected, log::note)
 
     @Volatile private var peer: BridgeServer.Peer? = null
@@ -35,21 +39,29 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     fun start() = control.execute {
         reporting(::failed) { server.start() }
         usb.start()
+        bluetooth.start()
     }
 
     fun stop() = control.execute {
         reporting(::failed) { server.stop() }
         sensors.apply(BridgeProtocol.Subscription.NONE)
         usb.stop()
+        bluetooth.stop()
     }
 
     /**
-     * A permission may have been granted (location, a USB device): the sensors try again what
-     * they could not start, and the USB devices are looked at again.
+     * A permission may have been granted (location, a USB device, Bluetooth): the sensors try
+     * again what they could not start, and the serial devices are looked at again.
      */
     fun permissionsChanged() {
         sensors.reapply()
+        devicesChanged()
+    }
+
+    /** The owner chose or dropped a Bluetooth device in the Dock: the serial devices are looked at again. */
+    fun devicesChanged() {
         usb.rescan()
+        bluetooth.rescan()
     }
 
     /** "Level now" from the Dock: the phone's present tilt becomes the boat's level ([PhoneSensors.level]). */
@@ -61,6 +73,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             reporting(::failed) { server.stop() }
             sensors.close()
             usb.close()
+            bluetooth.close()
         }
         control.shutdown()
     }
@@ -71,7 +84,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         peer = p
         p.send(BridgeProtocol.hello(BuildConfig.VERSION_NAME))
         // The device list is sent on change only; a new plugin has not heard it.
-        usb.resend()
+        devices.resend()
         log.note("bridge: the server's plugin connected")
     }
 
@@ -80,6 +93,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             is BridgeProtocol.Incoming.Subscribe -> if (p === peer) {
                 sensors.apply(msg.subscription)
                 usb.apply(msg.subscription.serial)
+                bluetooth.apply(msg.subscription.serial)
             }
             is BridgeProtocol.Incoming.Dropped -> if (droppedNotes++ < MAX_DROPPED_NOTES) log.note("bridge: dropped a line from the plugin: ${msg.reason}")
         }
@@ -90,6 +104,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         peer = null
         sensors.apply(BridgeProtocol.Subscription.NONE)
         usb.apply(BridgeProtocol.Serial.NONE)
+        bluetooth.apply(BridgeProtocol.Serial.NONE)
         if (p.dropped > 0) log.note("bridge: ${p.dropped} readings were dropped while the plugin was not reading")
     }
 

@@ -72,7 +72,7 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
     sensors: ["baro"],
     rateHz: { baro: 0.2, gnss: 1, attitude: 1, environment: 0.1 },
     bowOffsetDeg: 0,
-    serial: { usb: true, baud: 4800, devices: {} },
+    serial: { usb: true, baud: 4800, devices: {}, bt: true },
   });
   assert.equal(app.deltas[0][0], "pocketsk-android-bridge");
   assert.equal(app.deltas[0][1].updates[0].values[0].value, 101000);
@@ -110,7 +110,7 @@ test("a USB device's NMEA 0183 becomes deltas under its own source and reaches t
   });
   p.start({ serialBaud: 38400, serialDevices: [{ id: "usb-0403-6001-a1", baud: 4800 }] });
   await until(() => conn !== null && subscribe.endsWith("\n"));
-  assert.deepEqual(JSON.parse(subscribe).serial, { usb: true, baud: 38400, devices: { "usb-0403-6001-a1": 4800 } });
+  assert.deepEqual(JSON.parse(subscribe).serial, { usb: true, baud: 38400, devices: { "usb-0403-6001-a1": 4800 }, bt: true });
 
   const devices = (list) => conn.write(`${JSON.stringify({ t: "devices", list })}\n`);
   devices([
@@ -119,13 +119,22 @@ test("a USB device's NMEA 0183 becomes deltas under its own source and reaches t
     { id: "usb-0403-6001-b2", kind: "usb", name: "Spare", baud: 38400, state: "idle" },
     { id: "usb-067b-2303", kind: "usb", name: "Old", baud: 38400, state: "error", detail: "it stopped" },
     { id: "usb-10c4-ea60", kind: "usb", name: "Odd", baud: 38400, state: "error" },
+    { id: "bt-001bdc0a1b2c", kind: "bt", name: "BT GPS", baud: 0, state: "open" },
+    { id: "bt-001bdc0a1b2d", kind: "bt", name: "BT AIS", baud: 0, state: "connecting" },
+    { id: "bt-001bdc0a1b2e", kind: "bt", name: "BT Old", baud: 0, state: "connecting", detail: "the link dropped" },
+    { id: "bt-001bdc0a1b2f", kind: "bt", name: "BT Off", baud: 0, state: "idle" },
+    { id: "bt-001bdc0a1b30", kind: "bt", name: "BT Down", baud: 0, state: "error", detail: "Bluetooth is off" },
   ]);
-  await until(() => p.statusNow().devices.length === 5);
+  await until(() => p.statusNow().devices.length === 10);
   assert.equal(
     app.status.at(-1),
-    "Connected to the phone; USB: GPS at 38400 baud, AIS waits for permission in the app, Spare (USB is off), Old: it stopped, Odd: failed",
+    "Connected to the phone; serial: GPS at 38400 baud, AIS waits for permission in the app, Spare (USB is off in these settings), Old: it stopped, Odd: failed, " +
+      "BT GPS connected, BT AIS connecting, BT Old connecting (the link dropped), BT Off (Bluetooth is off in these settings), BT Down: Bluetooth is off",
   );
-  assert.match(p.schema().properties.serialDevices.description, /Plugged in now: usb-1a86-7523 \(GPS\), usb-0403-6001-a1 \(AIS\)/);
+  // The per-device rates are USB's: the Bluetooth devices are not offered there.
+  const described = p.schema().properties.serialDevices.description;
+  assert.match(described, /Plugged in now: usb-1a86-7523 \(GPS\), usb-0403-6001-a1 \(AIS\)/);
+  assert.doesNotMatch(described, /bt-/);
 
   conn.write(`${JSON.stringify({ t: "serial", id: "usb-1a86-7523", data: Buffer.from("$GPRMC,1*00\r\n$GPG").toString("base64") })}\n`);
   await until(() => app.deltas.length === 1);

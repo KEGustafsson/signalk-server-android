@@ -71,14 +71,14 @@ test("subscribe follows the settings", () => {
     sensors: ["battery", "baro", "gnss", "attitude", "environment"],
     rateHz: { baro: 0.1, gnss: 1, attitude: 1, environment: 0.1 },
     bowOffsetDeg: 0,
-    serial: { usb: true, baud: 4800, devices: {} },
+    serial: { usb: true, baud: 4800, devices: {}, bt: true },
   });
   assert.deepEqual(subscribeMessage({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 2 }), {
     t: "subscribe",
     sensors: ["baro"],
     rateHz: { baro: 0.5, gnss: 1, attitude: 1, environment: 0.1 },
     bowOffsetDeg: 0,
-    serial: { usb: true, baud: 4800, devices: {} },
+    serial: { usb: true, baud: 4800, devices: {}, bt: true },
   });
   assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, attitude: false, environment: false, barometerSeconds: -1 }).sensors, ["battery"]);
   assert.equal(subscribeMessage({ barometerSeconds: "x" }).rateHz.baro, 0.1);
@@ -130,6 +130,7 @@ test("the device list is read, an entry that is not a device left out", () => {
       { id: "../etc", kind: "usb", name: "x", baud: 4800, state: "open" },
       { id: "usb-1a86-7524", kind: "USB", name: "x", baud: 4800, state: "open" },
       { id: "usb-1a86-7525", kind: "usb", name: "x", baud: 4800, state: "lost" },
+      { id: "bt-001bdc0a1b2c", kind: "bt", name: "BT GPS", baud: 0, state: "connecting" },
       { id: "usb-1a86-7526", kind: "usb", name: "x", baud: "fast", state: "open" },
       null,
     ],
@@ -141,6 +142,7 @@ test("the device list is read, an entry that is not a device left out", () => {
       list: [
         { id: "usb-1a86-7523", kind: "usb", name: "USB Serial", baud: 4800, state: "open" },
         { id: "usb-0403-6001-a1", kind: "usb", name: "usb-0403-6001-a1", baud: 38400, state: "error", detail: "gone" },
+        { id: "bt-001bdc0a1b2c", kind: "bt", name: "BT GPS", baud: 0, state: "connecting" },
       ],
     },
   });
@@ -172,7 +174,8 @@ test("subscribe says which serial devices to read and at what rate", () => {
       { baud: 4800 },
     ],
   });
-  assert.deepEqual(m.serial, { usb: false, baud: 38400, devices: { "usb-0403-6001-a1": 9600 } });
+  assert.deepEqual(m.serial, { usb: false, baud: 38400, devices: { "usb-0403-6001-a1": 9600 }, bt: true });
+  assert.equal(subscribeMessage({ bluetooth: false }).serial.bt, false);
   assert.equal(subscribeMessage({ serialBaud: 1000 }).serial.baud, 4800);
   assert.deepEqual(subscribeMessage({ serialDevices: "all" }).serial.devices, {});
   const lots = Array.from({ length: MAX_DEVICES + 5 }, (_, i) => ({ id: `usb-0000-${i}`, baud: 4800 }));

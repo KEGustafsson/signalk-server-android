@@ -31,6 +31,11 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getBoolean(LOCATION_ASKED, false)
         set(value) = prefs.edit { putBoolean(LOCATION_ASKED, value) }
 
+    /** Bluetooth (Nearby devices) has been asked for once, for the same reason as [locationAsked]. */
+    var bluetoothAsked: Boolean
+        get() = prefs.getBoolean(BLUETOOTH_ASKED, false)
+        set(value) = prefs.edit { putBoolean(BLUETOOTH_ASKED, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -66,6 +71,7 @@ internal class ServerPrefs(context: Context) {
         const val AUTOSTART = "autostart"
         const val SETUP_DONE = "setup_done"
         const val LOCATION_ASKED = "location_asked"
+        const val BLUETOOTH_ASKED = "bluetooth_asked"
         const val GATE_VERSION = "gate_version"
     }
 }

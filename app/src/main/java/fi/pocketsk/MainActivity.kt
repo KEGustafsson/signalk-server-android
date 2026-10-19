@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import fi.pocketsk.bridge.BluetoothSerial
+import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
@@ -101,6 +103,12 @@ class MainActivity : ComponentActivity() {
 
     /** Precise and approximate together, as Android asks; GNSS needs the precise one. */
     private val askLocationLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        refreshPermissions()
+        SignalKService.permissionsChanged(this)
+    }
+
+    /** Bluetooth for the paired serial devices; the bridge looks again whatever the answer. */
+    private val askBluetoothLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         refreshPermissions()
         SignalKService.permissionsChanged(this)
     }
@@ -185,6 +193,13 @@ class MainActivity : ComponentActivity() {
         override fun levelAttitude() = SignalKService.level(this@MainActivity)
 
         override fun allowDevice(address: String) = UsbSerial.askPermission(this@MainActivity, address)
+
+        override fun chooseBluetooth(address: String, chosen: Boolean) {
+            SerialPrefs(this@MainActivity).choose(address, chosen)
+            SignalKService.devicesChanged(this@MainActivity)
+        }
+
+        override fun askBluetooth() = askBluetoothPermission()
     }
 
     private fun startServer() {
@@ -259,6 +274,25 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Asks for Bluetooth (Nearby devices) on Android 12 and later, or, once Android has stopped
+     * showing the dialog, opens this app's settings page, as [askLocation] does.
+     */
+    private fun askBluetoothPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val connect = android.Manifest.permission.BLUETOOTH_CONNECT
+        if (prefs.bluetoothAsked && !shouldShowRequestPermissionRationale(connect)) {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // No settings page on this build: the request below is all there is.
+            }
+        }
+        prefs.bluetoothAsked = true
+        askBluetoothLauncher.launch(connect)
+    }
+
+    /**
      * The list of apps the battery optimiser leaves alone, where the user picks this one. Not the
      * one-tap request dialog: that needs a permission Google Play allows only for a few kinds of
      * app, and lint flags it, while the list asks for nothing.
@@ -325,6 +359,7 @@ class MainActivity : ComponentActivity() {
                 null
             },
             location = granted(android.Manifest.permission.ACCESS_FINE_LOCATION),
+            bluetooth = BluetoothSerial.allowed(this),
             batteryUnrestricted = getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true,
             autostart = prefs.autostart,
         )

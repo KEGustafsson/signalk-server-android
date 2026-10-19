@@ -111,6 +111,8 @@ class BridgeProtocolTest {
         assertEquals(BridgeProtocol.Serial(usb = true), s)
         assertEquals(4800, s.baudFor("usb-1a86-7523"))
         assertEquals(BridgeProtocol.Serial.NONE, serialOf("""{"usb":"yes"}"""))
+        assertEquals(BridgeProtocol.Serial(bluetooth = true), serialOf("""{"bt":true}"""))
+        assertEquals(BridgeProtocol.Serial.NONE, serialOf("""{"bt":1}"""))
         assertEquals(
             Incoming.Subscribe(Subscription(setOf("gnss"))),
             BridgeProtocol.parse("""{"t":"subscribe","sensors":["gnss"],"serial":[1]}"""),

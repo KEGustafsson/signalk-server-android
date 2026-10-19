@@ -58,12 +58,13 @@ app/                 the Android app
                      ServerTile (Quick Settings);
                      RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
                      tested)
-  fi.pocketsk.bridge Bridge (the socket, the sensors and USB, run by the service), BridgeServer
-                     (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
+  fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
+                     BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors), SensorPrefs (the level),
-                     UsbSerial (USB serial adapters, their bytes to the plugin), BridgePlugin (puts
+                     UsbSerial (USB serial adapters, their bytes to the plugin), BluetoothSerial
+                     (the paired SPP devices chosen in the Dock, SerialPrefs), BridgePlugin (puts
                      the plugin in place before every start);
-                     BridgeProtocol, Json, Readings, Attitude, SerialIds (pure, tested)
+                     BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
@@ -76,7 +77,7 @@ native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `n
 sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: plain CommonJS, no
                      dependencies, `node --test`; packed into the APK as assets/android-bridge.tar.
                      lib/protocol.js mirrors BridgeProtocol: change both together; lib/serial.js
-                     parses USB devices' NMEA 0183 with the server's own parser (found through
+                     parses serial devices' NMEA 0183 with the server's own parser (found through
                      require.main, the signalk-server script)
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```

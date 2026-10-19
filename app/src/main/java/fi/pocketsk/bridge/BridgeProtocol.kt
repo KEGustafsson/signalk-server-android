@@ -50,8 +50,9 @@ internal object BridgeProtocol {
     const val ENVIRONMENT_MAX_HZ = 1.0
     const val ENVIRONMENT_DEFAULT_HZ = 0.1
 
-    /** The kind of serial device a subscribe may ask the app to read: USB adapters. */
+    /** The kinds of serial device a subscribe may ask the app to read: USB adapters, Bluetooth SPP ones. */
     const val USB = "usb"
+    const val BLUETOOTH = "bt"
 
     /** NMEA 0183's own rate, and the rates a subscribe may give a device; any other is the default. */
     const val DEFAULT_BAUD = 4800
@@ -64,10 +65,16 @@ internal object BridgeProtocol {
     private val DEVICE_ID = Regex("^[a-z]+-[a-z0-9-]{1,64}$")
 
     /**
-     * Which serial devices the plugin wants read: USB ones or none, each at its own baud rate in
-     * [bauds] when the plugin set one, else at [baud].
+     * Which serial devices the plugin wants read: USB ones, each at its own baud rate in [bauds]
+     * when the plugin set one, else at [baud], and the Bluetooth ones the owner chose in the Dock
+     * (a Bluetooth link has no baud rate of its own to set).
      */
-    data class Serial(val usb: Boolean = false, val baud: Int = DEFAULT_BAUD, val bauds: Map<String, Int> = emptyMap()) {
+    data class Serial(
+        val usb: Boolean = false,
+        val baud: Int = DEFAULT_BAUD,
+        val bauds: Map<String, Int> = emptyMap(),
+        val bluetooth: Boolean = false,
+    ) {
         fun baudFor(id: String): Int = bauds[id] ?: baud
 
         companion object {
@@ -77,9 +84,11 @@ internal object BridgeProtocol {
 
     /**
      * A serial device as the plugin and the Dock see it: [id] (stable for the device, [SerialIds]),
-     * its [kind] ([USB]), the [name] it gives itself, the [baud] it is read at, its [state] (one
-     * of the states below) with a [detail] when it failed, and, for the Dock alone, the bytes read
-     * since it was opened and where Android has it ([address], `/dev/bus/usb/...`).
+     * its [kind] ([USB], [BLUETOOTH]), the [name] it gives itself, the [baud] it is read at (0 for
+     * Bluetooth), its [state] (one of the states below) with a [detail] when it failed, and, for the
+     * Dock alone, the bytes read since it was opened, where Android has it ([address], a USB device
+     * path or a Bluetooth address) and whether the owner [chosen] it (a paired Bluetooth device is
+     * listed for the Dock to offer, and read only once chosen; a USB device always is).
      */
     data class Device(
         val id: String,
@@ -90,12 +99,15 @@ internal object BridgeProtocol {
         val detail: String? = null,
         val bytes: Long = 0,
         val address: String = "",
+        val chosen: Boolean = true,
     ) {
         companion object {
             /** Open and read. */
             const val OPEN = "open"
             /** Waiting for the owner to allow the app to use it, in Android's dialog. */
             const val NEEDS_PERMISSION = "needs-permission"
+            /** Being dialled, or dialled again after its link dropped (Bluetooth). */
+            const val CONNECTING = "connecting"
             /** Plugged in, but the plugin has not asked for it: nothing would take its bytes. */
             const val IDLE = "idle"
             /** It could not be opened, or stopped answering; [detail] says why. */
@@ -196,7 +208,7 @@ internal object BridgeProtocol {
     }
 
     /**
-     * The serial part of a subscribe: `{"usb":true,"baud":4800,"devices":{"usb-1a86-7523":38400}}`.
+     * The serial part of a subscribe: `{"usb":true,"baud":4800,"devices":{"usb-1a86-7523":38400},"bt":true}`.
      * Missing or not an object: no serial devices. A rate that is not one of [BAUD_RATES], and a
      * device id that is not one, are left out rather than failing the whole subscribe.
      */
@@ -206,7 +218,7 @@ internal object BridgeProtocol {
             .mapNotNull { (k, v) -> if (k is String && DEVICE_ID.matches(k)) baud(v)?.let { k to it } else null }
             .take(MAX_DEVICE_RATES)
             .toMap()
-        return Serial(usb = msg[USB] == true, baud = baud(msg["baud"]) ?: DEFAULT_BAUD, bauds = bauds)
+        return Serial(usb = msg[USB] == true, baud = baud(msg["baud"]) ?: DEFAULT_BAUD, bauds = bauds, bluetooth = msg[BLUETOOTH] == true)
     }
 
     private fun baud(v: Any?): Int? = (v as? Double)?.takeIf { it % 1.0 == 0.0 }?.toInt()?.takeIf { it in BAUD_RATES }

@@ -17,7 +17,6 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
 import fi.pocketsk.bridge.BridgeProtocol.Device
 import fi.pocketsk.net.reporting
 import fi.pocketsk.net.transportThread
-import fi.pocketsk.server.ServerStatus
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
@@ -30,9 +29,9 @@ import java.util.concurrent.atomic.AtomicLong
  * listening on a port for them, so no other app on the phone and nothing on the boat's network can
  * reach a device through this.
  *
- * Every device found is listed ([BridgeProtocol.devices], and [ServerStatus.devices] for the
- * Dock) while the server runs; one is opened only while the plugin asks for USB ([apply]) and the
- * owner has allowed the app the device. That permission comes from Android's dialog: the one it
+ * Every device found is listed ([list], which the bridge's [DeviceList] tells the plugin and the
+ * Dock) while the server runs; one is opened only while the plugin asks for USB ([apply]) and
+ * the owner has allowed the app the device. That permission comes from Android's dialog: the one it
  * shows on its own when a device the app's filter names is plugged in (res/xml/usb_devices.xml,
  * on [fi.pocketsk.MainActivity]), or the one the Dock's Allow opens ([askPermission]). The app
  * does not ask by itself when a device is plugged in, since Android's own dialog is then already
@@ -44,7 +43,12 @@ import java.util.concurrent.atomic.AtomicLong
  * plugged in again or the plugin's settings change; reopening it in a loop would only fill the log.
  * Everything here runs on its own thread ("bridge-usb") but the readers, one per open port.
  */
-internal class UsbSerial(context: Context, private val send: (String) -> Unit, private val note: (String) -> Unit) {
+internal class UsbSerial(
+    context: Context,
+    private val send: (String) -> Unit,
+    private val list: (List<Device>) -> Unit,
+    private val note: (String) -> Unit,
+) {
     private val app = context.applicationContext
     private val usb = app.getSystemService(UsbManager::class.java)
     private val thread = HandlerThread("bridge-usb").apply { start() }
@@ -57,8 +61,6 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
     private val open = HashMap<String, Opened>()
     /** Why a device could not be opened or stopped, by id, until it is plugged in again. */
     private val failed = HashMap<String, String>()
-    /** The list as the plugin was last told it, so it hears of changes only. */
-    private var told: String? = null
     private var listed: List<Device> = emptyList()
 
     /** An open port and the thread reading it. */
@@ -82,7 +84,7 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
     private val tick = object : Runnable {
         override fun run() {
             if (open.isEmpty()) return
-            ServerStatus.publishDevices(withBytes(listed))
+            list(withBytes(listed))
             handler.postDelayed(this, TICK_MS)
         }
     }
@@ -107,12 +109,6 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
         if (serial != wants) failed.clear()
         wants = serial
         if (running) look()
-    }
-
-    /** A plugin has just connected: it hears the list, which is otherwise sent on change only. */
-    fun resend() = handler.post {
-        told = null
-        if (running) publish(listed)
     }
 
     /** A permission may have been granted (the app came to the front): look again. */
@@ -147,7 +143,7 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
             },
         )
         val present = HashSet<String>()
-        val list = ports.zip(ids).map { (dp, id) ->
+        val found = ports.zip(ids).map { (dp, id) ->
             val (driver, port) = dp
             present += id
             device(id, driver, port)
@@ -156,7 +152,7 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
             shut(o)
             open.remove(o.id)
         }
-        publish(list)
+        publish(found)
     }
 
     /** One port: opened, closed or left as it is, and how it stands. */
@@ -240,18 +236,13 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
         reporting({}) { o.reader?.join(READ_TIMEOUT_MS * 2L) }
     }
 
-    /** The plugin hears of a change in the list; the Dock is shown it, with the byte counts. */
-    private fun publish(list: List<Device>) {
-        listed = list
-        val line = BridgeProtocol.devices(list)
-        if (line != told) {
-            told = line
-            send(line)
-        }
-        ServerStatus.publishDevices(withBytes(list))
+    /** The list as it stands now, with the byte counts. */
+    private fun publish(devices: List<Device>) {
+        listed = devices
+        list(withBytes(devices))
     }
 
-    private fun withBytes(list: List<Device>) = list.map { d -> open[d.id]?.let { d.copy(bytes = it.bytes.get()) } ?: d }
+    private fun withBytes(devices: List<Device>) = devices.map { d -> open[d.id]?.let { d.copy(bytes = it.bytes.get()) } ?: d }
 
     private inline fun reportingList(block: () -> List<UsbSerialDriver>): List<UsbSerialDriver> =
         try {

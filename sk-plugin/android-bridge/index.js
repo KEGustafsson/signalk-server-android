@@ -11,10 +11,10 @@
  * (lib/protocol.js). The app installs and enables it; on any other server there is no socket, and
  * the plugin says so in its status and does nothing.
  *
- * The phone's USB serial devices (GPS and AIS receivers, NMEA 0183 interfaces) come the same way:
- * the app reads them, since Android gives the server no serial port, and passes their bytes over
- * the socket; lib/serial.js parses their NMEA 0183 with the server's own parser. Bluetooth serial
- * devices and the alarm path back to the phone come in later steps; the protocol has room for them.
+ * The phone's serial devices (GPS and AIS receivers, NMEA 0183 interfaces), plugged in by USB or
+ * paired over Bluetooth, come the same way: the app reads them, since Android gives the server no
+ * serial port, and passes their bytes over the socket; lib/serial.js parses their NMEA 0183 with
+ * the server's own parser. The alarm path back to the phone comes in a later step.
  */
 
 const { Link } = require("./lib/link");
@@ -139,10 +139,16 @@ module.exports = function androidBridge(app, deps = {}) {
           default: DEFAULT_BAUD,
           enum: [...BAUD_RATES],
         },
+        bluetooth: {
+          type: "boolean",
+          title: "Bluetooth serial devices",
+          description: "Read the NMEA 0183 of the phone's paired Bluetooth serial devices (GPS and AIS receivers), each under its own source, android.<device>. Pair the device in the phone's Bluetooth settings, then switch it on in the app's Serial devices card",
+          default: true,
+        },
         serialDevices: {
           type: "array",
           title: "Baud rate per device",
-          description: `A device whose rate is not the one above, by its id as the app's USB devices card shows it. ${pluggedIn()}`,
+          description: `A USB device whose rate is not the one above, by its id as the app's Serial devices card shows it. ${pluggedIn()}`,
           default: [],
           items: {
             type: "object",
@@ -198,8 +204,9 @@ module.exports = function androidBridge(app, deps = {}) {
 
   /** The devices plugged in now, for the settings' description of the per-device rates. */
   function pluggedIn() {
-    if (devices.length === 0) return "No USB device is plugged into the phone now.";
-    return `Plugged in now: ${devices.map((d) => `${d.id} (${d.name})`).join(", ")}.`;
+    const usb = devices.filter((d) => d.kind === "usb");
+    if (usb.length === 0) return "No USB device is plugged into the phone now.";
+    return `Plugged in now: ${usb.map((d) => `${d.id} (${d.name})`).join(", ")}.`;
   }
 
   /** A sentence to the server's nmea0183 event, as its own NMEA 0183 connections give theirs. */
@@ -225,17 +232,20 @@ module.exports = function androidBridge(app, deps = {}) {
     const parts = devices.map((d) => {
       switch (d.state) {
         case "open":
-          return `${d.name} at ${d.baud} baud`;
+          return d.kind === "bt" ? `${d.name} connected` : `${d.name} at ${d.baud} baud`;
+        case "connecting":
+          return d.detail ? `${d.name} connecting (${d.detail})` : `${d.name} connecting`;
         case "needs-permission":
           return `${d.name} waits for permission in the app`;
         case "idle":
-          return `${d.name} (USB is off)`;
+          // Idle is this plugin's own setting turned off; an adapter that is off is an error with its detail.
+          return `${d.name} (${d.kind === "bt" ? "Bluetooth" : "USB"} is off in these settings)`;
         default:
           return `${d.name}: ${d.detail ?? "failed"}`;
       }
     });
     const parser = devices.length > 0 && !Parser ? "; the server's NMEA 0183 parser was not found, so sentences are not parsed" : "";
-    app.setPluginStatus(parts.length > 0 ? `Connected to the phone; USB: ${parts.join(", ")}${parser}` : "Connected to the phone");
+    app.setPluginStatus(parts.length > 0 ? `Connected to the phone; serial: ${parts.join(", ")}${parser}` : "Connected to the phone");
   }
 
   function onLine(line) {

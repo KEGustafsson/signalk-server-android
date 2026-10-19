@@ -16,6 +16,8 @@ import java.util.Locale
  * (two CH340s, which have no serial number) are told apart by the order Android numbered them in,
  * which is the order they were plugged in: `-2` for the second. A device with several ports (an
  * FT2232) has one id per port, `-p0`, `-p1`.
+ *
+ * A Bluetooth device is its address, which is its own and does not move: `bt-001bdc0a1b2c`.
  */
 internal object SerialIds {
     /** One port of a device, as [ids] takes it. */
@@ -37,6 +39,12 @@ internal object SerialIds {
             seen[base] = n
             if (n == 1) base else "$base-$n"
         }
+    }
+
+    /** A Bluetooth device's id from its address (`00:1B:DC:0A:1B:2C`), or null for one that is not an address. */
+    fun bluetooth(address: String): String? {
+        val hex = address.lowercase(Locale.ROOT).replace(":", "")
+        return if (hex.length == 12 && hex.all { it in '0'..'9' || it in 'a'..'f' }) "${BridgeProtocol.BLUETOOTH}-$hex" else null
     }
 
     /** A serial number as an id can carry it: lower-case letters and digits, at most [MAX_SERIAL]. */

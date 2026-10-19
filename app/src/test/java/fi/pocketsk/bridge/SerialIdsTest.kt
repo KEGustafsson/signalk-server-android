@@ -45,4 +45,18 @@ class SerialIdsTest {
             (BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"serial":{"usb":true,"devices":{"$id":9600}}}""") as BridgeProtocol.Incoming.Subscribe).subscription.serial,
         )
     }
+
+    @Test
+    fun aBluetoothDeviceIsItsAddress() {
+        assertEquals("bt-001bdc0a1b2c", SerialIds.bluetooth("00:1B:DC:0A:1B:2C"))
+        assertNull(SerialIds.bluetooth("00:1B:DC:0A:1B"))
+        assertNull(SerialIds.bluetooth("00:1B:DC:0A:1B:ZZ"))
+        // One the protocol reads back as a device id.
+        val id = SerialIds.bluetooth("00:1B:DC:0A:1B:2C")!!
+        assertEquals(
+            mapOf(id to 4800),
+            (BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"serial":{"devices":{"$id":4800}}}""") as BridgeProtocol.Incoming.Subscribe)
+                .subscription.serial.bauds,
+        )
+    }
 }

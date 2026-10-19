@@ -16,7 +16,7 @@ knows as ordinary Signal K data:
 | Attitude and rate of turn | `navigation.attitude` (roll, pitch), `navigation.rateOfTurn` | `android.imu` |
 | Magnetic heading (off by default) | `navigation.headingMagnetic`, and the attitude's yaw | `android.compass` |
 | Cabin sensors | `environment.inside.temperature`, `.relativeHumidity`, `.illuminance`, those the phone has | `android.environment` |
-| USB serial devices | whatever their NMEA 0183 says (position, AIS targets, depth, wind...) | `android.<device id>.<talker>` |
+| USB and Bluetooth serial devices | whatever their NMEA 0183 says (position, AIS targets, depth, wind...) | `android.<device id>.<talker>` |
 
 GNSS needs precise location allowed in the app (its Dock has the button); without it the other
 sensors still run.
@@ -44,7 +44,14 @@ most AIS receivers); **Baud rate per device** sets it for one device by its id. 
 to the devices. The admin UI's options for data connections (sentence filters, talker groups,
 logging) do not apply to them, since they are not data connections.
 
-Bluetooth NMEA devices and alarms that wake a locked phone come in later versions.
+Bluetooth serial devices (the Serial Port Profile: Bluetooth GPS and AIS receivers, NMEA 0183
+adapters) are read the same way, under `android.bt-<address>.<talker>`. Pair the device in the
+phone's Bluetooth settings, allow Nearby devices in the app if it asks, and switch the device on in
+the app's **Serial devices** card: pairing alone is not enough, since a phone is paired with
+headsets and cars too. The app dials each chosen device, and dials it again whenever the link
+drops. **Bluetooth serial devices** turns them all off.
+
+Alarms that wake a locked phone come in a later version.
 
 On a server that is not running on Pocket SK the plugin finds no socket, says so in its status and
 does nothing.
