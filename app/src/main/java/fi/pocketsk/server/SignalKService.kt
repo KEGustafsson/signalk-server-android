@@ -152,7 +152,7 @@ class SignalKService : Service() {
      */
     private fun begin(rollbackFirst: Boolean = false) {
         try {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), foregroundTypes())
+            enterForeground()
         } catch (e: Exception) {
             // ForegroundServiceStartNotAllowedException and friends; broadly, as nothing else can be done.
             log.note("cannot run in the foreground: $e")
@@ -187,10 +187,25 @@ class SignalKService : Service() {
      * app is visible), and the bridge's sensors try again.
      */
     private fun permissionsChanged() {
-        reporting({ log.note("cannot renew the foreground service: $it") }) {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), foregroundTypes())
-        }
+        reporting({ log.note("cannot renew the foreground service: $it") }) { enterForeground() }
         bridge.permissionsChanged()
+    }
+
+    /**
+     * Into the foreground with [foregroundTypes]. Android 14 and later refuse the location type
+     * to a service started while no screen of the app is in front (at boot), with a
+     * SecurityException: the server then runs as a connected device alone, and the GNSS waits
+     * for the app to be opened ([permissionsChanged]). Anything else is the caller's to handle.
+     */
+    private fun enterForeground() {
+        val types = foregroundTypes()
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), types)
+        } catch (e: SecurityException) {
+            if (types == ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) throw e
+            log.note("location is allowed only with the app in front: the phone's GNSS starts once the app is opened")
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        }
     }
 
     /** From the supervisor's threads. */
