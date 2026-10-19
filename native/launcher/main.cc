@@ -17,6 +17,13 @@
 // java.lang.Process can only signal the one pid it forked, and Android gives an app no way to
 // find that pid's children. The variable is removed before Node starts, so a node that a script
 // runs joins its parent's group instead of leading one, and the group stays whole.
+//
+// It is also `npm`. Signal K Server runs npm by name: `npm --version` at start, and its App
+// Store's installs as `npm install` in the config directory. On a Pi that is the shell wrapper
+// npm ships; here no script in the app's data directory may be exec'd (W^X, docs/PLAN.md §4.2),
+// so NodeRuntime links files/bin/npm to this executable beside files/bin/node, and a launcher
+// started under the name `npm` runs node with the npm-cli.js that POCKETSK_NPM_CLI names in
+// front of its arguments, as the wrapper would.
 
 #include <cerrno>
 #include <cstdio>
@@ -24,12 +31,14 @@
 #include <cstring>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 #include "node.h"
 
 namespace {
 
 constexpr const char* kGroupFile = "POCKETSK_GROUP_FILE";
+constexpr const char* kNpmCli = "POCKETSK_NPM_CLI";
 
 // Writes this process's pid to `target`, whole and renamed into place, so a reader sees a
 // complete id or nothing. False, said on stderr, when it could not.
@@ -74,9 +83,49 @@ bool LeadGroup() {
   return false;
 }
 
+// True when this process was started as `npm`: argv[0] as exec'd, by name from PATH or by the
+// path of the files/bin/npm link, whose last component is the name either way.
+bool StartedAsNpm(const char* argv0) {
+  const char* slash = strrchr(argv0, '/');
+  return strcmp(slash == nullptr ? argv0 : slash + 1, "npm") == 0;
+}
+
+// Node's arguments for `npm args...`: argv[0], npm-cli.js, then the rest. The strings are laid
+// out end to end in `storage`, as the kernel lays out a process's own: libuv takes the room it
+// may overwrite for process.title (which npm sets) to run from argv[0] to the end of the last
+// argument, so separately allocated strings would let it write past them.
+std::vector<char*> NpmArgs(int argc, char** argv, const char* cli, std::vector<char>& storage) {
+  std::vector<const char*> parts{argv[0], cli};
+  for (int i = 1; i < argc; i++) parts.push_back(argv[i]);
+  size_t size = 0;
+  for (const char* p : parts) size += strlen(p) + 1;
+  storage.assign(size, '\0');
+  std::vector<char*> args;
+  char* at = storage.data();
+  for (const char* p : parts) {
+    const size_t n = strlen(p) + 1;
+    memcpy(at, p, n);
+    args.push_back(at);
+    at += n;
+  }
+  args.push_back(nullptr);
+  return args;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (!LeadGroup()) return 1;
+  if (argc > 0 && StartedAsNpm(argv[0])) {
+    const char* cli = getenv(kNpmCli);
+    if (cli == nullptr || *cli == '\0') {
+      fprintf(stderr, "pocketsk launcher: npm: %s is not set\n", kNpmCli);
+      return 127;
+    }
+    // Static: Node may keep pointers into its arguments for as long as it runs.
+    static std::vector<char> storage;
+    static std::vector<char*> args = NpmArgs(argc, argv, cli, storage);
+    return node::Start(static_cast<int>(args.size()) - 1, args.data());
+  }
   return node::Start(argc, argv);
 }

@@ -125,19 +125,20 @@ files/
 ├── npm/                     # npm-cli.js + node_modules extracted from assets
 ├── bin/
 │   ├── node -> <nativeLibraryDir>/libnodeexec.so   # symlink, for PATH; re-pointed on every start
+│   ├── npm  -> <nativeLibraryDir>/libnodeexec.so   # the same executable; runs npm-cli.js when started as npm
 │   └── node-gyp             # the shim (§9.2)
 └── prebuilds/               # downloaded native addon cache
 cache/tmp/                   # $TMPDIR
 no_backup/groups/            # one record per spawned node: its process group's id (§4.1)
 ```
 
-No `bin/npm` wrapper: an app targeting API 29+ may not `exec()` a file in its own data directory (Android's W^X rule for app data), so a script under `files/` can be run as `sh <file>` but never by name. npm is started as `node files/npm/bin/npm-cli.js`. The same rule covers what npm's lifecycle scripts exec by name — `node_modules/.bin/*` (shebang scripts), and the `node-gyp` shim of §9.2 if it is a script — so finding out how much of that npm and Signal K's plugins need is part of R3 (§15).
+No `bin/npm` wrapper script: an app targeting API 29+ may not `exec()` a file in its own data directory (Android's W^X rule for app data), so a script under `files/` can be run as `sh <file>` but never by name. The app starts npm as `node files/npm/bin/npm-cli.js`. Signal K Server, though, runs `npm` by name: `npm --version` at start (its `/nodeInfo`) and `npm install` in the config directory for every App Store install; with no `npm` on PATH the first logged `npm: inaccessible or not found` on a phone (2026-10-19) and the second would fail every install. So `bin/npm` is a second link to the launcher, which, started under the name `npm`, runs node with `POCKETSK_NPM_CLI` (the unpacked npm-cli.js) in front of its arguments, as npm's wrapper does on a Pi. The same rule covers what npm's lifecycle scripts exec by name — `node_modules/.bin/*` (shebang scripts), and the `node-gyp` shim of §9.2 if it is a script — so finding out how much of that npm and Signal K's plugins need is part of R3 (§15).
 
 ### 4.3 `NodeRuntime` Kotlin API
 
 ```kotlin
 class NodeRuntime(ctx: Context) {
-  fun ensureLayout()                          // directories, and files/bin/node pointed at this install's launcher
+  fun ensureLayout()                          // directories, and files/bin/node and files/bin/npm pointed at this install's launcher
   fun ensureExtracted()                       // ensureLayout + npm unpacked from assets; idempotent, stamped with npm's version and SHA-256
   fun env(): Map<String,String>               // HOME, TMPDIR, PATH, LD_LIBRARY_PATH, SIGNALK_NODE_CONFIG_DIR, NODE_OPTIONS
   fun spawn(vararg args: String, cwd: File, extraEnv: Map<String,String>): NodeProcess   // stderr merged into stdout; leads its own process group (§4.1)
