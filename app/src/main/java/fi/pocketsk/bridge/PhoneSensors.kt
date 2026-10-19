@@ -272,8 +272,9 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         }
         val wantGnss = BridgeProtocol.GNSS in next.sensors
         if (wantGnss && (!gnssOn || gnssRateChanged)) startGnss(next.gnssHz)
-        else if (!wantGnss && gnssOn) {
-            stopGnss()
+        else if (!wantGnss) {
+            // Also when a restart refused for a revoked grant left the GPS off with the notes made.
+            if (gnssOn) stopGnss()
             toldWaiting = false
             hadFix = false
         }

@@ -202,7 +202,11 @@ internal class UsbSerial(context: Context, private val send: (String) -> Unit, p
         open[id] = o
         o.reader = transportThread("usb-read-$id", onError = { e -> handler.post { lost(o, e) } }) { read(o) }
         note("usb: reading $id (${nameOf(port.driver)}) at $baud baud")
-        if (open.size == 1) handler.postDelayed(tick, TICK_MS)
+        if (open.size == 1) {
+            // A port closed and opened again in one look leaves the last tick queued: one chain.
+            handler.removeCallbacks(tick)
+            handler.postDelayed(tick, TICK_MS)
+        }
         return null
     }
 
