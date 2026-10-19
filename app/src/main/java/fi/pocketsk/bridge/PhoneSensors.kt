@@ -55,7 +55,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     private var gnssHzOn = BridgeProtocol.GNSS_DEFAULT_HZ
     private val gnssRateChanged get() = subscription.gnssHz != gnssHzOn
     private var toldNoLocation = false
-    /** Speed and course were in the last fix sent, so a fix without them must say they are gone. */
+    /**
+     * Speed and course were in the last fix sent, so a fix without them must say they are gone.
+     * Kept across a stop and a new request: the server still holds what was sent before it.
+     */
     private var sogSent = false
     private var cogSent = false
     private val locationManager = app.getSystemService(LocationManager::class.java)
@@ -186,8 +189,6 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         gnssOn = true
         gnssHzOn = hz
         toldNoLocation = false
-        sogSent = false
-        cogSent = false
     }
 
     private fun stopGnss() {

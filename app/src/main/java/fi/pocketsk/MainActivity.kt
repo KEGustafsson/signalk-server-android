@@ -148,8 +148,8 @@ class MainActivity : ComponentActivity() {
         refreshPermissions()
         refreshAddress()
         // With the app in front a running server may take location, which it could not when it
-        // was started at boot.
-        if (model.permissions.location) SignalKService.permissionsChanged(this)
+        // was started at boot; or it must give it up, taken back in the settings.
+        SignalKService.permissionsChanged(this)
     }
 
     override fun onDestroy() {
