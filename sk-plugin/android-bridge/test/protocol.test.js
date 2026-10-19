@@ -181,3 +181,12 @@ test("subscribe says which serial devices to read and at what rate", () => {
   const lots = Array.from({ length: MAX_DEVICES + 5 }, (_, i) => ({ id: `usb-0000-${i}`, baud: 4800 }));
   assert.equal(Object.keys(subscribeMessage({ serialDevices: lots }).serial.devices).length, MAX_DEVICES);
 });
+
+test("a silence from the app names the alarm by an id the plugin gave it", () => {
+  const id = "0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f";
+  assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id })), { ok: true, msg: { t: "silence", id } });
+  assert.deepEqual(parseLine('{"t":"silence","id":"notifications.navigation.anchor"}').msg.id, "notifications.navigation.anchor");
+  for (const bad of [undefined, 7, "", "a b", "x".repeat(257)]) {
+    assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id: bad })), { ok: false, reason: "silence with a bad id" });
+  }
+});

@@ -130,6 +130,10 @@ class SignalKService : Service() {
             ACTION_PERMISSIONS -> if (foreground) permissionsChanged() else stopIfIdle()
             ACTION_LEVEL -> if (foreground) bridge.level() else stopIfIdle()
             ACTION_DEVICES -> if (foreground) bridge.devicesChanged() else stopIfIdle()
+            ACTION_SILENCE -> {
+                val id = intent.getStringExtra(EXTRA_ALARM)
+                if (foreground && id != null) bridge.silence(id) else stopIfIdle()
+            }
         }
         return START_STICKY
     }
@@ -401,6 +405,10 @@ class SignalKService : Service() {
         private const val ACTION_PERMISSIONS = "fi.pocketsk.action.PERMISSIONS"
         private const val ACTION_LEVEL = "fi.pocketsk.action.LEVEL"
         private const val ACTION_DEVICES = "fi.pocketsk.action.DEVICES"
+
+        /** Silence for an alarm ([EXTRA_ALARM], its id), from the alarm's notification ([fi.pocketsk.bridge.PhoneAlarm]). */
+        internal const val ACTION_SILENCE = "fi.pocketsk.action.SILENCE"
+        internal const val EXTRA_ALARM = "fi.pocketsk.extra.ALARM"
         private const val CHANNEL = "server"
         private const val ALERT_CHANNEL = "server-alerts"
         private const val NOTIFICATION_ID = 1
@@ -475,6 +483,20 @@ class SignalKService : Service() {
          */
         fun devicesChanged(context: Context) {
             if (ServerPrefs(context).running) send(context, ACTION_DEVICES)
+        }
+
+        /**
+         * Silence for the alarm [id], from its screen or the Dock: the phone goes quiet, and the
+         * server silences it as it allows. Gated like [permissionsChanged].
+         */
+        fun silence(context: Context, id: String) {
+            if (ServerPrefs(context).running) {
+                try {
+                    context.startService(intent(context, ACTION_SILENCE).putExtra(EXTRA_ALARM, id))
+                } catch (_: IllegalStateException) {
+                    // Background start refused: the service, and the alarm with it, is gone.
+                }
+            }
         }
 
         /**

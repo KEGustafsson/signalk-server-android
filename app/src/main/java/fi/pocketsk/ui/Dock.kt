@@ -34,7 +34,7 @@ import java.util.Date
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, what the phone grants it, the phone's sensors, its serial devices and the newest of
+ * rollback, the boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial devices and the newest of
  * its log. The Power card, the diagnostics bundle and backup come with their own steps.
  */
 @Composable
@@ -46,6 +46,9 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             TextButton(onClick = actions::openRuntimeChecks) { Text(stringResource(R.string.dock_runtime_checks)) }
+        }
+        if (model.alarms.alarms.isNotEmpty()) {
+            Section(stringResource(R.string.dock_alarms_title)) { AlarmRows(model.alarms, actions::silenceAlarm) }
         }
         StatusCard(model, actions)
         UpdatesCard(model, actions)

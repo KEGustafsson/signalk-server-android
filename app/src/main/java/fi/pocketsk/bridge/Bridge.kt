@@ -12,7 +12,8 @@ import java.util.concurrent.Executors
  * The Android bridge's app half (docs/PLAN.md §7.1): the socket the server's plugin connects to
  * ([BridgeServer]), the phone's sensors it asks for ([PhoneSensors]), and the serial devices:
  * USB ones plugged into the phone ([UsbSerial]) and paired Bluetooth ones ([BluetoothSerial]),
- * listed together for the plugin and the Dock by a [DeviceList]. Started with the server
+ * listed together for the plugin and the Dock by a [DeviceList]; and the other way, the boat's
+ * alarms, which ring on the phone ([PhoneAlarm]). Started with the server
  * and stopped with it by [fi.pocketsk.server.SignalKService]; the plugin itself is put in place by
  * [BridgePlugin] before every start and finds the socket through [ENV].
  *
@@ -24,6 +25,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     private val devices = DeviceList(::sendToPeer, ServerStatus::publishDevices)
     private val usb = UsbSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.USB, it) }, log::note)
     private val bluetooth = BluetoothSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.BLUETOOTH, it) }, log::note)
+    private val alarms = PhoneAlarm(context, ::sendToPeer, log::note)
     private val server = BridgeServer(socketFile(context), ::connected, ::line, ::disconnected, log::note)
 
     @Volatile private var peer: BridgeServer.Peer? = null
@@ -47,6 +49,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         sensors.apply(BridgeProtocol.Subscription.NONE)
         usb.stop()
         bluetooth.stop()
+        alarms.stop()
     }
 
     /**
@@ -64,6 +67,9 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         bluetooth.rescan()
     }
 
+    /** Silence for the alarm [id], from its notification, its screen or the Dock ([PhoneAlarm.silence]). */
+    fun silence(id: String) = alarms.silence(id)
+
     /** "Level now" from the Dock: the phone's present tilt becomes the boat's level ([PhoneSensors.level]). */
     fun level() = sensors.level()
 
@@ -74,6 +80,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             sensors.close()
             usb.close()
             bluetooth.close()
+            alarms.close()
         }
         control.shutdown()
     }
@@ -95,6 +102,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
                 usb.apply(msg.subscription.serial)
                 bluetooth.apply(msg.subscription.serial)
             }
+            is BridgeProtocol.Incoming.Alarms -> if (p === peer) alarms.update(msg.list)
             is BridgeProtocol.Incoming.Dropped -> if (droppedNotes++ < MAX_DROPPED_NOTES) log.note("bridge: dropped a line from the plugin: ${msg.reason}")
         }
     }
@@ -105,6 +113,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         sensors.apply(BridgeProtocol.Subscription.NONE)
         usb.apply(BridgeProtocol.Serial.NONE)
         bluetooth.apply(BridgeProtocol.Serial.NONE)
+        alarms.lost()
         if (p.dropped > 0) log.note("bridge: ${p.dropped} readings were dropped while the plugin was not reading")
     }
 

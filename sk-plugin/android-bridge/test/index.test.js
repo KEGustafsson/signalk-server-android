@@ -67,7 +67,7 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
   });
   p.start({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 5 });
   await until(() => app.deltas.length === 1 && p.statusNow().dropped === 1 && subscribe.endsWith("\n"));
-  assert.deepEqual(JSON.parse(subscribe), {
+  assert.deepEqual(JSON.parse(subscribe.split("\n")[0]), {
     t: "subscribe",
     sensors: ["baro"],
     rateHz: { baro: 0.2, gnss: 1, attitude: 1, environment: 0.1 },
@@ -78,7 +78,7 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
   assert.equal(app.deltas[0][1].updates[0].values[0].value, 101000);
   assert.ok(app.status.includes("Connected to the phone"));
   assert.ok(app.debugs.some((d) => d.includes("bridge version 9")));
-  assert.deepEqual(p.statusNow(), { connected: true, app: "1.200", sensors: 1, dropped: 1, devices: [], serial: {} });
+  assert.deepEqual(p.statusNow(), { connected: true, app: "1.200", sensors: 1, dropped: 1, devices: [], serial: {}, alarms: [] });
   conn.destroy();
   await until(() => app.status.at(-1).startsWith("Waiting for the phone"));
 });
@@ -110,7 +110,7 @@ test("a USB device's NMEA 0183 becomes deltas under its own source and reaches t
   });
   p.start({ serialBaud: 38400, serialDevices: [{ id: "usb-0403-6001-a1", baud: 4800 }] });
   await until(() => conn !== null && subscribe.endsWith("\n"));
-  assert.deepEqual(JSON.parse(subscribe).serial, { usb: true, baud: 38400, devices: { "usb-0403-6001-a1": 4800 }, bt: true });
+  assert.deepEqual(JSON.parse(subscribe.split("\n")[0]).serial, { usb: true, baud: 38400, devices: { "usb-0403-6001-a1": 4800 }, bt: true });
 
   const devices = (list) => conn.write(`${JSON.stringify({ t: "devices", list })}\n`);
   devices([
@@ -175,4 +175,85 @@ test("without the server's parser the status says USB sentences are not parsed",
   conn.write(`${JSON.stringify({ t: "serial", id: "usb-1a86-7523", data: Buffer.from("$GPRMC\n").toString("base64") })}\n`);
   await until(() => p.statusNow().serial["usb-1a86-7523"]?.sentences === 1);
   assert.equal(app.deltas.length, 0);
+});
+
+test("the boat's alarms reach the phone, and its Silence is done through the server", async (t) => {
+  const sock = socketPath();
+  let conn = null;
+  let received = "";
+  const server = await listen(sock, (c) => {
+    conn = c;
+    c.setEncoding("utf8");
+    c.on("data", (d) => (received += d));
+  });
+  const id = "0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f";
+  const app = fakeApp();
+  const calls = [];
+  app.notifications = { silence: (x) => calls.push(["silence", x]), acknowledge: (x) => calls.push(["acknowledge", x]) };
+  let onDelta = null;
+  let unsubscribed = 0;
+  app.subscriptionManager = {
+    subscribe(command, unsubscribes, onError, callback) {
+      assert.deepEqual(command, { context: "vessels.self", subscribe: [{ path: "notifications.*", policy: "instant" }] });
+      unsubscribes.push(() => unsubscribed++);
+      onError("a test error");
+      onDelta = callback;
+    },
+  };
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, Parser: null });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  p.start({});
+  assert.ok(app.debugs.includes("notifications: a test error"));
+  const lines = () => received.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const alarmLines = () => lines().filter((m) => m.t === "alarms");
+  // Raised before the phone connected: sent once it is.
+  onDelta({
+    updates: [
+      {
+        values: [
+          { path: "notifications.navigation.anchor", value: { id, state: "alarm", method: ["visual", "sound"], message: "Anchor dragging", status: {} } },
+          { path: "notifications.engine.temp", value: { state: "warn", method: ["visual"], message: "Warm" } },
+        ],
+      },
+    ],
+  });
+  await until(() => alarmLines().length === 1);
+  assert.deepEqual(alarmLines()[0].list, [
+    { id, path: "notifications.navigation.anchor", state: "alarm", message: "Anchor dragging", sound: true, action: "silence" },
+  ]);
+  assert.equal(p.statusNow().alarms.length, 1);
+  conn.write(`${JSON.stringify({ t: "silence", id })}\n`);
+  await until(() => calls.length === 1);
+  assert.deepEqual(calls, [["silence", id]]);
+  assert.ok(app.debugs.includes(`the phone asked to silence ${id}`));
+  conn.write(`${JSON.stringify({ t: "silence", id: "notifications.unknown" })}\n`);
+  await until(() => app.debugs.includes("the phone silenced notifications.unknown on the phone alone"));
+  onDelta({ updates: [{ values: [{ path: "notifications.navigation.anchor", value: null }] }] });
+  onDelta({});
+  await until(() => alarmLines().length === 2);
+  assert.deepEqual(alarmLines()[1].list, []);
+  p.stop();
+  assert.equal(unsubscribed, 1);
+});
+
+test("with alarms off, or no subscription manager, the phone hears of none", async (t) => {
+  const sock = socketPath();
+  const server = await listen(sock);
+  const app = fakeApp();
+  let subscribed = false;
+  app.subscriptionManager = { subscribe() { subscribed = true; } };
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, Parser: null });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  p.start({ alarms: false });
+  assert.equal(subscribed, false);
+  p.stop();
+  delete app.subscriptionManager;
+  p.start({});
+  assert.ok(app.debugs.some((d) => d.includes("no subscription manager")));
 });

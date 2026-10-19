@@ -41,6 +41,12 @@
         android:usesPermissionFlags="neverForLocation"
         tools:ignore="UnusedAttribute" />
 
+    <!-- The boat's alarms (PhoneAlarm): vibration with the alarm sound, and the full-screen alarm
+         that wakes a locked phone. Android 14 and later grant the full-screen intent to alarm
+         and calling apps only; anywhere else the owner allows it in the settings, from the Dock. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
@@ -79,6 +85,18 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/usb_devices" />
         </activity>
+
+        <!-- The boat's alarm on the whole screen, from the alarm notification's full-screen intent:
+             over the lock screen, the screen turned on, in a task of its own so the Dock does
+             not come up with it. -->
+        <activity
+            android:name=".AlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:turnScreenOn="true" />
 
         <!-- The runtime checks (spikes R1–R3), opened from the Dock. -->
         <activity
