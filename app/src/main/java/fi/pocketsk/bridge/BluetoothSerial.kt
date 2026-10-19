@@ -114,8 +114,11 @@ internal class BluetoothSerial(
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         }
+        // Exported: a pairing's change is broadcast by the Bluetooth process, not by the system,
+        // and a receiver that is not exported never hears it. Both actions are protected
+        // broadcasts, which no other app can send, so exporting it lets nothing else in.
         reporting({ note("bt: cannot watch the adapter: $it") }) {
-            ContextCompat.registerReceiver(app, receiver, filter, null, handler, ContextCompat.RECEIVER_NOT_EXPORTED)
+            ContextCompat.registerReceiver(app, receiver, filter, null, handler, ContextCompat.RECEIVER_EXPORTED)
         }
         look()
     }
