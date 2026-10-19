@@ -97,6 +97,12 @@ class MainActivity : ComponentActivity() {
         refreshPermissions()
     }
 
+    /** Precise and approximate together, as Android asks; GNSS needs the precise one. */
+    private val askLocationLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        refreshPermissions()
+        SignalKService.permissionsChanged(this)
+    }
+
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) copyTarball(uri)
     }
@@ -141,6 +147,9 @@ class MainActivity : ComponentActivity() {
         // Settings opened from here (battery, an app permission) may have changed something.
         refreshPermissions()
         refreshAddress()
+        // With the app in front a running server may take location, which it could not when it
+        // was started at boot.
+        if (model.permissions.location) SignalKService.permissionsChanged(this)
     }
 
     override fun onDestroy() {
@@ -166,6 +175,7 @@ class MainActivity : ComponentActivity() {
         override fun pickTarball() = this@MainActivity.pickTarball()
         override fun rollBack() = this@MainActivity.rollBack()
         override fun askPermissions() = this@MainActivity.askPermissions()
+        override fun askLocation() = askLocationLauncher.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
         override fun setAutostart(on: Boolean) = this@MainActivity.setAutostart(on)
         override fun finishSetup(startServer: Boolean) = this@MainActivity.finishSetup(startServer)
@@ -289,6 +299,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 null
             },
+            location = granted(android.Manifest.permission.ACCESS_FINE_LOCATION),
             batteryUnrestricted = getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true,
             autostart = prefs.autostart,
         )

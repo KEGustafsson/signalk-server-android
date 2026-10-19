@@ -23,8 +23,16 @@ class BridgeProtocolTest {
     @Test
     fun aSubscribeIsReadAndClamped() {
         assertEquals(
-            Incoming.Subscribe(Subscription(setOf("battery", "baro"), 0.5)),
-            BridgeProtocol.parse("""{"t":"subscribe","sensors":["battery","baro","gnss",7],"rateHz":{"baro":0.5}}"""),
+            Incoming.Subscribe(Subscription(setOf("battery", "baro", "gnss"), baroHz = 0.5)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["battery","baro","gnss","imu",7],"rateHz":{"baro":0.5}}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("gnss"), gnssHz = BridgeProtocol.GNSS_MAX_HZ)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["gnss"],"rateHz":{"gnss":100}}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("gnss"), gnssHz = 0.5)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["gnss"],"rateHz":{"gnss":0.5}}"""),
         )
         assertEquals(
             Incoming.Subscribe(Subscription(setOf("baro"), 1.0)),

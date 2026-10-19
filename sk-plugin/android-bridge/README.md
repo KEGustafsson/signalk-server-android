@@ -12,9 +12,11 @@ knows as ordinary Signal K data:
 | --- | --- | --- |
 | Phone battery | `electrical.batteries.phone.capacity.stateOfCharge`, `.voltage`, `.temperature` | `android.battery` |
 | Barometer | `environment.outside.pressure`, averaged over the chosen period | `android.baro` |
+| GNSS | `navigation.position`, `navigation.speedOverGround`, `navigation.courseOverGroundTrue` | `android.gnss` |
 
-The phone's GNSS and attitude, USB and Bluetooth NMEA devices, and alarms that wake a locked phone
-come in later versions.
+GNSS needs precise location allowed in the app (its Dock has the button); without it the other
+sensors still run. The phone's attitude, USB and Bluetooth NMEA devices, and alarms that wake a
+locked phone come in later versions.
 
 On a server that is not running on Pocket SK the plugin finds no socket, says so in its status and
 does nothing.

@@ -1,26 +1,40 @@
 package fi.pocketsk.bridge
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Location
+import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationListenerCompat
+import androidx.core.location.LocationManagerCompat
+import androidx.core.location.LocationRequestCompat
+import androidx.core.os.ExecutorCompat
 import fi.pocketsk.bridge.BridgeProtocol.Subscription
 import fi.pocketsk.net.reporting
 
 /**
  * The phone's own sensors, as the plugin asked for them ([apply]): the battery from the sticky
- * ACTION_BATTERY_CHANGED broadcast, and the barometer averaged over the subscribed period. They
- * run only while a plugin wants them, on a thread of their own ("bridge-sensors"), and every
- * reading leaves through [send] as a protocol line. Readings and their units: [Readings].
+ * ACTION_BATTERY_CHANGED broadcast, the barometer averaged over the subscribed period, and the
+ * GNSS receiver at the subscribed rate. They run only while a plugin wants them, on a thread of
+ * their own ("bridge-sensors"), and every reading leaves through [send] as a protocol line.
+ * Readings and their units: [Readings].
+ *
+ * GNSS comes from the platform's own GPS provider through AndroidX's LocationManagerCompat
+ * (Play services' fused provider is a third-party library, and the boat wants the receiver, not
+ * a network guess). It needs precise location granted; without it the plugin's GNSS stays off
+ * and the log says so once, and [reapply] after a grant starts it.
  */
 internal class PhoneSensors(context: Context, private val send: (String) -> Unit, private val note: (String) -> Unit) {
     private val app = context.applicationContext
@@ -36,6 +50,15 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     private var baroOn = false
     private val pressure = Readings.PressureAverage()
     private var toldNoBarometer = false
+    private var gnssOn = false
+    /** The rate the running GNSS request was made with. */
+    private var gnssHzOn = BridgeProtocol.GNSS_DEFAULT_HZ
+    private val gnssRateChanged get() = subscription.gnssHz != gnssHzOn
+    private var toldNoLocation = false
+    private val locationManager = app.getSystemService(LocationManager::class.java)
+    private val executor = ExecutorCompat.create(handler)
+
+    private val gnssListener = LocationListenerCompat { location -> gnss(location) }
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = battery(intent)
@@ -66,6 +89,11 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     /** Starts what [next] names and stops the rest; [Subscription.NONE] stops everything. */
     fun apply(next: Subscription) {
         handler.post { reporting({ note("sensors: $it") }) { switchTo(next) } }
+    }
+
+    /** Tries again what the subscription wants and could not start: after a permission was granted. */
+    fun reapply() {
+        handler.post { reporting({ note("sensors: $it") }) { switchTo(subscription) } }
     }
 
     /** Stops everything and ends the thread; this object is not used again. */
@@ -111,6 +139,67 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             handler.removeCallbacks(baroTick)
             handler.postDelayed(baroTick, periodMs(next.baroHz))
         }
+        val wantGnss = BridgeProtocol.GNSS in next.sensors
+        if (wantGnss && (!gnssOn || gnssRateChanged)) startGnss(next.gnssHz)
+        else if (!wantGnss && gnssOn) stopGnss()
+    }
+
+    private fun startGnss(hz: Double) {
+        val manager = locationManager ?: return
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (!toldNoLocation) note("precise location is not allowed: no GNSS for Signal K from this phone")
+            toldNoLocation = true
+            return
+        }
+        if (!manager.allProviders.contains(LocationManager.GPS_PROVIDER)) {
+            if (!toldNoLocation) note("this phone has no GPS receiver")
+            toldNoLocation = true
+            return
+        }
+        if (gnssOn) LocationManagerCompat.removeUpdates(manager, gnssListener)
+        val intervalMs = (1000.0 / hz).toLong()
+        val request = LocationRequestCompat.Builder(intervalMs)
+            .setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY)
+            .setMinUpdateIntervalMillis(intervalMs)
+            .build()
+        try {
+            LocationManagerCompat.requestLocationUpdates(manager, LocationManager.GPS_PROVIDER, request, executor, gnssListener)
+        } catch (e: SecurityException) {
+            // Revoked between the check above and here.
+            gnssOn = false
+            note("precise location was taken back: no GNSS for Signal K ($e)")
+            return
+        }
+        gnssOn = true
+        gnssHzOn = hz
+        toldNoLocation = false
+    }
+
+    private fun stopGnss() {
+        gnssOn = false
+        val manager = locationManager ?: return
+        try {
+            LocationManagerCompat.removeUpdates(manager, gnssListener)
+        } catch (_: SecurityException) {
+            // Taken back already: the platform has dropped the request itself.
+        }
+    }
+
+    private fun gnss(location: Location) {
+        if (!gnssOn) return
+        val fix = Readings.gnss(
+            Readings.Fix(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitudeM = if (location.hasAltitude()) location.altitude else null,
+                speedMs = if (location.hasSpeed()) location.speed else null,
+                bearingDeg = if (location.hasBearing()) location.bearing else null,
+            ),
+        ) ?: return
+        val ts = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
+        send(BridgeProtocol.sensor(Readings.POSITION_PATH, fix.position, Readings.SRC_GNSS, ts))
+        fix.speedOverGround?.let { send(BridgeProtocol.sensor(Readings.SOG_PATH, it, Readings.SRC_GNSS, ts)) }
+        fix.courseOverGroundTrue?.let { send(BridgeProtocol.sensor(Readings.COG_PATH, it, Readings.SRC_GNSS, ts)) }
     }
 
     private fun battery(intent: Intent) {

@@ -67,8 +67,20 @@ test("a delta carries the sensor's source and time", () => {
 });
 
 test("subscribe follows the settings", () => {
-  assert.deepEqual(subscribeMessage(), { t: "subscribe", sensors: ["battery", "baro"], rateHz: { baro: 0.1 } });
-  assert.deepEqual(subscribeMessage({ battery: false, barometerSeconds: 2 }), { t: "subscribe", sensors: ["baro"], rateHz: { baro: 0.5 } });
-  assert.deepEqual(subscribeMessage({ barometer: false, barometerSeconds: -1 }).sensors, ["battery"]);
+  assert.deepEqual(subscribeMessage(), { t: "subscribe", sensors: ["battery", "baro", "gnss"], rateHz: { baro: 0.1, gnss: 1 } });
+  assert.deepEqual(subscribeMessage({ battery: false, gnss: false, barometerSeconds: 2 }), {
+    t: "subscribe",
+    sensors: ["baro"],
+    rateHz: { baro: 0.5, gnss: 1 },
+  });
+  assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, barometerSeconds: -1 }).sensors, ["battery"]);
   assert.equal(subscribeMessage({ barometerSeconds: "x" }).rateHz.baro, 0.1);
+  assert.equal(subscribeMessage({ gnssSeconds: 0.5 }).rateHz.gnss, 2);
+  assert.equal(subscribeMessage({ gnssSeconds: 0 }).rateHz.gnss, 1);
+});
+
+test("a GNSS position is a sensor value, altitude or not", () => {
+  const r = parseLine('{"t":"sensor","path":"navigation.position","value":{"latitude":60.45,"longitude":22.27},"src":"android.gnss","ts":1}');
+  assert.equal(r.ok, true);
+  assert.deepEqual(toDelta(r.msg).updates[0].values[0], { path: "navigation.position", value: { latitude: 60.45, longitude: 22.27 } });
 });

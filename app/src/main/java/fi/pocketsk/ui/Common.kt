@@ -73,8 +73,9 @@ internal fun installTail(state: InstallManager.State?): String = when (state) {
 
 /**
  * What the server needs from the phone, each with its state and a way to grant it: shared by the
- * wizard's permission page and the Dock's Settings card (docs/PLAN.md §5.3 step 4). Location
- * (for the phone's GNSS as a Signal K source) is asked for with the bridge, not here.
+ * wizard's permission page and the Dock's Settings card (docs/PLAN.md §5.3 step 4). Location is
+ * the bridge's (the phone's GNSS as a Signal K source, §7.1) and asked for on its own, since the
+ * server starts without it.
  */
 @Composable
 internal fun PermissionRows(permissions: PermissionsView, actions: AppActions) {
@@ -83,6 +84,11 @@ internal fun PermissionRows(permissions: PermissionsView, actions: AppActions) {
     permissions.localNetwork?.let { PermissionRow(stringResource(R.string.perm_local_network), it) }
     if (missing) {
         OutlinedButton(onClick = actions::askPermissions) { Text(stringResource(R.string.perm_allow)) }
+    }
+    PermissionRow(stringResource(R.string.perm_location), permissions.location)
+    if (!permissions.location) {
+        Text(stringResource(R.string.perm_location_why), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = actions::askLocation) { Text(stringResource(R.string.perm_location_allow)) }
     }
     PermissionRow(stringResource(R.string.perm_battery), permissions.batteryUnrestricted)
     if (!permissions.batteryUnrestricted) {

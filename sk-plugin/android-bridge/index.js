@@ -11,8 +11,8 @@
  * (lib/protocol.js). The app installs and enables it; on any other server there is no socket, and
  * the plugin says so in its status and does nothing.
  *
- * The phone's USB and Bluetooth serial devices, its GNSS and attitude, and the alarm path back
- * to the phone come in later steps; the protocol has room for them.
+ * The phone's USB and Bluetooth serial devices, its attitude, and the alarm path back to the
+ * phone come in later steps; the protocol has room for them.
  */
 
 const { Link } = require("./lib/link");
@@ -59,6 +59,20 @@ module.exports = function androidBridge(app, deps = {}) {
           default: 10,
           minimum: 1,
           maximum: 600,
+        },
+        gnss: {
+          type: "boolean",
+          title: "GNSS",
+          description: "The phone's own GPS as navigation.position, speedOverGround and courseOverGroundTrue, once precise location is allowed in the app",
+          default: true,
+        },
+        gnssSeconds: {
+          type: "number",
+          title: "GNSS period (seconds)",
+          description: "How often a fix is sent",
+          default: 1,
+          minimum: 0.2,
+          maximum: 10,
         },
       },
     }),

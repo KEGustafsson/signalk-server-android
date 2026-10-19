@@ -10,7 +10,7 @@
  *   {"t":"hello","v":1,"app":"1.123"}
  *   {"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}
  * Plugin to app:
- *   {"t":"subscribe","sensors":["battery","baro"],"rateHz":{"baro":0.1}}
+ *   {"t":"subscribe","sensors":["battery","baro","gnss"],"rateHz":{"baro":0.1,"gnss":1}}
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -21,7 +21,7 @@ const VERSION = 1;
 /** Longest line either side sends or accepts; a longer one is a broken peer, not a message. */
 const MAX_LINE = 64 * 1024;
 /** The sensors a subscribe may name; the app ignores any other. */
-const SENSORS = ["battery", "baro"];
+const SENSORS = ["battery", "baro", "gnss"];
 
 /** The largest time, in ms either side of 1970, a JavaScript Date can hold. */
 const MAX_TIME_MS = 8.64e15;
@@ -83,14 +83,23 @@ function toDelta(msg, now = Date.now) {
   };
 }
 
-/** What to ask the app for, from the plugin's settings. */
+/** A period in seconds from the settings, or `fallback` when it is not a positive number. */
+function seconds(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** What to ask the app for, from the plugin's settings; the app clamps the rates to its own bounds. */
 function subscribeMessage(options = {}) {
   const sensors = [];
   if (options.battery !== false) sensors.push("battery");
   if (options.barometer !== false) sensors.push("baro");
-  const seconds = Number(options.barometerSeconds);
-  const baroSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : 10;
-  return { t: "subscribe", sensors, rateHz: { baro: 1 / baroSeconds } };
+  if (options.gnss !== false) sensors.push("gnss");
+  return {
+    t: "subscribe",
+    sensors,
+    rateHz: { baro: 1 / seconds(options.barometerSeconds, 10), gnss: 1 / seconds(options.gnssSeconds, 1) },
+  };
 }
 
 module.exports = { VERSION, MAX_LINE, SENSORS, parseLine, toDelta, subscribeMessage, validValue };

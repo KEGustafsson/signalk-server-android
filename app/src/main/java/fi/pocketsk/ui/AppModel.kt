@@ -51,11 +51,13 @@ internal sealed interface Available {
 
 /**
  * What is granted. Null where it does not apply on this phone: notifications below Android 13,
- * local network access below Android 17.
+ * local network access below Android 17. [location] is precise location, for the bridge's GNSS:
+ * optional, since the server runs without it.
  */
 internal data class PermissionsView(
     val notifications: Boolean? = null,
     val localNetwork: Boolean? = null,
+    val location: Boolean = false,
     val batteryUnrestricted: Boolean = false,
     val autostart: Boolean = false,
 )
@@ -71,6 +73,7 @@ internal interface AppActions {
     fun pickTarball()
     fun rollBack()
     fun askPermissions()
+    fun askLocation()
     fun openBatterySettings()
     fun setAutostart(on: Boolean)
     fun finishSetup(startServer: Boolean)

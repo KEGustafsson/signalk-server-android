@@ -37,6 +37,39 @@ class ReadingsTest {
     }
 
     @Test
+    fun aGnssFixInSignalKUnits() {
+        val g = Readings.gnss(Readings.Fix(latitude = 60.45, longitude = 22.27, altitudeM = 3.5, speedMs = 2.5f, bearingDeg = 90f))!!
+        assertEquals(mapOf("latitude" to 60.45, "longitude" to 22.27, "altitude" to 3.5), g.position)
+        assertEquals(2.5, g.speedOverGround!!, 1e-9)
+        assertEquals(Math.PI / 2, g.courseOverGroundTrue!!, 1e-6)
+    }
+
+    @Test
+    fun whatAFixDoesNotKnowIsLeftOut() {
+        val g = Readings.gnss(Readings.Fix(latitude = -33.9, longitude = 151.2))!!
+        assertEquals(setOf("latitude", "longitude"), g.position.keys)
+        assertNull(g.speedOverGround)
+        assertNull(g.courseOverGroundTrue)
+        val odd = Readings.gnss(Readings.Fix(0.0, 0.0, altitudeM = Double.NaN, speedMs = -1f, bearingDeg = Float.NaN))!!
+        assertEquals(setOf("latitude", "longitude"), odd.position.keys)
+        assertNull(odd.speedOverGround)
+        assertNull(odd.courseOverGroundTrue)
+    }
+
+    @Test
+    fun aCourseIsNormalisedIntoOneTurn() {
+        assertEquals(0.0, Readings.gnss(Readings.Fix(0.0, 0.0, bearingDeg = 360f))!!.courseOverGroundTrue!!, 1e-9)
+        assertEquals(Math.toRadians(350.0), Readings.gnss(Readings.Fix(0.0, 0.0, bearingDeg = -10f))!!.courseOverGroundTrue!!, 1e-6)
+    }
+
+    @Test
+    fun aFixOffTheEarthIsNoFix() {
+        assertNull(Readings.gnss(Readings.Fix(91.0, 0.0)))
+        assertNull(Readings.gnss(Readings.Fix(0.0, -181.0)))
+        assertNull(Readings.gnss(Readings.Fix(Double.NaN, 0.0)))
+    }
+
+    @Test
     fun pressureIsAveragedPerPeriodInPascals() {
         val avg = Readings.PressureAverage()
         assertNull(avg.take())
