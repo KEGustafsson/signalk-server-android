@@ -11,8 +11,8 @@
  * (lib/protocol.js). The app installs and enables it; on any other server there is no socket, and
  * the plugin says so in its status and does nothing.
  *
- * The phone's USB and Bluetooth serial devices, its attitude, and the alarm path back to the
- * phone come in later steps; the protocol has room for them.
+ * The phone's USB and Bluetooth serial devices and the alarm path back to the phone come in later
+ * steps; the protocol has room for them.
  */
 
 const { Link } = require("./lib/link");
@@ -73,6 +73,48 @@ module.exports = function androidBridge(app, deps = {}) {
           default: 1,
           minimum: 0.2,
           maximum: 10,
+        },
+        attitude: {
+          type: "boolean",
+          title: "Attitude and rate of turn",
+          description: "Roll and pitch as navigation.attitude and the rate of turn as navigation.rateOfTurn, from the phone's rotation sensor and gyroscope. Level the phone with Level now in the app's Sensors card",
+          default: true,
+        },
+        attitudeSeconds: {
+          type: "number",
+          title: "Attitude period (seconds)",
+          description: "How often the attitude, the rate of turn and the heading are sent",
+          default: 1,
+          minimum: 0.1,
+          maximum: 10,
+        },
+        heading: {
+          type: "boolean",
+          title: "Magnetic heading",
+          description: "The phone's compass as navigation.headingMagnetic (and the attitude's yaw). Off by default: a compass beside a boat's steel and wiring is often wrong",
+          default: false,
+        },
+        bowOffset: {
+          type: "number",
+          title: "Bow offset (degrees)",
+          description: "How far the bow is to starboard of where the phone points: its top, or its back when it stands upright. 90 when the phone's right side faces the bow, -90 for its left",
+          default: 0,
+          minimum: -180,
+          maximum: 180,
+        },
+        environment: {
+          type: "boolean",
+          title: "Cabin sensors",
+          description: "Temperature, humidity and light as environment.inside.temperature, .relativeHumidity and .illuminance, those the phone has (most have only light)",
+          default: true,
+        },
+        environmentSeconds: {
+          type: "number",
+          title: "Cabin sensors period (seconds)",
+          description: "How often the averaged cabin readings are sent",
+          default: 10,
+          minimum: 1,
+          maximum: 600,
         },
       },
     }),

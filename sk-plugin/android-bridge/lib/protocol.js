@@ -12,7 +12,8 @@
  *   {"t":"sensor","path":"navigation.courseOverGroundTrue","value":null,"src":"android.gnss","ts":1760000000000}
  *     (null: the sensor has no reading now, so the server stops showing the last one as current)
  * Plugin to app:
- *   {"t":"subscribe","sensors":["battery","baro","gnss"],"rateHz":{"baro":0.1,"gnss":1}}
+ *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment"],
+ *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1},"bowOffsetDeg":0}
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -23,7 +24,7 @@ const VERSION = 1;
 /** Longest line either side sends or accepts; a longer one is a broken peer, not a message. */
 const MAX_LINE = 64 * 1024;
 /** The sensors a subscribe may name; the app ignores any other. */
-const SENSORS = ["battery", "baro", "gnss"];
+const SENSORS = ["battery", "baro", "gnss", "attitude", "heading", "environment"];
 
 /** The largest time, in ms either side of 1970, a JavaScript Date can hold. */
 const MAX_TIME_MS = 8.64e15;
@@ -95,16 +96,35 @@ function seconds(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/** What to ask the app for, from the plugin's settings; the app clamps the rates to its own bounds. */
+/** The bow offset in degrees from the settings, 0 when it is not a number; the app clamps it. */
+function degrees(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * What to ask the app for, from the plugin's settings; the app clamps the rates to its own bounds.
+ * Everything is on unless turned off, but the heading, which is off unless turned on: a phone's
+ * compass beside a boat's steel and wiring is often wrong, and it would compete with a real one.
+ */
 function subscribeMessage(options = {}) {
   const sensors = [];
   if (options.battery !== false) sensors.push("battery");
   if (options.barometer !== false) sensors.push("baro");
   if (options.gnss !== false) sensors.push("gnss");
+  if (options.attitude !== false) sensors.push("attitude");
+  if (options.heading === true) sensors.push("heading");
+  if (options.environment !== false) sensors.push("environment");
   return {
     t: "subscribe",
     sensors,
-    rateHz: { baro: 1 / seconds(options.barometerSeconds, 10), gnss: 1 / seconds(options.gnssSeconds, 1) },
+    rateHz: {
+      baro: 1 / seconds(options.barometerSeconds, 10),
+      gnss: 1 / seconds(options.gnssSeconds, 1),
+      attitude: 1 / seconds(options.attitudeSeconds, 1),
+      environment: 1 / seconds(options.environmentSeconds, 10),
+    },
+    bowOffsetDeg: degrees(options.bowOffset),
   };
 }
 

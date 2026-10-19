@@ -89,6 +89,10 @@
     <string name="dock_history">History</string>
     <string name="dock_history_line">%1$s  %2$s  %3$s  slot %4$s</string>
     <string name="dock_settings_title">Settings</string>
+    <string name="dock_sensors_title">Sensors</string>
+    <string name="dock_sensors_body">The phone\'s battery, barometer, GPS, attitude, rate of turn, compass and cabin sensors reach Signal K through the Pocket SK Android bridge plugin. Turn each on or off, set its period and the bow offset in the plugin\'s settings in the admin UI.</string>
+    <string name="dock_level_why">With the phone in its holder and the boat lying level and still, tap Level now: roll and pitch then read zero as the phone sits. Until then the phone is taken to lie flat, screen up, with its top towards the bow.</string>
+    <string name="dock_level">Level now</string>
     <string name="dock_log_title">Log</string>
     <string name="dock_log_empty">Nothing logged yet</string>
     <string name="dock_app_version">App %1$s (%2$s)</string>

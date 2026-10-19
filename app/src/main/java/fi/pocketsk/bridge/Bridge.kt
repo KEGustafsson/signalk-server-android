@@ -40,6 +40,9 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     /** A permission was granted (location): the sensors try again what they could not start. */
     fun permissionsChanged() = sensors.reapply()
 
+    /** "Level now" from the Dock: the phone's present tilt becomes the boat's level ([PhoneSensors.level]). */
+    fun level() = sensors.level()
+
     /** For good, when the service goes. */
     fun close() {
         control.execute {
