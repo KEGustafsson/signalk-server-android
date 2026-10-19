@@ -50,9 +50,9 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
   });
   const app = fakeApp();
   const p = plugin(app, { env: { POCKETSK_BRIDGE: sock } });
-  t.after(() => {
+  t.after(async () => {
     p.stop();
-    server.closeAll();
+    await server.closeAll();
   });
   p.start({ battery: false, barometerSeconds: 5 });
   await until(() => app.deltas.length === 1 && p.statusNow().dropped === 1 && subscribe.endsWith("\n"));

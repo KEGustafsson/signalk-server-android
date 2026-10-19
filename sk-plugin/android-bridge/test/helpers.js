@@ -24,8 +24,10 @@ function freeSocketPath(p) {
 }
 
 /**
- * A server at `p` whose close() also ends every connection it took, so a test that fails half
- * way leaves nothing open that would keep the test run alive.
+ * A server at `p` whose closeAll() also ends every connection it took, so a test that fails half
+ * way leaves nothing open that would keep the test run alive. It resolves once the server has
+ * closed (a pipe name can be listened on again only then), and also when it was closed already,
+ * since a test's cleanup closes whatever the test may have closed itself.
  */
 function listen(p, onConnection = () => {}) {
   const connections = new Set();
@@ -37,10 +39,11 @@ function listen(p, onConnection = () => {}) {
     });
     server.once("error", reject);
     server.listen(p, () => {
-      server.closeAll = () => {
-        for (const c of connections) c.destroy();
-        server.close();
-      };
+      server.closeAll = () =>
+        new Promise((done) => {
+          for (const c of connections) c.destroy();
+          server.close(() => done());
+        });
       resolve(server);
     });
   });

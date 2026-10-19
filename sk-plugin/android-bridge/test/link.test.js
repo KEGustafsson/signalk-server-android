@@ -19,9 +19,9 @@ test("lines arrive whole, however the bytes are split, and sends reach the app",
   const lines = [];
   const states = [];
   const link = new Link(p, { onLine: (l) => lines.push(l), onState: (c, d) => states.push([c, d]) });
-  t.after(() => {
+  t.after(async () => {
     link.stop();
-    server.closeAll();
+    await server.closeAll();
   });
   assert.equal(link.send({ early: true }), false);
   link.start();
@@ -38,9 +38,9 @@ test("the link connects again after the app goes away and comes back", async (t)
   const states = [];
   const servers = [];
   const link = new Link(p, { onLine: () => {}, onState: (c, d) => states.push([c, d]), firstDelayMs: 20, maxDelayMs: 40 });
-  t.after(() => {
+  t.after(async () => {
     link.stop();
-    for (const s of servers) s.closeAll();
+    await Promise.all(servers.map((s) => s.closeAll()));
   });
   link.start();
   await until(() => states.length >= 2);
@@ -49,7 +49,7 @@ test("the link connects again after the app goes away and comes back", async (t)
   servers.push(first);
   await until(() => states.some(([c]) => c));
   await until(() => !link.connected);
-  first.closeAll();
+  await first.closeAll();
   freeSocketPath(p);
   servers.push(await listen(p));
   await until(() => link.connected);
@@ -63,9 +63,9 @@ test("a line longer than the limit closes the connection", async (t) => {
   const states = [];
   const lines = [];
   const link = new Link(p, { onLine: (l) => lines.push(l), onState: (c, d) => states.push([c, d]), firstDelayMs: 5000 });
-  t.after(() => {
+  t.after(async () => {
     link.stop();
-    server.closeAll();
+    await server.closeAll();
   });
   link.start();
   await until(() => states.length === 2);
