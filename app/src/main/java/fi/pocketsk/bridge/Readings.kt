@@ -15,9 +15,21 @@ internal object Readings {
     const val POSITION_PATH = "navigation.position"
     const val SOG_PATH = "navigation.speedOverGround"
     const val COG_PATH = "navigation.courseOverGroundTrue"
+    const val SATELLITES_PATH = "navigation.gnss.satellites"
+    const val ATTITUDE_PATH = "navigation.attitude"
+    const val RATE_OF_TURN_PATH = "navigation.rateOfTurn"
+    const val HEADING_MAGNETIC_PATH = "navigation.headingMagnetic"
+    const val INSIDE_TEMPERATURE_PATH = "environment.inside.temperature"
+    const val INSIDE_HUMIDITY_PATH = "environment.inside.relativeHumidity"
+    const val INSIDE_ILLUMINANCE_PATH = "environment.inside.illuminance"
     const val SRC_BATTERY = "android.battery"
     const val SRC_BARO = "android.baro"
     const val SRC_GNSS = "android.gnss"
+    /** Roll, pitch and rate of turn: the rotation sensor and the gyroscope. */
+    const val SRC_IMU = "android.imu"
+    /** The magnetic heading: the rotation sensor with the magnetometer, a source of its own so a server can rank it below a real compass. */
+    const val SRC_COMPASS = "android.compass"
+    const val SRC_ENVIRONMENT = "android.environment"
 
     /** The battery is told at most this often, however often Android announces a change. */
     const val BATTERY_MIN_GAP_MS = 10_000L
@@ -83,6 +95,46 @@ internal object Readings {
         val speed = f.speedMs?.takeIf { it.isFinite() && it >= 0f }?.toDouble()
         val course = f.bearingDeg?.takeIf { it.isFinite() }?.let { Math.toRadians((((it % 360f) + 360f) % 360f).toDouble()) }
         return Gnss(position, speed, course)
+    }
+
+    /**
+     * The boat's attitude as Signal K's `navigation.attitude`: roll and pitch, and yaw only where
+     * it has a north to be measured from ([withYaw]: the rotation sensor with the magnetometer).
+     */
+    fun attitude(e: Attitude.Euler, withYaw: Boolean): Map<String, Double?> =
+        if (withYaw) linkedMapOf("roll" to e.roll, "pitch" to e.pitch, "yaw" to e.yaw) else linkedMapOf("roll" to e.roll, "pitch" to e.pitch)
+
+    /** The ambient temperature sensor's °C as kelvin; null for what no cabin reads. */
+    fun cabinTemperature(celsius: Double): Double? = celsius.takeIf { it.isFinite() && it in -40.0..85.0 }?.let { it + 273.15 }
+
+    /** The humidity sensor's percent as Signal K's ratio; null outside 0–100 %. */
+    fun cabinHumidity(percent: Double): Double? = percent.takeIf { it.isFinite() && it in 0.0..100.0 }?.let { it / 100.0 }
+
+    /** The light sensor's lux, as they are; null for a reading no light gives. */
+    fun cabinLight(lux: Double): Double? = lux.takeIf { it.isFinite() && it in 0.0..200_000.0 }
+
+    /**
+     * The mean of a period's samples, for the readings that come many times a second and are
+     * worth one number a period (rate of turn, the cabin's sensors). What [add] is given has been
+     * checked by its caller.
+     */
+    class Mean {
+        private var sum = 0.0
+        private var count = 0
+
+        fun add(v: Double) {
+            if (!v.isFinite()) return
+            sum += v
+            count++
+        }
+
+        /** The mean, or null when the period had no sample; starts the next. */
+        fun take(): Double? {
+            val mean = if (count == 0) null else sum / count
+            sum = 0.0
+            count = 0
+            return mean
+        }
     }
 
     /**

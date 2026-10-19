@@ -18,7 +18,13 @@ internal object BridgeProtocol {
     const val BATTERY = "battery"
     const val BARO = "baro"
     const val GNSS = "gnss"
-    val SENSORS = setOf(BATTERY, BARO, GNSS)
+    /** Roll, pitch and rate of turn. */
+    const val ATTITUDE = "attitude"
+    /** The magnetic heading, apart from [ATTITUDE]: a phone's compass on a boat is often wrong. */
+    const val HEADING = "heading"
+    /** The cabin's temperature, humidity and light, as far as the phone has the sensors. */
+    const val ENVIRONMENT = "environment"
+    val SENSORS = setOf(BATTERY, BARO, GNSS, ATTITUDE, HEADING, ENVIRONMENT)
 
     /** The barometer's averaging period, at most once a second and at least once every ten minutes. */
     const val BARO_MIN_HZ = 1.0 / 600
@@ -30,11 +36,27 @@ internal object BridgeProtocol {
     const val GNSS_MAX_HZ = 5.0
     const val GNSS_DEFAULT_HZ = 1.0
 
-    /** What the plugin wants: the sensors it named that the app knows, at clamped rates. */
+    /** Attitude and heading, ten a second at most (the rotation sensor gives about fifty). */
+    const val ATTITUDE_MIN_HZ = 0.1
+    const val ATTITUDE_MAX_HZ = 10.0
+    const val ATTITUDE_DEFAULT_HZ = 1.0
+
+    /** The cabin's sensors, averaged like the barometer. */
+    const val ENVIRONMENT_MIN_HZ = 1.0 / 600
+    const val ENVIRONMENT_MAX_HZ = 1.0
+    const val ENVIRONMENT_DEFAULT_HZ = 0.1
+
+    /**
+     * What the plugin wants: the sensors it named that the app knows, at clamped rates, and the
+     * bow offset of the phone's mounting ([Attitude.mount]), in degrees, + to starboard.
+     */
     data class Subscription(
         val sensors: Set<String>,
         val baroHz: Double = BARO_DEFAULT_HZ,
         val gnssHz: Double = GNSS_DEFAULT_HZ,
+        val attitudeHz: Double = ATTITUDE_DEFAULT_HZ,
+        val environmentHz: Double = ENVIRONMENT_DEFAULT_HZ,
+        val bowOffsetDeg: Double = 0.0,
     ) {
         companion object {
             val NONE = Subscription(emptySet())
@@ -86,6 +108,9 @@ internal object BridgeProtocol {
                 sensors,
                 baroHz = rate(rates, BARO, BARO_MIN_HZ, BARO_MAX_HZ, BARO_DEFAULT_HZ),
                 gnssHz = rate(rates, GNSS, GNSS_MIN_HZ, GNSS_MAX_HZ, GNSS_DEFAULT_HZ),
+                attitudeHz = rate(rates, ATTITUDE, ATTITUDE_MIN_HZ, ATTITUDE_MAX_HZ, ATTITUDE_DEFAULT_HZ),
+                environmentHz = rate(rates, ENVIRONMENT, ENVIRONMENT_MIN_HZ, ENVIRONMENT_MAX_HZ, ENVIRONMENT_DEFAULT_HZ),
+                bowOffsetDeg = (msg["bowOffsetDeg"] as? Double)?.takeIf { it.isFinite() }?.coerceIn(-180.0, 180.0) ?: 0.0,
             ),
         )
     }

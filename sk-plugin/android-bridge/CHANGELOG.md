@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+- The boat's attitude from the phone's rotation sensor: `navigation.attitude` roll and pitch, and
+  `navigation.rateOfTurn` from the gyroscope, under `$source: android.imu`, levelled from the app's
+  Sensors card. Settings: on or off, the period (1 s by default) and the bow offset.
+- The phone's compass as `navigation.headingMagnetic` under `$source: android.compass`, off by
+  default.
+- The cabin's temperature, humidity and light as `environment.inside.temperature`,
+  `.relativeHumidity` and `.illuminance`, those the phone has. Settings: on or off and the period.
+- `navigation.gnss.satellites`: the satellites used in each fix.
+
 ## 0.2.0
 
 - The phone's GNSS: `navigation.position`, `navigation.speedOverGround` and

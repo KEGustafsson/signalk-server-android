@@ -80,4 +80,33 @@ class ReadingsTest {
         assertEquals(101400.0, avg.take()!!, 0.01)
         assertNull("each period starts empty", avg.take())
     }
+
+    @Test
+    fun anAttitudeHasYawOnlyWithANorth() {
+        val e = Attitude.Euler(0.1, -0.2, 1.5)
+        assertEquals(mapOf("roll" to 0.1, "pitch" to -0.2), Readings.attitude(e, withYaw = false))
+        assertEquals(mapOf("roll" to 0.1, "pitch" to -0.2, "yaw" to 1.5), Readings.attitude(e, withYaw = true))
+    }
+
+    @Test
+    fun theCabinsSensorsAreInSignalKsUnits() {
+        assertEquals(294.15, Readings.cabinTemperature(21.0)!!, 1e-9)
+        assertNull(Readings.cabinTemperature(-273.0))
+        assertEquals(0.55, Readings.cabinHumidity(55.0)!!, 1e-9)
+        assertNull(Readings.cabinHumidity(101.0))
+        assertEquals(320.0, Readings.cabinLight(320.0)!!, 1e-9)
+        assertNull(Readings.cabinLight(-1.0))
+        assertNull(Readings.cabinLight(Double.NaN))
+    }
+
+    @Test
+    fun aMeanIsTakenPerPeriod() {
+        val m = Readings.Mean()
+        assertNull(m.take())
+        m.add(1.0)
+        m.add(3.0)
+        m.add(Double.NaN)
+        assertEquals(2.0, m.take()!!, 1e-9)
+        assertNull("each period starts empty", m.take())
+    }
 }

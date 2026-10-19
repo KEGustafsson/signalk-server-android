@@ -54,9 +54,14 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
     p.stop();
     await server.closeAll();
   });
-  p.start({ battery: false, gnss: false, barometerSeconds: 5 });
+  p.start({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 5 });
   await until(() => app.deltas.length === 1 && p.statusNow().dropped === 1 && subscribe.endsWith("\n"));
-  assert.deepEqual(JSON.parse(subscribe), { t: "subscribe", sensors: ["baro"], rateHz: { baro: 0.2, gnss: 1 } });
+  assert.deepEqual(JSON.parse(subscribe), {
+    t: "subscribe",
+    sensors: ["baro"],
+    rateHz: { baro: 0.2, gnss: 1, attitude: 1, environment: 0.1 },
+    bowOffsetDeg: 0,
+  });
   assert.equal(app.deltas[0][0], "pocketsk-android-bridge");
   assert.equal(app.deltas[0][1].updates[0].values[0].value, 101000);
   assert.ok(app.status.includes("Connected to the phone"));

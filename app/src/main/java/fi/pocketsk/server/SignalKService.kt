@@ -128,6 +128,7 @@ class SignalKService : Service() {
             ACTION_RESTART -> if (supervisor.isActive) supervisor.restart() else stopIfIdle()
             ACTION_PROMOTED -> if (supervisor.isActive) supervisor.promoted() else stopIfIdle()
             ACTION_PERMISSIONS -> if (foreground) permissionsChanged() else stopIfIdle()
+            ACTION_LEVEL -> if (foreground) bridge.level() else stopIfIdle()
         }
         return START_STICKY
     }
@@ -397,6 +398,7 @@ class SignalKService : Service() {
         private const val ACTION_ROLLBACK = "fi.pocketsk.action.ROLLBACK"
         private const val ACTION_PROMOTED = "fi.pocketsk.action.PROMOTED"
         private const val ACTION_PERMISSIONS = "fi.pocketsk.action.PERMISSIONS"
+        private const val ACTION_LEVEL = "fi.pocketsk.action.LEVEL"
         private const val CHANNEL = "server"
         private const val ALERT_CHANNEL = "server-alerts"
         private const val NOTIFICATION_ID = 1
@@ -455,6 +457,14 @@ class SignalKService : Service() {
          */
         fun permissionsChanged(context: Context) {
             if (ServerPrefs(context).running) send(context, ACTION_PERMISSIONS)
+        }
+
+        /**
+         * "Level now" from the Dock: a running server's bridge takes the phone's present tilt as
+         * the boat's level. Gated like [permissionsChanged]; the server log says how it went.
+         */
+        fun level(context: Context) {
+            if (ServerPrefs(context).running) send(context, ACTION_LEVEL)
         }
 
         /**

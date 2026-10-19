@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import androidx.core.location.GnssStatusCompat
 import androidx.core.location.LocationListenerCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.location.LocationRequestCompat
@@ -26,10 +27,17 @@ import fi.pocketsk.net.reporting
 
 /**
  * The phone's own sensors, as the plugin asked for them ([apply]): the battery from the sticky
- * ACTION_BATTERY_CHANGED broadcast, the barometer averaged over the subscribed period, and the
- * GNSS receiver at the subscribed rate. They run only while a plugin wants them, on a thread of
- * their own ("bridge-sensors"), and every reading leaves through [send] as a protocol line.
- * Readings and their units: [Readings].
+ * ACTION_BATTERY_CHANGED broadcast, the barometer averaged over the subscribed period, the GNSS
+ * receiver at the subscribed rate with the count of satellites in its fix, the boat's attitude
+ * and rate of turn from the rotation sensor and the gyroscope, its magnetic heading, and the
+ * cabin's temperature, humidity and light where the phone has those sensors. They run only while
+ * a plugin wants them, on a thread of their own ("bridge-sensors"), and every reading leaves
+ * through [send] as a protocol line. Readings and their units: [Readings]; the geometry of the
+ * attitude, and how the phone's mounting is found ([level]): [Attitude].
+ *
+ * The attitude uses the game rotation vector, which has no magnetometer and so is not thrown by
+ * the steel and wiring around a mounted phone; only when the plugin also wants the heading does
+ * it switch to the rotation vector, which has a north, the magnetic one.
  *
  * GNSS comes from the platform's own GPS provider through AndroidX's LocationManagerCompat
  * (Play services' fused provider is a third-party library, and the boat wants the receiver, not
@@ -61,10 +69,82 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
      */
     private var sogSent = false
     private var cogSent = false
+    /** Satellites used in the last fix, from the GNSS status; null until the receiver says. */
+    private var satellites: Int? = null
     private val locationManager = app.getSystemService(LocationManager::class.java)
     private val executor = ExecutorCompat.create(handler)
 
+    private val sensorPrefs = SensorPrefs(app)
+    /** The rotation sensor registered: a Sensor.TYPE_* while the attitude or heading runs, else 0. */
+    private var motionType = 0
+    private var motionHzOn = BridgeProtocol.ATTITUDE_DEFAULT_HZ
+    private var gyroOn = false
+    private var rotation: Attitude.Rotation? = null
+    private var rotationAt = 0L
+    private var bowOffsetDegOn = 0.0
+    private var mount = Attitude.mount(sensorPrefs.level, 0.0)
+    private val turnRate = Readings.Mean()
+    private var toldNoRotation = false
+    private var toldNoCompass = false
+    private var environmentOn = false
+    private val cabinTemperature = Readings.Mean()
+    private val cabinHumidity = Readings.Mean()
+    private val cabinLight = Readings.Mean()
+    private var toldNoEnvironment = false
+
     private val gnssListener = LocationListenerCompat { location -> gnss(location) }
+
+    private val gnssStatus = object : GnssStatusCompat.Callback() {
+        override fun onSatelliteStatusChanged(status: GnssStatusCompat) {
+            satellites = (0 until status.satelliteCount).count { status.usedInFix(it) }
+        }
+    }
+
+    private val rotationListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            Attitude.rotation(event.values)?.let {
+                rotation = it
+                rotationAt = SystemClock.elapsedRealtime()
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
+
+    /** Rate of turn from each gyroscope sample, through the latest rotation, averaged per period. */
+    private val gyroListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val r = rotation ?: return
+            val v = event.values
+            turnRate.add(Attitude.rateOfTurn(r, Attitude.Vec(v[0].toDouble(), v[1].toDouble(), v[2].toDouble())))
+        }
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
+
+    private val environmentListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val v = event.values[0].toDouble()
+            when (event.sensor.type) {
+                Sensor.TYPE_AMBIENT_TEMPERATURE -> Readings.cabinTemperature(v)?.let(cabinTemperature::add)
+                Sensor.TYPE_RELATIVE_HUMIDITY -> Readings.cabinHumidity(v)?.let(cabinHumidity::add)
+                Sensor.TYPE_LIGHT -> Readings.cabinLight(v)?.let(cabinLight::add)
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
+
+    private val motionTick = object : Runnable {
+        override fun run() {
+            motion()
+            handler.postDelayed(this, motionPeriodMs(subscription.attitudeHz))
+        }
+    }
+
+    private val environmentTick = object : Runnable {
+        override fun run() {
+            environment()
+            handler.postDelayed(this, periodMs(subscription.environmentHz))
+        }
+    }
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = battery(intent)
@@ -108,6 +188,27 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             reporting({ note("sensors: $it") }) {
                 if (gnssOn) stopGnss()
                 switchTo(subscription)
+            }
+        }
+    }
+
+    /**
+     * "Level now": the boat lies level and still, and the phone's present tilt becomes its
+     * mounting ([Attitude.mount]), kept in [SensorPrefs] for every later start. Needs the
+     * rotation sensor running (the attitude or heading subscribed); the log says how it went.
+     */
+    fun level() {
+        handler.post {
+            reporting({ note("attitude: $it") }) {
+                val r = freshRotation()
+                if (r == null) {
+                    note("attitude: cannot level while the attitude is not running; it runs with the server, with attitude on in the bridge plugin's settings")
+                    return@reporting
+                }
+                val down = r.downInPhone
+                sensorPrefs.level = down
+                mount = Attitude.mount(down, Math.toRadians(bowOffsetDegOn))
+                note("attitude: levelled; roll and pitch read 0 with the phone as it sits now")
             }
         }
     }
@@ -158,6 +259,119 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         val wantGnss = BridgeProtocol.GNSS in next.sensors
         if (wantGnss && (!gnssOn || gnssRateChanged)) startGnss(next.gnssHz)
         else if (!wantGnss && gnssOn) stopGnss()
+        switchMotion(next)
+        switchEnvironment(next, rateChanged = next.environmentHz != previousEnvironmentHz)
+        previousEnvironmentHz = next.environmentHz
+    }
+
+    private var previousEnvironmentHz = BridgeProtocol.ENVIRONMENT_DEFAULT_HZ
+
+    /**
+     * The rotation sensor while the attitude or the heading is wanted (the one with a north only
+     * for the heading), the gyroscope with the attitude, and the tick that reports them.
+     */
+    private fun switchMotion(next: Subscription) {
+        if (next.bowOffsetDeg != bowOffsetDegOn) {
+            bowOffsetDegOn = next.bowOffsetDeg
+            mount = Attitude.mount(sensorPrefs.level, Math.toRadians(bowOffsetDegOn))
+        }
+        val wantAttitude = BridgeProtocol.ATTITUDE in next.sensors
+        val wantHeading = BridgeProtocol.HEADING in next.sensors
+        val type = if (wantAttitude || wantHeading) rotationType(wantHeading) else 0
+        if (wantHeading && type != Sensor.TYPE_ROTATION_VECTOR && !toldNoCompass) {
+            note("this phone has no compass (rotation vector): no magnetic heading for Signal K")
+            toldNoCompass = true
+        }
+        if (type != motionType) {
+            if (motionType != 0) {
+                sensorManager?.unregisterListener(rotationListener)
+                handler.removeCallbacks(motionTick)
+                rotation = null
+            }
+            motionType = type
+            if (type != 0) {
+                sensorManager.registerListener(rotationListener, sensorManager.getDefaultSensor(type), MOTION_SAMPLING_US, handler)
+                motionHzOn = next.attitudeHz
+                handler.postDelayed(motionTick, motionPeriodMs(next.attitudeHz))
+            }
+        } else if (type != 0 && next.attitudeHz != motionHzOn) {
+            motionHzOn = next.attitudeHz
+            handler.removeCallbacks(motionTick)
+            handler.postDelayed(motionTick, motionPeriodMs(next.attitudeHz))
+        }
+        val gyro = if (wantAttitude && type != 0) sensorManager?.getDefaultSensor(Sensor.TYPE_GYROSCOPE) else null
+        if (gyro != null && !gyroOn) {
+            gyroOn = true
+            turnRate.take()
+            sensorManager.registerListener(gyroListener, gyro, MOTION_SAMPLING_US, handler)
+        } else if (gyro == null && gyroOn) {
+            gyroOn = false
+            sensorManager?.unregisterListener(gyroListener)
+        }
+    }
+
+    /**
+     * The rotation sensor to use: the rotation vector, which has a magnetic north, for the
+     * heading; otherwise the game rotation vector, steadier for roll and pitch beside steel; the
+     * other where the phone lacks one; 0 where it has neither.
+     */
+    private fun rotationType(magnetic: Boolean): Int {
+        val manager = sensorManager ?: return 0
+        val order = if (magnetic) listOf(Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR) else listOf(Sensor.TYPE_GAME_ROTATION_VECTOR, Sensor.TYPE_ROTATION_VECTOR)
+        val type = order.firstOrNull { manager.getDefaultSensor(it) != null } ?: 0
+        if (type == 0 && !toldNoRotation) {
+            note("this phone has no rotation sensor: no attitude or heading for Signal K")
+            toldNoRotation = true
+        }
+        return type
+    }
+
+    /** The cabin's temperature, humidity and light sensors, those the phone has, while wanted. */
+    private fun switchEnvironment(next: Subscription, rateChanged: Boolean) {
+        val want = BridgeProtocol.ENVIRONMENT in next.sensors
+        if (want && !environmentOn) {
+            val manager = sensorManager ?: return
+            val present = listOf(Sensor.TYPE_AMBIENT_TEMPERATURE, Sensor.TYPE_RELATIVE_HUMIDITY, Sensor.TYPE_LIGHT).mapNotNull(manager::getDefaultSensor)
+            if (present.isEmpty()) {
+                if (!toldNoEnvironment) note("this phone has no temperature, humidity or light sensor")
+                toldNoEnvironment = true
+                return
+            }
+            environmentOn = true
+            for (m in listOf(cabinTemperature, cabinHumidity, cabinLight)) m.take()
+            for (s in present) manager.registerListener(environmentListener, s, ENVIRONMENT_SAMPLING_US, handler)
+            handler.postDelayed(environmentTick, periodMs(next.environmentHz))
+        } else if (!want && environmentOn) {
+            environmentOn = false
+            sensorManager?.unregisterListener(environmentListener)
+            handler.removeCallbacks(environmentTick)
+        } else if (environmentOn && rateChanged) {
+            handler.removeCallbacks(environmentTick)
+            handler.postDelayed(environmentTick, periodMs(next.environmentHz))
+        }
+    }
+
+    /** The latest rotation, unless the sensor has gone quiet: an old one is no attitude. */
+    private fun freshRotation(): Attitude.Rotation? =
+        rotation?.takeIf { SystemClock.elapsedRealtime() - rotationAt <= ROTATION_STALE_MS }
+
+    private fun motion() {
+        val r = freshRotation() ?: return
+        val ts = System.currentTimeMillis()
+        val e = Attitude.euler(r, mount)
+        val northed = motionType == Sensor.TYPE_ROTATION_VECTOR && BridgeProtocol.HEADING in subscription.sensors
+        if (BridgeProtocol.ATTITUDE in subscription.sensors) {
+            send(BridgeProtocol.sensor(Readings.ATTITUDE_PATH, Readings.attitude(e, withYaw = northed), Readings.SRC_IMU, ts))
+            turnRate.take()?.let { send(BridgeProtocol.sensor(Readings.RATE_OF_TURN_PATH, it, Readings.SRC_IMU, ts)) }
+        }
+        if (northed) send(BridgeProtocol.sensor(Readings.HEADING_MAGNETIC_PATH, e.yaw, Readings.SRC_COMPASS, ts))
+    }
+
+    private fun environment() {
+        val ts = System.currentTimeMillis()
+        cabinTemperature.take()?.let { send(BridgeProtocol.sensor(Readings.INSIDE_TEMPERATURE_PATH, it, Readings.SRC_ENVIRONMENT, ts)) }
+        cabinHumidity.take()?.let { send(BridgeProtocol.sensor(Readings.INSIDE_HUMIDITY_PATH, it, Readings.SRC_ENVIRONMENT, ts)) }
+        cabinLight.take()?.let { send(BridgeProtocol.sensor(Readings.INSIDE_ILLUMINANCE_PATH, it, Readings.SRC_ENVIRONMENT, ts)) }
     }
 
     private fun startGnss(hz: Double) {
@@ -172,7 +386,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             toldNoLocation = true
             return
         }
-        if (gnssOn) LocationManagerCompat.removeUpdates(manager, gnssListener)
+        if (gnssOn) {
+            LocationManagerCompat.removeUpdates(manager, gnssListener)
+            LocationManagerCompat.unregisterGnssStatusCallback(manager, gnssStatus)
+        }
         val intervalMs = (1000.0 / hz).toLong()
         val request = LocationRequestCompat.Builder(intervalMs)
             .setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY)
@@ -189,11 +406,20 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         gnssOn = true
         gnssHzOn = hz
         toldNoLocation = false
+        // The satellites in each fix; a phone that cannot tell, or a grant taken back just now,
+        // costs only the count, never the fixes.
+        try {
+            if (!LocationManagerCompat.registerGnssStatusCallback(manager, executor, gnssStatus)) satellites = null
+        } catch (_: SecurityException) {
+            satellites = null
+        }
     }
 
     private fun stopGnss() {
         gnssOn = false
+        satellites = null
         val manager = locationManager ?: return
+        LocationManagerCompat.unregisterGnssStatusCallback(manager, gnssStatus)
         try {
             LocationManagerCompat.removeUpdates(manager, gnssListener)
         } catch (_: SecurityException) {
@@ -219,6 +445,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         if (fix.courseOverGroundTrue != null || cogSent) send(BridgeProtocol.sensor(Readings.COG_PATH, fix.courseOverGroundTrue, Readings.SRC_GNSS, ts))
         sogSent = fix.speedOverGround != null
         cogSent = fix.courseOverGroundTrue != null
+        satellites?.let { send(BridgeProtocol.sensor(Readings.SATELLITES_PATH, it.toDouble(), Readings.SRC_GNSS, ts)) }
     }
 
     private fun battery(intent: Intent) {
@@ -242,9 +469,17 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
 
     private fun periodMs(hz: Double): Long = (1000.0 / hz).toLong().coerceAtLeast(1000L)
 
+    private fun motionPeriodMs(hz: Double): Long = (1000.0 / hz).toLong().coerceAtLeast(100L)
+
     private companion object {
         const val TICK_MS = 60_000L
         /** The barometer sampled once a second: enough for a mean, and the sensor's low-power pace. */
         const val BARO_SAMPLING_US = 1_000_000
+        /** The rotation sensor and the gyroscope at 50 Hz, SENSOR_DELAY_GAME's pace: a roll is a few seconds long. */
+        const val MOTION_SAMPLING_US = 20_000
+        /** The cabin's sensors once a second, like the barometer. */
+        const val ENVIRONMENT_SAMPLING_US = 1_000_000
+        /** A rotation older than this is a sensor gone quiet, not the boat's attitude. */
+        const val ROTATION_STALE_MS = 2_000L
     }
 }

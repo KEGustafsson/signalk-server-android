@@ -66,16 +66,41 @@ test("a delta carries the sensor's source and time", () => {
 });
 
 test("subscribe follows the settings", () => {
-  assert.deepEqual(subscribeMessage(), { t: "subscribe", sensors: ["battery", "baro", "gnss"], rateHz: { baro: 0.1, gnss: 1 } });
-  assert.deepEqual(subscribeMessage({ battery: false, gnss: false, barometerSeconds: 2 }), {
+  assert.deepEqual(subscribeMessage(), {
+    t: "subscribe",
+    sensors: ["battery", "baro", "gnss", "attitude", "environment"],
+    rateHz: { baro: 0.1, gnss: 1, attitude: 1, environment: 0.1 },
+    bowOffsetDeg: 0,
+  });
+  assert.deepEqual(subscribeMessage({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 2 }), {
     t: "subscribe",
     sensors: ["baro"],
-    rateHz: { baro: 0.5, gnss: 1 },
+    rateHz: { baro: 0.5, gnss: 1, attitude: 1, environment: 0.1 },
+    bowOffsetDeg: 0,
   });
-  assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, barometerSeconds: -1 }).sensors, ["battery"]);
+  assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, attitude: false, environment: false, barometerSeconds: -1 }).sensors, ["battery"]);
   assert.equal(subscribeMessage({ barometerSeconds: "x" }).rateHz.baro, 0.1);
   assert.equal(subscribeMessage({ gnssSeconds: 0.5 }).rateHz.gnss, 2);
   assert.equal(subscribeMessage({ gnssSeconds: 0 }).rateHz.gnss, 1);
+});
+
+test("the heading is asked for only when turned on, the attitude with its period and bow offset", () => {
+  assert.ok(!subscribeMessage().sensors.includes("heading"));
+  const m = subscribeMessage({ heading: true, attitudeSeconds: 0.5, environmentSeconds: 60, bowOffset: 90 });
+  assert.ok(m.sensors.includes("heading"));
+  assert.equal(m.rateHz.attitude, 2);
+  assert.equal(m.rateHz.environment, 1 / 60);
+  assert.equal(m.bowOffsetDeg, 90);
+  assert.equal(subscribeMessage({ bowOffset: "aft" }).bowOffsetDeg, 0);
+});
+
+test("an attitude and a rate of turn are sensor values", () => {
+  const a = parseLine('{"t":"sensor","path":"navigation.attitude","value":{"roll":0.05,"pitch":-0.02},"src":"android.imu","ts":1}');
+  assert.equal(a.ok, true);
+  assert.deepEqual(toDelta(a.msg).updates[0].values[0], { path: "navigation.attitude", value: { roll: 0.05, pitch: -0.02 } });
+  const r = parseLine('{"t":"sensor","path":"navigation.rateOfTurn","value":-0.01,"src":"android.imu","ts":1}');
+  assert.equal(r.ok, true);
+  assert.equal(toDelta(r.msg).updates[0].$source, "android.imu");
 });
 
 test("a null value is a sensor value: the reading is gone", () => {

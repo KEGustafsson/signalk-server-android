@@ -180,6 +180,7 @@ class MainActivity : ComponentActivity() {
         override fun setAutostart(on: Boolean) = this@MainActivity.setAutostart(on)
         override fun finishSetup(startServer: Boolean) = this@MainActivity.finishSetup(startServer)
         override fun openRuntimeChecks() = this@MainActivity.openRuntimeChecks()
+        override fun levelAttitude() = SignalKService.level(this@MainActivity)
     }
 
     private fun startServer() {

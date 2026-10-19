@@ -78,4 +78,5 @@ internal interface AppActions {
     fun setAutostart(on: Boolean)
     fun finishSetup(startServer: Boolean)
     fun openRuntimeChecks()
+    fun levelAttitude()
 }

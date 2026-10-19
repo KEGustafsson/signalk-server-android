@@ -30,8 +30,9 @@ import java.util.Date
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, what the phone grants it, and the newest of its log. The cards the bridge brings
- * (Devices, Sensors, Power) and the diagnostics bundle and backup come with their own steps.
+ * rollback, what the phone grants it, the phone's sensors and the newest of its log. The cards
+ * the bridge brings later (Devices, Power) and the diagnostics bundle and backup come with their
+ * own steps.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier = Modifier) {
@@ -46,6 +47,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         StatusCard(model, actions)
         UpdatesCard(model, actions)
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
+        SensorsCard(model, actions)
         Section(stringResource(R.string.dock_log_title)) {
             LogText(model.log.ifEmpty { stringResource(R.string.dock_log_empty) })
         }
@@ -53,6 +55,22 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
             stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/**
+ * The phone's sensors: which ones the server reports is the bridge plugin's settings, in the admin
+ * UI; what only the phone can do is here: "level now", the attitude's mounting calibration
+ * (docs/PLAN.md §8.1), taken with the boat lying level and the phone in its holder.
+ */
+@Composable
+private fun SensorsCard(model: AppModel, actions: AppActions) {
+    Section(stringResource(R.string.dock_sensors_title)) {
+        Text(stringResource(R.string.dock_sensors_body), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.dock_level_why), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = actions::levelAttitude, enabled = model.server is ServerState.Running) {
+            Text(stringResource(R.string.dock_level))
+        }
     }
 }
 

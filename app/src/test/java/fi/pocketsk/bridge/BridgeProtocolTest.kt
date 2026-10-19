@@ -53,6 +53,31 @@ class BridgeProtocolTest {
     }
 
     @Test
+    fun theMotionAndCabinSensorsAndTheBowOffsetAreRead() {
+        assertEquals(
+            Incoming.Subscribe(
+                Subscription(
+                    setOf("attitude", "heading", "environment"),
+                    attitudeHz = BridgeProtocol.ATTITUDE_MAX_HZ,
+                    environmentHz = 0.2,
+                    bowOffsetDeg = -90.0,
+                ),
+            ),
+            BridgeProtocol.parse(
+                """{"t":"subscribe","sensors":["attitude","heading","environment"],"rateHz":{"attitude":50,"environment":0.2},"bowOffsetDeg":-90}""",
+            ),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("attitude"), bowOffsetDeg = 180.0)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["attitude"],"bowOffsetDeg":400}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("attitude"))),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["attitude"],"bowOffsetDeg":"aft"}"""),
+        )
+    }
+
+    @Test
     fun anythingElseIsDroppedWithAReason() {
         assertEquals(Incoming.Dropped("not an object"), BridgeProtocol.parse("[1]"))
         assertEquals(Incoming.Dropped("unknown type alarm"), BridgeProtocol.parse("""{"t":"alarm"}"""))

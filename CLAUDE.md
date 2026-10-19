@@ -59,8 +59,9 @@ app/                 the Android app
                      tested)
   fi.pocketsk.bridge Bridge (the socket and the sensors, run by the service), BridgeServer (Unix
                      socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
-                     barometer, GNSS), BridgePlugin (puts the plugin in place before every start);
-                     BridgeProtocol, Json, Readings (pure, tested)
+                     barometer, GNSS, attitude, compass, cabin sensors), SensorPrefs (the level),
+                     BridgePlugin (puts the plugin in place before every start);
+                     BridgeProtocol, Json, Readings, Attitude (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
