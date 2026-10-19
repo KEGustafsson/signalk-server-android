@@ -27,7 +27,7 @@ val npmSha256 = providers.gradleProperty("npm.sha256").get()
  * the library). The launcher links libnode.so and ships libc++_shared.so beside it, so both have to
  * come from this NDK: a libc++ from another release is a different ABI under the same file name.
  */
-val nodejsMobileNdk = "27.3.13750724"
+val nodejsMobileNdk = providers.gradleProperty("nodejsMobile.ndk").get()
 
 /** Downloads [url] to [dest] unless a file with [sha256] is already there, and fails on any other content. */
 abstract class FetchVerified : DefaultTask() {

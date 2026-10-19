@@ -18,7 +18,9 @@ pipeline and several files were lifted (PLAN §17).
   SHA-256 in `gradle.properties`.
   `usb-serial-for-android` (MIT) joins with the bridge (PLAN §7).
 - Native: NDK r27d (27.3.13750724), the release libnode.so was built with, and CMake 3.31.6,
-  both pinned in `node-runtime/build.gradle.kts` and fetched by AGP from the SDK repository.
+  the NDK pinned as `nodejsMobile.ndk` in `gradle.properties` (node-runtime builds with it, the
+  app strips native libraries with it), CMake in `node-runtime/build.gradle.kts`; AGP fetches
+  both from the SDK repository.
 - Build: `./gradlew assembleDebug` (wrapper committed; needs an Android SDK with platform 37 via
   `ANDROID_HOME` or `local.properties`). A missing JDK 17 fails as "Cannot find a Java installation
   ... {languageVersion=17}". Install: `adb install -r app/build/outputs/apk/debug/app-universal-debug.apk`

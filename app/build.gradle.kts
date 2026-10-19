@@ -70,6 +70,10 @@ if (hasReleaseKey && git("rev-parse", "--is-shallow-repository") == "true") {
 android {
     namespace = "fi.pocketsk"
     compileSdk = 37
+    // The packaging step strips the native libraries with this module's NDK. Without one named it
+    // has no llvm-strip and packages them as they are: libnode.so kept 20 MB of static symbol
+    // table per ABI. Stripping leaves .dynsym, which addons and the launcher link against.
+    ndkVersion = providers.gradleProperty("nodejsMobile.ndk").get()
     defaultConfig {
         applicationId = "fi.pocketsk"
         minSdk = 29
