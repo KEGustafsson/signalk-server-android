@@ -243,7 +243,8 @@ module.exports = function androidBridge(app, deps = {}) {
    * reads them: those already raised come first, from its cache, then each change as it comes.
    */
   function watchNotifications() {
-    const manager = app.subscriptionManager;
+    // All lower case in the plugin interface (signalk-server's interfaces/plugins), unlike the class.
+    const manager = app.subscriptionmanager;
     if (!manager || typeof manager.subscribe !== "function") {
       app.debug("the server has no subscription manager: no alarms for the phone");
       return;

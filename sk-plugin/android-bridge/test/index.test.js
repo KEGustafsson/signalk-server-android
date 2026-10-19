@@ -192,7 +192,7 @@ test("the boat's alarms reach the phone, and its Silence is done through the ser
   app.notifications = { silence: (x) => calls.push(["silence", x]), acknowledge: (x) => calls.push(["acknowledge", x]) };
   let onDelta = null;
   let unsubscribed = 0;
-  app.subscriptionManager = {
+  app.subscriptionmanager = {
     subscribe(command, unsubscribes, onError, callback) {
       assert.deepEqual(command, { context: "vessels.self", subscribe: [{ path: "notifications.*", policy: "instant" }] });
       unsubscribes.push(() => unsubscribed++);
@@ -250,7 +250,7 @@ test("with alarms off, or no subscription manager, the phone hears of none", asy
   const server = await listen(sock);
   const app = fakeApp();
   let subscribed = false;
-  app.subscriptionManager = { subscribe() { subscribed = true; } };
+  app.subscriptionmanager = { subscribe() { subscribed = true; } };
   const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, Parser: null });
   t.after(async () => {
     p.stop();
@@ -259,7 +259,7 @@ test("with alarms off, or no subscription manager, the phone hears of none", asy
   p.start({ alarms: false });
   assert.equal(subscribed, false);
   p.stop();
-  delete app.subscriptionManager;
+  delete app.subscriptionmanager;
   p.start({});
   assert.ok(app.debugs.some((d) => d.includes("no subscription manager")));
 });
