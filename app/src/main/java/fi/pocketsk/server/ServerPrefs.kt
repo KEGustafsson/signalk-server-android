@@ -23,6 +23,14 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getBoolean(SETUP_DONE, false)
         set(value) = prefs.edit { putBoolean(SETUP_DONE, value) }
 
+    /**
+     * Precise location has been asked for once. Android shows no rationale both before the first
+     * request and after a refusal it will not ask again, so only this tells the two apart.
+     */
+    var locationAsked: Boolean
+        get() = prefs.getBoolean(LOCATION_ASKED, false)
+        set(value) = prefs.edit { putBoolean(LOCATION_ASKED, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -57,6 +65,7 @@ internal class ServerPrefs(context: Context) {
         const val RUNNING = "running"
         const val AUTOSTART = "autostart"
         const val SETUP_DONE = "setup_done"
+        const val LOCATION_ASKED = "location_asked"
         const val GATE_VERSION = "gate_version"
     }
 }

@@ -9,6 +9,8 @@
  * App to plugin:
  *   {"t":"hello","v":1,"app":"1.123"}
  *   {"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}
+ *   {"t":"sensor","path":"navigation.courseOverGroundTrue","value":null,"src":"android.gnss","ts":1760000000000}
+ *     (null: the sensor has no reading now, so the server stops showing the last one as current)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss"],"rateHz":{"baro":0.1,"gnss":1}}
  *
@@ -62,10 +64,14 @@ function parseSensor(msg) {
   return { ok: true, msg: { t: "sensor", path: msg.path, value: msg.value, src: msg.src, ts } };
 }
 
-/** A number, or an object of numbers and nulls (a position, an attitude): what a sensor reports. */
+/**
+ * A number, null (no reading now, as Signal K's own deltas say it), or an object of numbers and
+ * nulls (a position, an attitude): what a sensor reports.
+ */
 function validValue(value) {
+  if (value === null) return true;
   if (typeof value === "number") return Number.isFinite(value);
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
   const entries = Object.entries(value);
   return entries.length > 0 && entries.every(([k, v]) => PATH.test(k) && (v === null || Number.isFinite(v)));
 }

@@ -49,9 +49,12 @@ internal object BridgeProtocol {
 
     fun hello(appVersion: String): String = """{"t":"hello","v":$VERSION,"app":${Json.quote(appVersion)}}"""
 
-    /** A one-number reading. */
-    fun sensor(path: String, value: Double, src: String, ts: Long): String =
-        """{"t":"sensor","path":${Json.quote(path)},"value":${Json.number(value)},"src":${Json.quote(src)},"ts":$ts}"""
+    /**
+     * A one-number reading; null says the sensor no longer has one, which Signal K stores as null
+     * rather than keeping the last value as if it were current.
+     */
+    fun sensor(path: String, value: Double?, src: String, ts: Long): String =
+        """{"t":"sensor","path":${Json.quote(path)},"value":${value?.let(Json::number) ?: "null"},"src":${Json.quote(src)},"ts":$ts}"""
 
     /** A reading of several named numbers (a position, an attitude); a null one is unknown. */
     fun sensor(path: String, value: Map<String, Double?>, src: String, ts: Long): String {

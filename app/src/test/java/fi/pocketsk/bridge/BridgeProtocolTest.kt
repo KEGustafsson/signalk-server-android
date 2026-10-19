@@ -18,6 +18,10 @@ class BridgeProtocolTest {
             """{"t":"sensor","path":"navigation.attitude","value":{"roll":0.02,"yaw":null},"src":"android.imu","ts":0}""",
             BridgeProtocol.sensor("navigation.attitude", linkedMapOf("roll" to 0.02, "yaw" to null), "android.imu", 0),
         )
+        assertEquals(
+            """{"t":"sensor","path":"navigation.speedOverGround","value":null,"src":"android.gnss","ts":7}""",
+            BridgeProtocol.sensor("navigation.speedOverGround", null, "android.gnss", 7),
+        )
     }
 
     @Test

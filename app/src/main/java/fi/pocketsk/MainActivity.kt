@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
         override fun pickTarball() = this@MainActivity.pickTarball()
         override fun rollBack() = this@MainActivity.rollBack()
         override fun askPermissions() = this@MainActivity.askPermissions()
-        override fun askLocation() = askLocationLauncher.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION))
+        override fun askLocation() = this@MainActivity.askLocation()
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
         override fun setAutostart(on: Boolean) = this@MainActivity.setAutostart(on)
         override fun finishSetup(startServer: Boolean) = this@MainActivity.finishSetup(startServer)
@@ -231,6 +231,26 @@ class MainActivity : ComponentActivity() {
     private fun askPermissions() {
         val wanted = ServerActions.missingPermissions(this)
         if (wanted.isNotEmpty()) askOnly.launch(wanted.toTypedArray())
+    }
+
+    /**
+     * Asks for precise location, or, once Android has stopped showing the dialog (refused twice,
+     * or "don't ask again"), opens this app's own settings page, where it can still be allowed.
+     * Asked before and no rationale is how that refusal looks; the first request looks the same
+     * but for [ServerPrefs.locationAsked].
+     */
+    private fun askLocation() {
+        val fine = android.Manifest.permission.ACCESS_FINE_LOCATION
+        if (prefs.locationAsked && !shouldShowRequestPermissionRationale(fine)) {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                return
+            } catch (_: ActivityNotFoundException) {
+                // No settings page on this build: the request below is all there is.
+            }
+        }
+        prefs.locationAsked = true
+        askLocationLauncher.launch(arrayOf(fine, android.Manifest.permission.ACCESS_COARSE_LOCATION))
     }
 
     /**

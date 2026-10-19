@@ -55,6 +55,9 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     private var gnssHzOn = BridgeProtocol.GNSS_DEFAULT_HZ
     private val gnssRateChanged get() = subscription.gnssHz != gnssHzOn
     private var toldNoLocation = false
+    /** Speed and course were in the last fix sent, so a fix without them must say they are gone. */
+    private var sogSent = false
+    private var cogSent = false
     private val locationManager = app.getSystemService(LocationManager::class.java)
     private val executor = ExecutorCompat.create(handler)
 
@@ -91,9 +94,19 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         handler.post { reporting({ note("sensors: $it") }) { switchTo(next) } }
     }
 
-    /** Tries again what the subscription wants and could not start: after a permission was granted. */
+    /**
+     * Tries again what the subscription wants and could not start: after a permission was granted
+     * or the service gained the `location` foreground type. GNSS is registered afresh even when it
+     * is on: a request made while the service had no location type (a start at boot) may have
+     * been accepted and yet deliver nothing.
+     */
     fun reapply() {
-        handler.post { reporting({ note("sensors: $it") }) { switchTo(subscription) } }
+        handler.post {
+            reporting({ note("sensors: $it") }) {
+                if (gnssOn) stopGnss()
+                switchTo(subscription)
+            }
+        }
     }
 
     /** Stops everything and ends the thread; this object is not used again. */
@@ -173,6 +186,8 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         gnssOn = true
         gnssHzOn = hz
         toldNoLocation = false
+        sogSent = false
+        cogSent = false
     }
 
     private fun stopGnss() {
@@ -198,8 +213,11 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         ) ?: return
         val ts = location.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         send(BridgeProtocol.sensor(Readings.POSITION_PATH, fix.position, Readings.SRC_GNSS, ts))
-        fix.speedOverGround?.let { send(BridgeProtocol.sensor(Readings.SOG_PATH, it, Readings.SRC_GNSS, ts)) }
-        fix.courseOverGroundTrue?.let { send(BridgeProtocol.sensor(Readings.COG_PATH, it, Readings.SRC_GNSS, ts)) }
+        // A fix without speed or course (a bearing is often dropped at rest) clears the last one sent.
+        if (fix.speedOverGround != null || sogSent) send(BridgeProtocol.sensor(Readings.SOG_PATH, fix.speedOverGround, Readings.SRC_GNSS, ts))
+        if (fix.courseOverGroundTrue != null || cogSent) send(BridgeProtocol.sensor(Readings.COG_PATH, fix.courseOverGroundTrue, Readings.SRC_GNSS, ts))
+        sogSent = fix.speedOverGround != null
+        cogSent = fix.courseOverGroundTrue != null
     }
 
     private fun battery(intent: Intent) {
