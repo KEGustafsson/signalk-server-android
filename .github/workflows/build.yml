@@ -1,14 +1,16 @@
 name: Build
 
-# Every push and pull request: the `build` job runs the unit tests, Android Lint and a
-# release-type APK signed with the debug key, uploaded as a workflow artifact. It has a read-only
+# Every push and pull request: the `build` job runs the unit tests, Android Lint and the
+# release-type APKs signed with the debug key - the universal one and the smaller arm64-only one
+# (ABI splits, app/build.gradle.kts) - uploaded as workflow artifacts. It has a read-only
 # token, no persisted credentials and no secrets, so pull-request Gradle code can reach nothing
 # sensitive. Every dependency the build downloads is checked against
 # gradle/verification-metadata.xml, and the Gradle distribution against the checksum in
 # gradle/wrapper/gradle-wrapper.properties.
 #
 # Every push to main: the `release` job builds again with the project's release key from the
-# repository secrets and attaches SignalKServer-<version>.apk to a GitHub Release tagged v<version>.
+# repository secrets and attaches SignalKServer-<version>.apk (universal) and
+# SignalKServer-<version>-arm64-v8a.apk to a GitHub Release tagged v<version>.
 # The version is the commit count on main (see app/build.gradle.kts), so nobody bumps numbers.
 # Secrets: SIGNALK_ANDROID_KEYSTORE_BASE64 (the .keystore file, base64), SIGNALK_ANDROID_KEYSTORE_PASSWORD,
 # SIGNALK_ANDROID_KEY_ALIAS, SIGNALK_ANDROID_KEY_PASSWORD; repository variable SIGNALK_ANDROID_CERT_SHA256 (the
@@ -53,7 +55,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
-      - name: Unit tests and APK (debug-signed)
+      - name: Unit tests and APKs (debug-signed)
         run: |
           set -o pipefail
           chmod +x gradlew
@@ -61,7 +63,9 @@ jobs:
           VERSION=$(cat app/build/version.txt)
           echo "$VERSION" | grep -Eq '^1\.[0-9]+$' || { echo "::error::app/build/version.txt holds '$VERSION', not a version"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          cp app/build/outputs/apk/release/app-release.apk "SignalKServer-$VERSION-debugsigned.apk"
+          cp app/build/outputs/apk/release/app-universal-release.apk "SignalKServer-$VERSION-debugsigned.apk"
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk "SignalKServer-$VERSION-arm64-v8a-debugsigned.apk"
+          ls -l SignalKServer-*.apk
 
       # The full log is only on the Actions page. An annotation is also readable through the
       # Checks API and on a phone, so the reasons a build failed are repeated there: compiler
@@ -84,6 +88,11 @@ jobs:
         with:
           name: SignalKServer-${{ env.VERSION }}-debugsigned
           path: SignalKServer-${{ env.VERSION }}-debugsigned.apk
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SignalKServer-${{ env.VERSION }}-arm64-v8a-debugsigned
+          path: SignalKServer-${{ env.VERSION }}-arm64-v8a-debugsigned.apk
 
       # After the APK, so a Lint error still leaves the build's APK to test with. An error fails
       # the job (lint.abortOnError in app/build.gradle.kts); warnings are in the report.
@@ -159,15 +168,18 @@ jobs:
           echo "$VERSION" | grep -Eq '^1\.[0-9]+$' || { echo "::error::app/build/version.txt holds '$VERSION', not a version"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          cp app/build/outputs/apk/release/app-release.apk "SignalKServer-$VERSION.apk"
+          cp app/build/outputs/apk/release/app-universal-release.apk "SignalKServer-$VERSION.apk"
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk "SignalKServer-$VERSION-arm64-v8a.apk"
           cp app/build/reports/bom.json "SignalKServer-$VERSION.sbom.cdx.json"
           sha256sum "SignalKServer-$VERSION.apk" > "SignalKServer-$VERSION.apk.sha256"
+          sha256sum "SignalKServer-$VERSION-arm64-v8a.apk" > "SignalKServer-$VERSION-arm64-v8a.apk.sha256"
+          ls -l SignalKServer-*.apk
 
       - name: Remove the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
-      - name: Verify the APK is signed with the release certificate
+      - name: Verify the APKs are signed with the release certificate
         env:
           EXPECTED_CERT_SHA256: ${{ vars.SIGNALK_ANDROID_CERT_SHA256 }}
         run: |
@@ -175,13 +187,15 @@ jobs:
           APKSIGNER=$(find "$SDK/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)
           echo "apksigner: ${APKSIGNER:-not found under $SDK/build-tools}"
           [ -n "$APKSIGNER" ] || { echo "::error::apksigner not found"; exit 1; }
-          CERTS=$("$APKSIGNER" verify --print-certs "SignalKServer-$VERSION.apk" 2>&1) || { echo "$CERTS"; echo "::error::apksigner verify failed"; exit 1; }
-          echo "$CERTS" | grep -i "certificate SHA-256 digest"
-          # apksigner labels the line "Signer #1 certificate SHA-256 digest:" or, from build-tools 37, "V2 Signer: certificate SHA-256 digest:"
-          ACTUAL=$(echo "$CERTS" | grep -i "certificate SHA-256 digest" | head -1 | sed 's/.*digest: *//' | tr -d '[:space:]' | tr 'A-F' 'a-f')
-          echo "signer certificate sha256: $ACTUAL"
           if [ -z "$EXPECTED_CERT_SHA256" ]; then echo "::error::repository variable SIGNALK_ANDROID_CERT_SHA256 is not set"; exit 1; fi
-          if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then echo "::error::APK is not signed with the project's release certificate"; exit 1; fi
+          for APK in "SignalKServer-$VERSION.apk" "SignalKServer-$VERSION-arm64-v8a.apk"; do
+            CERTS=$("$APKSIGNER" verify --print-certs "$APK" 2>&1) || { echo "$CERTS"; echo "::error::apksigner verify failed for $APK"; exit 1; }
+            echo "$CERTS" | grep -i "certificate SHA-256 digest"
+            # apksigner labels the line "Signer #1 certificate SHA-256 digest:" or, from build-tools 37, "V2 Signer: certificate SHA-256 digest:"
+            ACTUAL=$(echo "$CERTS" | grep -i "certificate SHA-256 digest" | head -1 | sed 's/.*digest: *//' | tr -d '[:space:]' | tr 'A-F' 'a-f')
+            echo "$APK signer certificate sha256: $ACTUAL"
+            if [ "$ACTUAL" != "$EXPECTED_CERT_SHA256" ]; then echo "::error::$APK is not signed with the project's release certificate"; exit 1; fi
+          done
 
       - name: Build provenance attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -189,6 +203,8 @@ jobs:
           subject-path: |
             SignalKServer-${{ env.VERSION }}.apk
             SignalKServer-${{ env.VERSION }}.apk.sha256
+            SignalKServer-${{ env.VERSION }}-arm64-v8a.apk
+            SignalKServer-${{ env.VERSION }}-arm64-v8a.apk.sha256
             SignalKServer-${{ env.VERSION }}.sbom.cdx.json
 
       - name: Hand the release files to the publish job
@@ -198,6 +214,8 @@ jobs:
           path: |
             SignalKServer-${{ env.VERSION }}.apk
             SignalKServer-${{ env.VERSION }}.apk.sha256
+            SignalKServer-${{ env.VERSION }}-arm64-v8a.apk
+            SignalKServer-${{ env.VERSION }}-arm64-v8a.apk.sha256
             SignalKServer-${{ env.VERSION }}.sbom.cdx.json
           if-no-files-found: error
           retention-days: 1
@@ -225,10 +243,13 @@ jobs:
         run: |
           cat > release-notes.md <<EOF
           Built from $COMMIT.
-          Install: open this page on the phone, download the APK, allow the install. The app
-          installs Signal K Server itself from npm on first run; this APK carries only the
-          Node.js runtime and the app around it.
-          The .sha256 file is the APK's checksum, the .sbom.cdx.json its software bill of
+          Install: open this page on the phone, download an APK, allow the install.
+          SignalKServer-$VERSION-arm64-v8a.apk is the smaller one and fits nearly every phone;
+          SignalKServer-$VERSION.apk runs everywhere (32-bit phones, the emulator, ChromeOS).
+          Both are signed with the same key, so either upgrades the other. The app installs
+          Signal K Server itself from npm on first run; the APK carries only the Node.js
+          runtime and the app around it.
+          Each .sha256 file is an APK's checksum, the .sbom.cdx.json the software bill of
           materials (CycloneDX), and every file here carries a signed provenance attestation
           (\`gh attestation verify SignalKServer-<version>.apk --repo KEGustafsson/signalk-server-android\`).
           EOF
@@ -239,4 +260,6 @@ jobs:
             --notes-file release-notes.md \
             "SignalKServer-$VERSION.apk" \
             "SignalKServer-$VERSION.apk.sha256" \
+            "SignalKServer-$VERSION-arm64-v8a.apk" \
+            "SignalKServer-$VERSION-arm64-v8a.apk.sha256" \
             "SignalKServer-$VERSION.sbom.cdx.json"

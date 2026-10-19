@@ -103,6 +103,18 @@ android {
         buildConfig = true
         compose = true
     }
+    splits {
+        // Most of the APK is libnode.so, once per ABI. Every build also makes an arm64-only APK,
+        // which fits nearly every phone at minSdk 29 at a fraction of the size, next to the
+        // universal one for 32-bit phones, the emulator and ChromeOS. Both carry the same
+        // versionCode and signer, so a phone can move from one to the other.
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = true
+        }
+    }
     packaging {
         // The Node runtime is exec'd as a file from nativeLibraryDir (docs/PLAN.md §4.1), which
         // needs the .so files extracted at install time rather than mapped from the APK. This is

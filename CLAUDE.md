@@ -21,7 +21,8 @@ pipeline and several files were lifted (PLAN §17).
   both pinned in `node-runtime/build.gradle.kts` and fetched by AGP from the SDK repository.
 - Build: `./gradlew assembleDebug` (wrapper committed; needs an Android SDK with platform 37 via
   `ANDROID_HOME` or `local.properties`). A missing JDK 17 fails as "Cannot find a Java installation
-  ... {languageVersion=17}". Install: `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+  ... {languageVersion=17}". Install: `adb install -r app/build/outputs/apk/debug/app-universal-debug.apk`
+  (or `app-arm64-v8a-debug.apk`, the smaller split; ABI splits in `app/build.gradle.kts`).
 - Versions come from git in `app/build.gradle.kts`: `versionCode` = commit count, `versionName` =
   `1.<count>`, `BuildConfig.GIT_SHA`. Never edit version numbers by hand. The Signal K server's
   version is a runtime matter, not a build one.
@@ -32,8 +33,8 @@ pipeline and several files were lifted (PLAN §17).
   token): unit tests, debug-signed `assembleRelease`, Lint with warnings as errors. On `main`:
   `release` signs with the `SIGNALK_ANDROID_*` secrets, verifies the signer certificate against the
   `SIGNALK_ANDROID_CERT_SHA256` variable, attests; `publish` holds the only write token and does
-  nothing but `gh release create v<version>` with `SignalKServer-<version>.apk`, its `.sha256` and
-  CycloneDX SBOM. Without the keystore `assembleRelease` falls back to the debug key.
+  nothing but `gh release create v<version>` with `SignalKServer-<version>.apk` (universal),
+  `SignalKServer-<version>-arm64-v8a.apk`, their `.sha256` files and the CycloneDX SBOM. Without the keystore `assembleRelease` falls back to the debug key.
 - Unit tests (JUnit 4, pure Kotlin, no Android runtime): `./gradlew testDebugUnitTest`. Anything
   that touches the runtime, the service or the bridge is tested on a device; the emulator has no
   USB host, no Bluetooth and a different SELinux policy for exec. The bridge plugin's tests:
