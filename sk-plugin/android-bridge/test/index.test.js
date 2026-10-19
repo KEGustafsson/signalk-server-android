@@ -123,12 +123,13 @@ test("a USB device's NMEA 0183 becomes deltas under its own source and reaches t
     { id: "bt-001bdc0a1b2d", kind: "bt", name: "BT AIS", baud: 0, state: "connecting" },
     { id: "bt-001bdc0a1b2e", kind: "bt", name: "BT Old", baud: 0, state: "connecting", detail: "the link dropped" },
     { id: "bt-001bdc0a1b2f", kind: "bt", name: "BT Off", baud: 0, state: "idle" },
+    { id: "bt-001bdc0a1b30", kind: "bt", name: "BT Down", baud: 0, state: "error", detail: "Bluetooth is off" },
   ]);
-  await until(() => p.statusNow().devices.length === 9);
+  await until(() => p.statusNow().devices.length === 10);
   assert.equal(
     app.status.at(-1),
-    "Connected to the phone; serial: GPS at 38400 baud, AIS waits for permission in the app, Spare (USB is off), Old: it stopped, Odd: failed, " +
-      "BT GPS connected, BT AIS connecting, BT Old connecting (the link dropped), BT Off (Bluetooth is off)",
+    "Connected to the phone; serial: GPS at 38400 baud, AIS waits for permission in the app, Spare (USB is off in these settings), Old: it stopped, Odd: failed, " +
+      "BT GPS connected, BT AIS connecting, BT Old connecting (the link dropped), BT Off (Bluetooth is off in these settings), BT Down: Bluetooth is off",
   );
   // The per-device rates are USB's: the Bluetooth devices are not offered there.
   const described = p.schema().properties.serialDevices.description;

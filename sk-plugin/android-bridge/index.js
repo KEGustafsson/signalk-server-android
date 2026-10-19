@@ -238,7 +238,8 @@ module.exports = function androidBridge(app, deps = {}) {
         case "needs-permission":
           return `${d.name} waits for permission in the app`;
         case "idle":
-          return `${d.name} (${d.kind === "bt" ? "Bluetooth" : "USB"} is off)`;
+          // Idle is this plugin's own setting turned off; an adapter that is off is an error with its detail.
+          return `${d.name} (${d.kind === "bt" ? "Bluetooth" : "USB"} is off in these settings)`;
         default:
           return `${d.name}: ${d.detail ?? "failed"}`;
       }
