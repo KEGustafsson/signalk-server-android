@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import fi.pocketsk.bridge.BluetoothSerial
 import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
@@ -152,6 +153,9 @@ class MainActivity : ComponentActivity() {
         // Before the observer, which may finish it at once: a restart asked for before a rotation.
         restartPending = savedInstanceState?.getBoolean(STATE_RESTART_PENDING) == true
         ServerStatus.observe(serverObserver)
+        // Not from onResume, which runs before the lifecycle says RESUMED: AndroidX moves it there
+        // only once onResume has returned, so the check in finishRestart would always fail.
+        lifecycle.addObserver(LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) finishRestart() })
         InstallJob.observe(installObserver)
         refreshSlots()
         if (savedInstanceState == null) handle(intent)
@@ -170,7 +174,6 @@ class MainActivity : ComponentActivity() {
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
-        finishRestart()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
