@@ -67,6 +67,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefs: ServerPrefs
     private val model = AppModel()
 
+    /** A restartWithLocation stop is on its way; the start follows once the server has stopped. Main thread. */
+    private var restartPending = false
+
     /** Counts the sideload picks, main thread only, so a slow copy cannot replace a newer one. */
     private var picks = 0
 
@@ -79,6 +82,12 @@ class MainActivity : ComponentActivity() {
         model.log = ServerStatus.log(this).tail(LOG_LINES)
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
+        model.locationHeld = ServerStatus.locationHeld
+        // The second half of restartWithLocation: started again from here, the server takes location.
+        if (restartPending && !state.isActive) {
+            restartPending = false
+            startServer()
+        }
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
@@ -206,6 +215,12 @@ class MainActivity : ComponentActivity() {
         override fun silenceAlarm(id: String) = SignalKService.silence(this@MainActivity, id)
 
         override fun openFullScreenSettings() = this@MainActivity.openFullScreenSettings()
+
+        override fun restartWithLocation() {
+            if (!model.server.isActive) return
+            restartPending = true
+            stopServer()
+        }
     }
 
     private fun startServer() {

@@ -205,12 +205,19 @@ class SignalKService : Service() {
      */
     private fun enterForeground() {
         val types = foregroundTypes()
+        val location = types and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), types)
+            ServerStatus.publishLocation(location)
         } catch (e: SecurityException) {
-            if (types == ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) throw e
-            log.note("location is allowed only with the app in front: the phone's GNSS starts once the app is opened")
+            if (!location) throw e
+            // Not always given back on renewal either, as the phones show: the Dock then offers
+            // a start with the app in front ([ServerStatus.locationHeld]).
+            if (ServerStatus.locationHeld != false) {
+                log.note("location is allowed only with the app in front: the phone's GNSS is off until the server is started from the app")
+            }
             ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            ServerStatus.publishLocation(false)
         }
     }
 
@@ -226,6 +233,7 @@ class SignalKService : Service() {
         if (!alive || supervisor.isActive) return
         foreground = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        ServerStatus.publishLocation(null)
         bridge.stop()
         releaseLocks()
         stopIfIdle()

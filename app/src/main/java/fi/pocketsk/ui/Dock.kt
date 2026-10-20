@@ -74,6 +74,10 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
 private fun SensorsCard(model: AppModel, actions: AppActions) {
     Section(stringResource(R.string.dock_sensors_title)) {
         Text(stringResource(R.string.dock_sensors_body), style = MaterialTheme.typography.bodySmall)
+        if (model.permissions.location && model.locationHeld == false && model.server.isActive) {
+            Text(stringResource(R.string.dock_gps_restart_why), color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = actions::restartWithLocation) { Text(stringResource(R.string.dock_gps_restart)) }
+        }
         Text(stringResource(R.string.dock_level_why), style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = actions::levelAttitude, enabled = model.server is ServerState.Running) {
             Text(stringResource(R.string.dock_level))

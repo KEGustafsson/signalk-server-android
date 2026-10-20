@@ -30,6 +30,8 @@ internal class AppModel {
     var permissions by mutableStateOf(PermissionsView())
     var devices by mutableStateOf<List<BridgeProtocol.Device>>(emptyList())
     var alarms by mutableStateOf(AlarmBook.View.NONE)
+    /** [ServerStatus.locationHeld]: false is a server that runs without the phone's GNSS. */
+    var locationHeld by mutableStateOf<Boolean?>(null)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -97,4 +99,6 @@ internal interface AppActions {
     fun silenceAlarm(id: String)
     /** The system's page that allows the app full-screen alarms (Android 14 and later). */
     fun openFullScreenSettings()
+    /** Stops the server and starts it again from this screen, so its service may take location. */
+    fun restartWithLocation()
 }
