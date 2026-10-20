@@ -164,6 +164,8 @@ class SignalKService : Service() {
         } catch (e: Exception) {
             // ForegroundServiceStartNotAllowedException and friends; broadly, as nothing else can be done.
             log.note("cannot run in the foreground: $e")
+            // Nothing runs, so nothing holds location; a server already running keeps what it has.
+            if (!supervisor.isActive) ServerStatus.publishLocation(null)
             stopIfIdle()
             return
         }

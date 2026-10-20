@@ -188,7 +188,13 @@ class MainActivity : ComponentActivity() {
      * to come back.
      */
     private fun finishRestart() {
-        if (!restartPending || ServerStatus.state.isActive || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        if (!restartPending || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        if (ServerStatus.state.isActive) {
+            // The stop cleared running; set again, a server was started since, and the restart a
+            // stale saved state still asks for is done (or no longer wanted).
+            if (prefs.running) restartPending = false
+            return
+        }
         restartPending = false
         startServer()
     }
