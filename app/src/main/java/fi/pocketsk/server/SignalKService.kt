@@ -143,6 +143,8 @@ class SignalKService : Service() {
         // Throws when the registration above failed; there is nothing to undo then.
         reporting({}) { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networks) }
         main.removeCallbacksAndMessages(null)
+        // The finish() that would have said so may have been among the callbacks just dropped.
+        ServerStatus.publishLocation(null)
         // Last resort, when Android destroys a service that still runs the server: the group goes
         // now, since nothing will be left to reap it.
         if (supervisor.isActive) supervisor.shutdown()
