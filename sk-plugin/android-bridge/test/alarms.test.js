@@ -46,9 +46,8 @@ test("an alarm at the level is sent, with what the server allows done to it", ()
 test("below the level, back to normal or cleared, an alarm is let go", () => {
   const { a, sent } = alarms({ api: fakeApi() });
   a.update("notifications.engine.temp", anchor({ state: "warn" }));
-  assert.equal(sent.length, 1);
-  assert.deepEqual(sent[0].list, []);
   a.update("notifications.navigation.anchor", anchor());
+  assert.equal(sent.length, 1);
   a.update("notifications.navigation.anchor", anchor({ state: "normal" }));
   assert.deepEqual(sent.at(-1).list, []);
   a.update("notifications.navigation.anchor", anchor());
@@ -62,10 +61,24 @@ test("the level may be warn or emergency; anything else is alarm", () => {
   assert.equal(warn.sent.at(-1).list.length, 1);
   const emergency = alarms({ level: "emergency" });
   emergency.a.update("notifications.navigation.anchor", anchor());
-  assert.deepEqual(emergency.sent.at(-1).list, []);
+  assert.equal(emergency.sent.length, 0);
   const odd = alarms({ level: "loud" });
   odd.a.update("notifications.engine.temp", anchor({ state: "warn" }));
-  assert.deepEqual(odd.sent.at(-1).list, []);
+  assert.equal(odd.sent.length, 0);
+});
+
+test("a plugin just started sends no empty list, even when the phone connects", () => {
+  // A server restart: the phone still holds the anchor alarm, and its source raises it again later.
+  const { a, sent } = alarms();
+  a.update("navigation.anchor.position", null);
+  a.update("notifications.engine.temp", anchor({ state: "normal" }));
+  a.resend();
+  assert.equal(sent.length, 0);
+  a.update("notifications.navigation.anchor", anchor());
+  assert.equal(sent.length, 1);
+  a.update("notifications.navigation.anchor", anchor({ state: "normal" }));
+  a.resend();
+  assert.deepEqual(sent.map((m) => m.list.length), [1, 0, 0]);
 });
 
 test("the phone hears of changes only, and the whole list again on resend", () => {

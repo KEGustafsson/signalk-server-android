@@ -48,6 +48,8 @@ class Alarms {
     this.debug = debug;
     this.byPath = new Map();
     this.told = null;
+    /** Whether this run has told the phone of an alarm; until it has, an empty list is not sent. */
+    this.toldAny = false;
   }
 
   /** A notification's value at `path`: an alarm at or above the level is kept, anything else let go. */
@@ -114,11 +116,20 @@ class Alarms {
     return null;
   }
 
+  /**
+   * The list to the phone when it changed. An empty one only once this run has sent an alarm: a
+   * plugin just started (a server restart) knows nothing yet, since the alarm's own source raises
+   * it again only a moment later, and an empty list then would end on the phone an alarm that is
+   * still on and ring it a second time. The phone keeps what it has for a while after the plugin
+   * goes, and lets it go itself when nobody tells it otherwise.
+   */
   publish() {
     const msg = { t: "alarms", list: this.list() };
+    if (msg.list.length === 0 && !this.toldAny) return;
     const line = JSON.stringify(msg);
     if (line === this.told) return;
     this.told = line;
+    if (msg.list.length > 0) this.toldAny = true;
     this.send(msg);
   }
 }

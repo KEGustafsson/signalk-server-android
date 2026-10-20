@@ -433,7 +433,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
            - **The sound is the app's, not the channel's.** A notification's sound plays once, or until the shade is opened when insistent, while an anchor alarm must go on until someone silences it.
            - **Silence goes through the server's API rather than a delta of the plugin's own on the alarm's path.** Such a delta would stay behind as a second source after the alarm's source went back to normal.
            - **Where the server does not manage notifications, Silence quiets the phone alone.** That happens when `manageNotifications` is off, and there is then no id to silence by. The phone stays quiet for that alarm until it gets worse, or goes and comes back.
-           - **Alarms outlast a plugin restart.** When the plugin goes (a server restart), the phone's alarms stand for two minutes before they are cleared.
+           - **Alarms outlast a plugin restart.** When the plugin goes (a server restart), the phone's alarms stand for two minutes before they are cleared. A plugin just started sends no empty list until it has sent an alarm, since the alarm's own source raises it again only a moment after a restart.
            - **Full-screen permission.** Android 14 and later grant the full-screen intent to alarm and calling apps only, so the Dock's Settings card shows **Full-screen alarms** and opens the system page for it. Without it the alarm is a heads-up notification that still rings.
 
 ## 17. Reuse from Crew Radio
