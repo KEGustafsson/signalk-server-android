@@ -1,10 +1,13 @@
 package fi.pocketsk.server
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import androidx.core.content.ContextCompat
 import fi.pocketsk.LegacyPlatform
 import fi.pocketsk.MainActivity
 import fi.pocketsk.R
@@ -15,7 +18,10 @@ import fi.pocketsk.R
  * A stop is a command to the running service, which a tile may always send. A start is a
  * foreground service start, which Android 12 and later refuse from the background unless an
  * exemption applies; when it is refused, the tile opens the Dock with [MainActivity.ACTION_START]
- * and the Dock starts it, a screen in front being the case every Android allows.
+ * and the Dock starts it, a screen in front being the case every Android allows. With precise
+ * location allowed it opens the Dock to start in any case: a foreground service started from the
+ * tile is refused the location type (while-in-use access needs the app in front), and the
+ * phone's GNSS would then not reach the server until it was started again from the app.
  *
  * The tile is not an active one: the system binds it whenever the panel opens and keeps it
  * listening until the panel closes, so it reads [ServerStatus] on opening and observes it while
@@ -45,6 +51,8 @@ class ServerTile : TileService() {
         super.onClick()
         if (ServerStatus.state.isActive) {
             SignalKService.stop(this)
+        } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            openToStart()
         } else {
             try {
                 SignalKService.start(this)

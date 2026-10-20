@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import fi.pocketsk.bridge.BluetoothSerial
 import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
@@ -67,6 +69,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefs: ServerPrefs
     private val model = AppModel()
 
+    /** A restartWithLocation stop is on its way; the start follows once the server has stopped. Main thread. */
+    private var restartPending = false
+
     /** Counts the sideload picks, main thread only, so a slow copy cannot replace a newer one. */
     private var picks = 0
 
@@ -79,6 +84,8 @@ class MainActivity : ComponentActivity() {
         model.log = ServerStatus.log(this).tail(LOG_LINES)
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
+        model.locationHeld = ServerStatus.locationHeld
+        finishRestart()
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
@@ -143,7 +150,12 @@ class MainActivity : ComponentActivity() {
             val done = prefs.setupDone || installs.liveSlot() != null
             runOnUiThread { setupDone = done }
         }
+        // Before the observer, which may finish it at once: a restart asked for before a rotation.
+        restartPending = savedInstanceState?.getBoolean(STATE_RESTART_PENDING) == true
         ServerStatus.observe(serverObserver)
+        // Not from onResume, which runs before the lifecycle says RESUMED: AndroidX moves it there
+        // only once onResume has returned, so the check in finishRestart would always fail.
+        lifecycle.addObserver(LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) finishRestart() })
         InstallJob.observe(installObserver)
         refreshSlots()
         if (savedInstanceState == null) handle(intent)
@@ -162,6 +174,29 @@ class MainActivity : ComponentActivity() {
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_RESTART_PENDING, restartPending)
+    }
+
+    /**
+     * The second half of restartWithLocation, once the server has stopped: started again from
+     * here it takes location. Only with this screen in front, since that is what gives the start
+     * location (and lets it start at all); a stop that ends while the screen is hidden waits for it
+     * to come back.
+     */
+    private fun finishRestart() {
+        if (!restartPending || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        if (ServerStatus.state.isActive) {
+            // The stop cleared running; set again, a server was started since, and the restart a
+            // stale saved state still asks for is done (or no longer wanted).
+            if (prefs.running) restartPending = false
+            return
+        }
+        restartPending = false
+        startServer()
     }
 
     override fun onDestroy() {
@@ -206,6 +241,12 @@ class MainActivity : ComponentActivity() {
         override fun silenceAlarm(id: String) = SignalKService.silence(this@MainActivity, id)
 
         override fun openFullScreenSettings() = this@MainActivity.openFullScreenSettings()
+
+        override fun restartWithLocation() {
+            if (!model.server.isActive) return
+            restartPending = true
+            stopServer()
+        }
     }
 
     private fun startServer() {
@@ -450,6 +491,9 @@ class MainActivity : ComponentActivity() {
         const val ACTION_START = "fi.pocketsk.action.OPEN_AND_START"
 
         private const val LOG_LINES = 60
+
+        /** Saved across a rotation: a restartWithLocation whose start is still to come. */
+        private const val STATE_RESTART_PENDING = "restart_pending"
 
         /** Under the cache: the sideloaded tarballs, a directory per pick. */
         private const val SIDELOAD_DIR = "sideload"

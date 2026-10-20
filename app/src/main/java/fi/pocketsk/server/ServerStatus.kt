@@ -33,6 +33,14 @@ internal object ServerStatus {
     @Volatile var alarms: AlarmBook.View = AlarmBook.View.NONE
         private set
 
+    /**
+     * Whether the running server's foreground service holds the location type, which is what lets
+     * the phone's GNSS reach it with no screen of the app in front: false when location is allowed
+     * but Android refused the type (a start at boot or from the tile), null when no server runs.
+     */
+    @Volatile var locationHeld: Boolean? = null
+        private set
+
     private val observers = CopyOnWriteArraySet<Observer>()
     private var log: ServerLog? = null
     private val main = Handler(Looper.getMainLooper())
@@ -69,6 +77,13 @@ internal object ServerStatus {
     /** From the bridge's USB thread: the devices plugged in, or their byte counts, changed. */
     fun publishDevices(list: List<BridgeProtocol.Device>) {
         devices = list
+        main.post(::tell)
+    }
+
+    /** From the service, on the main thread: the foreground service took the location type, or could not. */
+    fun publishLocation(held: Boolean?) {
+        if (locationHeld == held) return
+        locationHeld = held
         main.post(::tell)
     }
 

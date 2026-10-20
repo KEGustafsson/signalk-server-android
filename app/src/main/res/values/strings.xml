@@ -96,6 +96,8 @@
     <string name="dock_sensors_body">The phone\'s battery, barometer, GPS, attitude, rate of turn, compass and cabin sensors reach Signal K through the Pocket SK Android bridge plugin. Turn each on or off, set its period and the bow offset in the plugin\'s settings in the admin UI.</string>
     <string name="dock_level_why">With the phone in its holder and the boat lying level and still, tap Level now: roll and pitch then read zero as the phone sits. Until then the phone is taken to lie flat, screen up, with its top towards the bow.</string>
     <string name="dock_level">Level now</string>
+    <string name="dock_gps_restart_why">The phone\'s GPS is not reaching Signal K: the server was started without the app on the screen (at boot or from the tile), and Android then gives it no location. Starting it again from here brings the GPS in.</string>
+    <string name="dock_gps_restart">Start again with GPS</string>
     <string name="dock_devices_title">Serial devices</string>
     <string name="dock_devices_body">GPS and AIS receivers and NMEA 0183 interfaces, plugged in by USB or paired over Bluetooth, reach Signal K through the Android bridge plugin, each as the source android.&lt;device&gt;. Set each USB device\'s baud rate in the plugin\'s settings in the admin UI; 4800 unless set.</string>
     <string name="dock_devices_stopped">Serial devices are read while the server runs.</string>
