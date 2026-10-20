@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import fi.pocketsk.bridge.BluetoothSerial
 import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
@@ -83,11 +84,7 @@ class MainActivity : ComponentActivity() {
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
         model.locationHeld = ServerStatus.locationHeld
-        // The second half of restartWithLocation: started again from here, the server takes location.
-        if (restartPending && !state.isActive) {
-            restartPending = false
-            startServer()
-        }
+        finishRestart()
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
@@ -152,6 +149,8 @@ class MainActivity : ComponentActivity() {
             val done = prefs.setupDone || installs.liveSlot() != null
             runOnUiThread { setupDone = done }
         }
+        // Before the observer, which may finish it at once: a restart asked for before a rotation.
+        restartPending = savedInstanceState?.getBoolean(STATE_RESTART_PENDING) == true
         ServerStatus.observe(serverObserver)
         InstallJob.observe(installObserver)
         refreshSlots()
@@ -171,6 +170,24 @@ class MainActivity : ComponentActivity() {
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
+        finishRestart()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_RESTART_PENDING, restartPending)
+    }
+
+    /**
+     * The second half of restartWithLocation, once the server has stopped: started again from
+     * here it takes location. Only with this screen in front, since that is what gives the start
+     * location (and lets it start at all); a stop that ends while the screen is hidden waits for it
+     * to come back.
+     */
+    private fun finishRestart() {
+        if (!restartPending || ServerStatus.state.isActive || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        restartPending = false
+        startServer()
     }
 
     override fun onDestroy() {
@@ -465,6 +482,9 @@ class MainActivity : ComponentActivity() {
         const val ACTION_START = "fi.pocketsk.action.OPEN_AND_START"
 
         private const val LOG_LINES = 60
+
+        /** Saved across a rotation: a restartWithLocation whose start is still to come. */
+        private const val STATE_RESTART_PENDING = "restart_pending"
 
         /** Under the cache: the sideloaded tarballs, a directory per pick. */
         private const val SIDELOAD_DIR = "sideload"

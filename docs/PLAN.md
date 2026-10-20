@@ -246,7 +246,7 @@ Start from Crew Radio's `PttService`: keep its startForeground-first-then-slow-w
 - `BootReceiver`: after boot when autostart is on, and after an app update when the server was running.
 - The Quick Settings tile came with the Dock (step 9.4): see below.
 
-Quick Settings tile (`TileService`): one tap Start/Stop, shows state. **Done** (§16 step 9.4, `ServerTile`): a stop is a command to the running service; a start is tried as a foreground start, and when Android refuses one from the background the tile opens the Dock with a start request instead, a screen in front being what every release allows. The service asks the tile for a fresh look on every state change.
+Quick Settings tile (`TileService`): one tap Start/Stop, shows state. **Done** (§16 step 9.4, `ServerTile`): a stop is a command to the running service; with precise location allowed a start opens the Dock with a start request, so the server takes the location type (§16 9.5.2); without it a start is tried as a foreground start, and when Android refuses one from the background the tile opens the Dock with a start request instead, a screen in front being what every release allows. The service asks the tile for a fresh look on every state change.
 
 ## 7. Phase 4 — Android bridge (hardware & sensors)
 
