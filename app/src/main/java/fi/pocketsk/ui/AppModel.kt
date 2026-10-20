@@ -3,6 +3,7 @@ package fi.pocketsk.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import fi.pocketsk.bridge.AlarmBook
 import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
@@ -28,6 +29,7 @@ internal class AppModel {
     var lanAddress by mutableStateOf<String?>(null)
     var permissions by mutableStateOf(PermissionsView())
     var devices by mutableStateOf<List<BridgeProtocol.Device>>(emptyList())
+    var alarms by mutableStateOf(AlarmBook.View.NONE)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -53,7 +55,7 @@ internal sealed interface Available {
 
 /**
  * What is granted. Null where it does not apply on this phone: notifications below Android 13,
- * local network access below Android 17. [location] is precise location, for the bridge's GNSS:
+ * local network access below Android 17, full-screen alarms below Android 14. [location] is precise location, for the bridge's GNSS:
  * optional, since the server runs without it.
  */
 internal data class PermissionsView(
@@ -62,6 +64,8 @@ internal data class PermissionsView(
     val location: Boolean = false,
     /** Talking to paired Bluetooth devices (BLUETOOTH_CONNECT, Android 12+), for the serial devices. */
     val bluetooth: Boolean = true,
+    /** The alarm's full-screen intent ([fi.pocketsk.bridge.PhoneAlarm]), which wakes a locked phone. */
+    val fullScreen: Boolean? = null,
     val batteryUnrestricted: Boolean = false,
     val autostart: Boolean = false,
 )
@@ -89,4 +93,8 @@ internal interface AppActions {
     fun chooseBluetooth(address: String, chosen: Boolean)
     /** Asks for the Bluetooth permission the serial devices need. */
     fun askBluetooth()
+    /** Silence (or Acknowledge) for the boat's alarm [id]. */
+    fun silenceAlarm(id: String)
+    /** The system's page that allows the app full-screen alarms (Android 14 and later). */
+    fun openFullScreenSettings()
 }

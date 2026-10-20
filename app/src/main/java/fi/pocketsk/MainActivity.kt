@@ -1,5 +1,6 @@
 package fi.pocketsk
 
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity() {
         model.server = state
         model.log = ServerStatus.log(this).tail(LOG_LINES)
         model.devices = ServerStatus.devices
+        model.alarms = ServerStatus.alarms
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
@@ -200,6 +202,10 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun askBluetooth() = askBluetoothPermission()
+
+        override fun silenceAlarm(id: String) = SignalKService.silence(this@MainActivity, id)
+
+        override fun openFullScreenSettings() = this@MainActivity.openFullScreenSettings()
     }
 
     private fun startServer() {
@@ -293,6 +299,24 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Android 14 and later's page for this app's full-screen intents, which the alarm needs to
+     * wake a locked phone; the app's own settings page where a build has no such page.
+     */
+    private fun openFullScreenSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
+        val app = Uri.fromParts("package", packageName, null)
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, app))
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app))
+            } catch (_: ActivityNotFoundException) {
+                // Nothing to open on this build.
+            }
+        }
+    }
+
+    /**
      * The list of apps the battery optimiser leaves alone, where the user picks this one. Not the
      * one-tap request dialog: that needs a permission Google Play allows only for a few kinds of
      * app, and lint flags it, while the list asks for nothing.
@@ -360,6 +384,11 @@ class MainActivity : ComponentActivity() {
             },
             location = granted(android.Manifest.permission.ACCESS_FINE_LOCATION),
             bluetooth = BluetoothSerial.allowed(this),
+            fullScreen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == true
+            } else {
+                null
+            },
             batteryUnrestricted = getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true,
             autostart = prefs.autostart,
         )

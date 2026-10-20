@@ -51,7 +51,14 @@ the app's **Serial devices** card: pairing alone is not enough, since a phone is
 headsets and cars too. The app dials each chosen device, and dials it again whenever the link
 drops. **Bluetooth serial devices** turns them all off.
 
-Alarms that wake a locked phone come in a later version.
+The boat's alarms go the other way, to the phone. The server's notifications at **Alarm level** or
+above (alarm and emergency by default; warn as well if set) ring on the phone with its own alarm
+sound on the alarm volume, vibrate it, and fill its locked screen. That is an anchor alarm that
+wakes a phone asleep in a pocket. The phone's **Silence** is done through the server's notification
+API, so the alarm goes quiet on every client at once. An emergency, which Signal K does not let be
+silenced, is acknowledged instead. Where the server does not manage notifications (its
+`manageNotifications` setting is off), Silence quiets the phone alone. **Alarms on the phone** turns
+it all off.
 
 On a server that is not running on Pocket SK the plugin finds no socket, says so in its status and
 does nothing.

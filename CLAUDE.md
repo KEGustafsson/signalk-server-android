@@ -47,10 +47,12 @@ pipeline and several files were lifted (PLAN §17).
 ## Layout
 ```
 app/                 the Android app
-  fi.pocketsk        MainActivity (the Dock and the setup wizard, Compose), ServerActions,
+  fi.pocketsk        MainActivity (the Dock and the setup wizard, Compose), AlarmActivity (the
+                     boat's alarm over the lock screen), ServerActions,
                      SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3), App,
                      LocalNetwork, WifiLockModes, LegacyPlatform
-  fi.pocketsk.ui     DockScreen, SetupScreen, Common (sections, permission rows), AppModel, Theme
+  fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Common (sections, permission rows),
+                     AppModel, Theme
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      Slots, ServerVersion, InstallHistory, HealthGate, UpdateOffer (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
@@ -62,9 +64,11 @@ app/                 the Android app
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors), SensorPrefs (the level),
                      UsbSerial (USB serial adapters, their bytes to the plugin), BluetoothSerial
-                     (the paired SPP devices chosen in the Dock, SerialPrefs), BridgePlugin (puts
-                     the plugin in place before every start);
-                     BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList (pure, tested)
+                     (the paired SPP devices chosen in the Dock, SerialPrefs), PhoneAlarm (the
+                     boat's alarms: notification, full-screen intent, alarm sound, vibration),
+                     BridgePlugin (puts the plugin in place before every start);
+                     BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList, AlarmBook
+                     (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
@@ -78,7 +82,8 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      dependencies, `node --test`; packed into the APK as assets/android-bridge.tar.
                      lib/protocol.js mirrors BridgeProtocol: change both together; lib/serial.js
                      parses serial devices' NMEA 0183 with the server's own parser (found through
-                     require.main, the signalk-server script)
+                     require.main, the signalk-server script); lib/alarms.js sends the server's
+                     notifications to the phone and silences them through app.notifications
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
 Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `prebuilds/`.

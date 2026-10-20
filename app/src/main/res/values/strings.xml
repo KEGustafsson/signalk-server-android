@@ -63,6 +63,9 @@
     <string name="perm_battery_why">In the list that opens, choose All apps, then Signal K Server, then Don\'t optimise.</string>
     <string name="perm_battery_open">Open battery settings</string>
     <string name="perm_battery_none">This phone has no battery optimisation settings to open</string>
+    <string name="perm_full_screen">Full-screen alarms</string>
+    <string name="perm_full_screen_why">Lets a boat\'s alarm, such as an anchor alarm, wake the phone and fill its locked screen. Without it the alarm still rings, as a notification.</string>
+    <string name="perm_full_screen_open">Open the setting</string>
     <string name="perm_autostart">Start the server when the phone starts</string>
 
     <!-- The Dock (docs/PLAN.md §8.1) -->
@@ -143,4 +146,23 @@
     <string name="signalk_http">HTTP %1$d</string>
     <string name="signalk_too_large">response too large</string>
     <string name="signalk_redirected">the server pointed the request somewhere else</string>
+
+    <!-- The boat's alarms (PhoneAlarm, AlarmActivity) -->
+    <string name="alarm_channel">Boat alarms</string>
+    <string name="alarm_channel_description">The boat\'s alarms from Signal K, such as an anchor alarm. The alarm sound is the phone\'s own alarm sound, on the alarm volume.</string>
+    <string name="alarm_title">%1$s on board</string>
+    <string name="alarm_state_emergency">Emergency</string>
+    <string name="alarm_state_alarm">Alarm</string>
+    <string name="alarm_state_warn">Warning</string>
+    <string name="alarm_state_alert">Alert</string>
+    <plurals name="alarm_more">
+        <item quantity="one">and %1$d more</item>
+        <item quantity="other">and %1$d more</item>
+    </plurals>
+    <string name="alarm_silence">Silence</string>
+    <string name="alarm_acknowledge">Acknowledge</string>
+    <string name="alarm_close">Close</string>
+    <string name="alarm_quiet_here">Silenced on this phone</string>
+    <string name="alarm_line">%1$s: %2$s</string>
+    <string name="dock_alarms_title">Alarms</string>
 </resources>

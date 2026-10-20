@@ -8,9 +8,11 @@ import java.util.Base64
  * `sk-plugin/android-bridge/lib/protocol.js`; change both together.
  *
  * App to plugin: `hello` once a connection is up, then `sensor` lines, `devices` whenever the
- * serial devices plugged into the phone change, and `serial` lines with the bytes each one sent.
+ * serial devices plugged into the phone change, `serial` lines with the bytes each one sent, and
+ * `silence` when the owner silences an alarm on the phone.
  * Plugin to app: `subscribe`, which names the sensors it wants and how often, and whether and at
- * which baud rates to read the serial devices. Pure, so it is unit-tested.
+ * which baud rates to read the serial devices, and `alarms`, the boat's alarms whenever they
+ * change. Pure, so it is unit-tested.
  */
 internal object BridgeProtocol {
     const val VERSION = 1
@@ -134,9 +136,51 @@ internal object BridgeProtocol {
         }
     }
 
-    /** A line from the plugin, read: a subscription, or why it was dropped. */
+    /** The notification states an alarm may be in, least urgent first; the plugin sends no others. */
+    val ALARM_STATES = listOf("alert", "warn", "alarm", "emergency")
+
+    /** Most alarms in one list, as the plugin cuts it; more is a broken plugin. */
+    const val MAX_ALARMS = 32
+
+    /** Longest alarm message kept, as the plugin cuts it. */
+    private const val MAX_MESSAGE = 200
+
+    /**
+     * An alarm's id: the server's notification id (a UUID), or its path where the server gives
+     * none. A path may carry a colon: a closest-approach alarm names the other vessel by its URN
+     * (`notifications.navigation.closestApproach.urn:mrn:imo:mmsi:230099999`).
+     */
+    private val ALARM_ID = Regex("^[A-Za-z0-9._:-]{1,256}$")
+    private val NOTIFICATION_PATH = Regex("^notifications(\\.[A-Za-z0-9_:-]+)+$")
+
+    /**
+     * One of the boat's alarms, a Signal K notification: [id] to silence it by, its [path], its
+     * [state] (one of [ALARM_STATES]), the [message] to show, whether the server still wants it
+     * heard ([sound]: its method has sound, so not yet silenced), and what the server allows done
+     * to it from the phone ([action]: [SILENCE], [ACKNOWLEDGE], or null when nothing, and then
+     * Silence quiets the phone alone).
+     */
+    data class Alarm(
+        val id: String,
+        val path: String,
+        val state: String,
+        val message: String,
+        val sound: Boolean,
+        val action: String?,
+    ) {
+        /** How urgent: the higher, the more. */
+        val rank: Int get() = ALARM_STATES.indexOf(state)
+
+        companion object {
+            const val SILENCE = "silence"
+            const val ACKNOWLEDGE = "acknowledge"
+        }
+    }
+
+    /** A line from the plugin, read: a subscription, the alarms, or why it was dropped. */
     sealed interface Incoming {
         data class Subscribe(val subscription: Subscription) : Incoming
+        data class Alarms(val list: List<Alarm>) : Incoming
         data class Dropped(val reason: String) : Incoming
     }
 
@@ -172,6 +216,9 @@ internal object BridgeProtocol {
         return """{"t":"serial","id":${Json.quote(id)},"data":"$data"}"""
     }
 
+    /** The owner silenced the alarm [id] on the phone: the plugin silences it on the server as it may. */
+    fun silence(id: String): String = """{"t":"silence","id":${Json.quote(id)}}"""
+
     /** Largest read put into one `serial` line: 16 KiB is 22 KiB of base64. */
     const val MAX_SERIAL_BYTES = 16 * 1024
 
@@ -186,6 +233,7 @@ internal object BridgeProtocol {
         if (msg !is Map<*, *>) return Incoming.Dropped("not an object")
         return when (val t = msg["t"]) {
             "subscribe" -> subscribe(msg)
+            "alarms" -> alarms(msg)
             else -> Incoming.Dropped("unknown type ${(t as? String)?.take(32) ?: t}")
         }
     }
@@ -204,6 +252,28 @@ internal object BridgeProtocol {
                 bowOffsetDeg = (msg["bowOffsetDeg"] as? Double)?.takeIf { it.isFinite() }?.coerceIn(-180.0, 180.0) ?: 0.0,
                 serial = serial(msg["serial"] as? Map<*, *>),
             ),
+        )
+    }
+
+    /**
+     * The alarm list. An entry that is not an alarm is left out rather than losing the others: an
+     * alarm is the one message here a phone must not miss. A message is cleared of control
+     * characters, since it is shown on the lock screen, and cut.
+     */
+    private fun alarms(msg: Map<*, *>): Incoming {
+        val list = msg["list"] as? List<*> ?: return Incoming.Dropped("alarms without a list")
+        if (list.size > MAX_ALARMS) return Incoming.Dropped("alarms with ${list.size} entries")
+        return Incoming.Alarms(
+            list.mapNotNull { a ->
+                if (a !is Map<*, *>) return@mapNotNull null
+                val id = (a["id"] as? String)?.takeIf { ALARM_ID.matches(it) } ?: return@mapNotNull null
+                val path = (a["path"] as? String)?.takeIf { it.length <= 256 && NOTIFICATION_PATH.matches(it) } ?: return@mapNotNull null
+                val state = (a["state"] as? String)?.takeIf { it in ALARM_STATES } ?: return@mapNotNull null
+                val message = (a["message"] as? String).orEmpty().map { if (it.isISOControl()) ' ' else it }
+                    .joinToString("").trim().take(MAX_MESSAGE)
+                val action = (a["action"] as? String)?.takeIf { it == Alarm.SILENCE || it == Alarm.ACKNOWLEDGE }
+                Alarm(id, path, state, message, sound = a["sound"] != false, action = action)
+            },
         )
     }
 

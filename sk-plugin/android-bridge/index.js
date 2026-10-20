@@ -14,12 +14,17 @@
  * The phone's serial devices (GPS and AIS receivers, NMEA 0183 interfaces), plugged in by USB or
  * paired over Bluetooth, come the same way: the app reads them, since Android gives the server no
  * serial port, and passes their bytes over the socket; lib/serial.js parses their NMEA 0183 with
- * the server's own parser. The alarm path back to the phone comes in a later step.
+ * the server's own parser.
+ *
+ * The other way, the boat's alarms go to the phone (lib/alarms.js): the server's notifications at
+ * or above a level, so the app can ring and wake the phone's screen, and its Silence comes back to
+ * be done through the server's notification API.
  */
 
 const { Link } = require("./lib/link");
 const { parseLine, toDelta, subscribeMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
 const { SerialInput, loadNmeaParser } = require("./lib/serial");
+const { Alarms, LEVELS } = require("./lib/alarms");
 const pkg = require("./package.json");
 
 const ENV = "POCKETSK_BRIDGE";
@@ -38,6 +43,8 @@ module.exports = function androidBridge(app, deps = {}) {
   let connected = false;
   let input = null;
   let Parser = null;
+  let alarms = null;
+  let unsubscribes = [];
 
   const plugin = {
     id: "pocketsk-android-bridge",
@@ -145,6 +152,19 @@ module.exports = function androidBridge(app, deps = {}) {
           description: "Read the NMEA 0183 of the phone's paired Bluetooth serial devices (GPS and AIS receivers), each under its own source, android.<device>. Pair the device in the phone's Bluetooth settings, then switch it on in the app's Serial devices card",
           default: true,
         },
+        alarms: {
+          type: "boolean",
+          title: "Alarms on the phone",
+          description: "The boat's alarms (the server's notifications, such as an anchor alarm) ring on the phone and wake its screen, with Silence, which silences them on the server too",
+          default: true,
+        },
+        alarmLevel: {
+          type: "string",
+          title: "Alarm level",
+          description: "The lowest notification state that rings on the phone: alarm and emergency by default",
+          default: "alarm",
+          enum: [...LEVELS],
+        },
         serialDevices: {
           type: "array",
           title: "Baud rate per device",
@@ -181,15 +201,30 @@ module.exports = function androidBridge(app, deps = {}) {
         handle: (delta) => app.handleMessage(plugin.id, delta),
         emit: emitSentence,
       });
+      alarms = new Alarms({
+        send: (msg) => {
+          if (link?.connected) link.send(msg);
+        },
+        api: options.alarms === false ? null : (app.notifications ?? null),
+        level: options.alarmLevel,
+        debug: (s) => app.debug(s),
+      });
       link = new Link(socketPath, { onLine, onState });
       link.start();
+      if (options.alarms !== false) watchNotifications();
       app.setPluginStatus("Connecting to the phone");
     },
 
     stop() {
+      for (const u of unsubscribes) u();
+      unsubscribes = [];
+      // The link goes first, with no word of the alarms: a server restart stops the plugin, and an
+      // empty list would end an anchor alarm on the phone only for it to ring again moments later.
+      // The phone keeps them a while after the link drops and clears them if the plugin stays away.
       if (link) link.stop();
       link = null;
       input = null;
+      alarms = null;
     },
 
     /** For tests and the status line. */
@@ -199,8 +234,32 @@ module.exports = function androidBridge(app, deps = {}) {
       ...stats,
       devices,
       serial: input?.stats() ?? {},
+      alarms: alarms?.list() ?? [],
     }),
   };
+
+  /**
+   * The vessel's own notifications, through the server's subscription manager as every plugin
+   * reads them: those already raised come first, from its cache, then each change as it comes.
+   */
+  function watchNotifications() {
+    // All lower case in the plugin interface (signalk-server's interfaces/plugins), unlike the class.
+    const manager = app.subscriptionmanager;
+    if (!manager || typeof manager.subscribe !== "function") {
+      app.debug("the server has no subscription manager: no alarms for the phone");
+      return;
+    }
+    manager.subscribe(
+      { context: "vessels.self", subscribe: [{ path: "notifications.*", policy: "instant" }] },
+      unsubscribes,
+      (err) => app.debug(`notifications: ${err}`),
+      (delta) => {
+        for (const u of delta?.updates ?? []) {
+          for (const v of u?.values ?? []) alarms?.update(v?.path, v?.value);
+        }
+      },
+    );
+  }
 
   /** The devices plugged in now, for the settings' description of the per-device rates. */
   function pluggedIn() {
@@ -219,6 +278,7 @@ module.exports = function androidBridge(app, deps = {}) {
     connected = up;
     if (up) {
       link.send(subscribeMessage(options));
+      alarms?.resend();
     }
     showStatus(detail);
   }
@@ -270,6 +330,11 @@ module.exports = function androidBridge(app, deps = {}) {
     }
     if (msg.t === "serial") {
       input?.data(msg.id, msg.data);
+      return;
+    }
+    if (msg.t === "silence") {
+      const done = alarms?.silence(msg.id);
+      app.debug(done ? `the phone asked to ${done} ${msg.id}` : `the phone silenced ${msg.id} on the phone alone`);
       return;
     }
     stats.sensors++;

@@ -75,7 +75,8 @@ internal fun installTail(state: InstallManager.State?): String = when (state) {
  * What the server needs from the phone, each with its state and a way to grant it: shared by the
  * wizard's permission page and the Dock's Settings card (docs/PLAN.md §5.3 step 4). Location is
  * the bridge's (the phone's GNSS as a Signal K source, §7.1) and asked for on its own, since the
- * server starts without it.
+ * server starts without it. Full-screen alarms are the bridge's too (the boat's alarms waking a
+ * locked phone), and the alarm rings without them.
  */
 @Composable
 internal fun PermissionRows(permissions: PermissionsView, actions: AppActions) {
@@ -89,6 +90,13 @@ internal fun PermissionRows(permissions: PermissionsView, actions: AppActions) {
     if (!permissions.location) {
         Text(stringResource(R.string.perm_location_why), style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = actions::askLocation) { Text(stringResource(R.string.perm_location_allow)) }
+    }
+    permissions.fullScreen?.let { granted ->
+        PermissionRow(stringResource(R.string.perm_full_screen), granted)
+        if (!granted) {
+            Text(stringResource(R.string.perm_full_screen_why), style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = actions::openFullScreenSettings) { Text(stringResource(R.string.perm_full_screen_open)) }
+        }
     }
     PermissionRow(stringResource(R.string.perm_battery), permissions.batteryUnrestricted)
     if (!permissions.batteryUnrestricted) {

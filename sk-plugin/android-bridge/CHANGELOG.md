@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- The boat's alarms on the phone: the server's notifications at the **Alarm level** or above
+  (alarm, by default) are sent to the app, which rings, vibrates and wakes the phone's screen. The
+  phone's Silence is done through the server's notification API (`app.notifications`): silence, or
+  acknowledge for an emergency. Settings: alarms on or off, and the level.
+
 ## 0.5.0
 
 - Bluetooth serial devices: the phone's paired NMEA 0183 senders and AIS receivers that the owner

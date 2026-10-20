@@ -125,6 +125,43 @@ class BridgeProtocolTest {
         (BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"serial":$serial}""") as Incoming.Subscribe).subscription.serial
 
     @Test
+    fun theAlarmsAreReadEntryByEntry() {
+        val id = "0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f"
+        val line = """{"t":"alarms","list":[""" +
+            """{"id":"$id","path":"notifications.navigation.anchor","state":"alarm","message":"Anchor\n\u0007dragging","sound":true,"action":"silence"},""" +
+            """{"id":"notifications.mob","path":"notifications.mob","state":"emergency","message":7,"action":"clear"},""" +
+            """{"id":"x y","path":"notifications.a","state":"alarm"},{"id":"b","path":"navigation.position","state":"alarm"},""" +
+            """{"id":"c","path":"notifications.c","state":"normal"},5]}"""
+        assertEquals(
+            Incoming.Alarms(
+                listOf(
+                    BridgeProtocol.Alarm(id, "notifications.navigation.anchor", "alarm", "Anchor  dragging", sound = true, action = BridgeProtocol.Alarm.SILENCE),
+                    BridgeProtocol.Alarm("notifications.mob", "notifications.mob", "emergency", "", sound = true, action = null),
+                ),
+            ),
+            BridgeProtocol.parse(line),
+        )
+        assertEquals(Incoming.Alarms(emptyList()), BridgeProtocol.parse("""{"t":"alarms","list":[]}"""))
+        val urn = "notifications.navigation.closestApproach.urn:mrn:imo:mmsi:230099999"
+        assertEquals(
+            Incoming.Alarms(listOf(BridgeProtocol.Alarm(urn, urn, "alarm", "", sound = true, action = null))),
+            BridgeProtocol.parse("""{"t":"alarms","list":[{"id":"$urn","path":"$urn","state":"alarm"}]}"""),
+        )
+        assertEquals(Incoming.Dropped("alarms without a list"), BridgeProtocol.parse("""{"t":"alarms"}"""))
+        val many = (0..BridgeProtocol.MAX_ALARMS).joinToString(",", "[", "]") { """{"id":"a$it","path":"notifications.a$it","state":"alarm"}""" }
+        assertEquals(Incoming.Dropped("alarms with 33 entries"), BridgeProtocol.parse("""{"t":"alarms","list":$many}"""))
+        val message = (BridgeProtocol.parse("""{"t":"alarms","list":[{"id":"a","path":"notifications.a","state":"warn","message":"${"x".repeat(300)}","sound":false}]}""") as Incoming.Alarms).list.single()
+        assertEquals(200, message.message.length)
+        assertEquals(false, message.sound)
+        assertTrue(BridgeProtocol.Alarm("a", "notifications.a", "emergency", "", true, null).rank > message.rank)
+    }
+
+    @Test
+    fun aSilenceNamesTheAlarm() {
+        assertEquals("""{"t":"silence","id":"notifications.mob"}""", BridgeProtocol.silence("notifications.mob"))
+    }
+
+    @Test
     fun anythingElseIsDroppedWithAReason() {
         assertEquals(Incoming.Dropped("not an object"), BridgeProtocol.parse("[1]"))
         assertEquals(Incoming.Dropped("unknown type alarm"), BridgeProtocol.parse("""{"t":"alarm"}"""))

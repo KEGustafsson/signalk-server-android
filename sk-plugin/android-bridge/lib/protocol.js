@@ -17,10 +17,16 @@
  *     error, with a detail for an error or a redial)
  *   {"t":"serial","id":"usb-1a86-7523","data":"JEdQUk1DLC4uLg0K"}
  *     (bytes a device sent, as they came, base64; lib/serial.js makes sentences of them)
+ *   {"t":"silence","id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f"}
+ *     (the owner silenced that alarm on the phone; lib/alarms.js does it through the server)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment"],
  *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1},"bowOffsetDeg":0,
  *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400},"bt":true}}
+ *   {"t":"alarms","list":[{"id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f","path":"notifications.navigation.anchor",
+ *    "state":"alarm","message":"Anchor dragging","sound":true,"action":"silence"}]}
+ *     (the boat's alarms whenever they change, the most urgent first; action is silence,
+ *     acknowledge or null, what the server allows done to it)
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -48,6 +54,8 @@ const DEVICE_STATES = ["open", "connecting", "needs-permission", "idle", "error"
 /** More devices than this in one list is a broken peer; more rates than the app takes, too. */
 const MAX_DEVICES = 32;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+/** An alarm's id, as lib/alarms.js gives them: the server's notification id, or the path. */
+const ALARM_ID = /^[A-Za-z0-9._:-]{1,256}$/;
 
 /**
  * Reads one line from the app: `{ok: true, msg}` for a message this plugin knows, `{ok: false,
@@ -72,6 +80,9 @@ function parseLine(line) {
       return parseDevices(msg);
     case "serial":
       return parseSerial(msg);
+    case "silence":
+      if (typeof msg.id !== "string" || !ALARM_ID.test(msg.id)) return { ok: false, reason: "silence with a bad id" };
+      return { ok: true, msg: { t: "silence", id: msg.id } };
     default:
       return { ok: false, reason: `unknown type ${JSON.stringify(String(msg.t)).slice(0, 40)}` };
   }
