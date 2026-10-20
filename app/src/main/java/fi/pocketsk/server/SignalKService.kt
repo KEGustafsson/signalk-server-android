@@ -205,7 +205,7 @@ class SignalKService : Service() {
      */
     private fun enterForeground() {
         val types = foregroundTypes()
-        val location = types and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION != 0
+        val location = (types and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) != 0
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), types)
             ServerStatus.publishLocation(location)
