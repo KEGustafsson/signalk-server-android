@@ -94,9 +94,11 @@ internal object ServerStatus {
         main.post(::tell)
     }
 
-    /** From the bridge's reader: the server's delta rate, or null when the plugin has gone. */
+    /**
+     * From the bridge's reader: the server's delta rate, or null when the plugin has gone. Told
+     * every time, unlike the others: it comes once in 5 s and is hardly ever the same twice.
+     */
     fun publishDeltaRate(rate: Double?) {
-        if (deltaRate == rate) return
         deltaRate = rate
         main.post(::tell)
     }
