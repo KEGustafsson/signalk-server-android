@@ -72,9 +72,15 @@ app/                 the Android app
                      (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
-node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm as an asset
+node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm and the
+                     preload as assets
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
                      process group), Tar (unpacks npm)
+runtime-tools/preload/ mdns-lookup.js: every node loads it (NODE_OPTIONS --require, written to
+                     files/runtime); `.local` names over mDNS, which Android gives native code no
+                     resolver for. Plain CommonJS, no dependencies; `node --test test/*.test.js` in
+                     runtime-tools (CI runs it). Nothing else goes in preload/: the directory is an
+                     asset source as it stands
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
                      (leads a process group when NodeRuntime asks), and `npm` when started
                      as files/bin/npm, for Signal K's App Store;
@@ -87,7 +93,7 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      notifications to the phone and silences them through app.notifications
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap), `prebuilds/`.
+Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap, `prebuilds/`.
 
 ## Rules of the house
 - Threading: nothing blocking on the main thread. Worker loops use `transportThread` and report
@@ -99,8 +105,8 @@ Planned, not yet present (PLAN §2): `runtime-tools/` (node-gyp shim, bootstrap)
   carries a comment saying why.
 - Secrets (the admin token, anything under `files/home/.signalk`) never enter backups, logs or
   the diagnostics bundle. `data_extraction_rules.xml` excludes them; keep it in step with the
-  layout in `NodeRuntime`. `files/npm`, `files/bin`, `files/prebuilds` and `files/plugins` (the
-  bridge's plugin) are excluded too, with `files/bridge.sock`: the APK makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
+  layout in `NodeRuntime`. `files/npm`, `files/bin`, `files/prebuilds`, `files/plugins` (the
+  bridge's plugin) and `files/runtime` (the preload) are excluded too, with `files/bridge.sock`: the APK makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
   server's output, which may carry whatever a plugin printed.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of
   its class comment, so a fix found in one repo is carried to the other.

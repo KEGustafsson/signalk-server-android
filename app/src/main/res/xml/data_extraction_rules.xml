@@ -6,8 +6,8 @@
   off anyway (allowBackup="false"); device transfer is not, so these rules are what keeps a boat's
   credentials from riding along to a new phone unasked. The preferences file name is what
   PreferenceManager.getDefaultSharedPreferences uses: <package>_preferences.xml.
-  files/npm, files/bin, files/prebuilds and files/plugins (the Android bridge's plugin) hold nothing
-  of the boat's: the APK unpacks or fetches them again, and files/bin/node points into the old install's nativeLibraryDir, which a new
+  files/npm, files/bin, files/prebuilds, files/plugins (the Android bridge's plugin) and files/runtime
+  (the preload every node loads) hold nothing of the boat's: the APK unpacks or fetches them again, and files/bin/node points into the old install's nativeLibraryDir, which a new
   phone does not have. files/logs is the server's output, this phone's story, and may carry
   whatever a plugin printed.
 -->
@@ -22,6 +22,7 @@
         <exclude domain="file" path="prebuilds" />
         <exclude domain="file" path="logs" />
         <exclude domain="file" path="plugins" />
+        <exclude domain="file" path="runtime" />
         <exclude domain="file" path="bridge.sock" />
     </cloud-backup>
     <device-transfer>
@@ -34,6 +35,7 @@
         <exclude domain="file" path="prebuilds" />
         <exclude domain="file" path="logs" />
         <exclude domain="file" path="plugins" />
+        <exclude domain="file" path="runtime" />
         <exclude domain="file" path="bridge.sock" />
     </device-transfer>
 </data-extraction-rules>

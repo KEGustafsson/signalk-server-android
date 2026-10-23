@@ -131,8 +131,15 @@ val npmAsset = tasks.register<NpmAsset>("npmAsset") {
     outputDir.set(layout.buildDirectory.dir("generated/npm-asset"))
 }
 
+// The preload every node loads (NodeRuntime.preload): plain JavaScript with no dependencies, so the
+// directory is an asset source as it stands, its tests kept outside it in runtime-tools/test.
+val preloadDir = rootProject.file("runtime-tools/preload")
+
 androidComponents {
-    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(npmAsset, NpmAsset::outputDir) }
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(npmAsset, NpmAsset::outputDir)
+        variant.sources.assets?.addStaticSourceDirectory(preloadDir.absolutePath)
+    }
 }
 
 val unpackNodejsMobile = tasks.register<UnpackNodejsMobile>("unpackNodejsMobile") {
@@ -199,9 +206,14 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// TarTest also unpacks the real npm tarball the APK carries, not only archives it builds itself.
+// TarTest also unpacks the real npm tarball the APK carries, not only archives it builds itself,
+// and NodeOptionsTest finds the preload where the assets are taken from.
 tasks.withType<Test>().configureEach {
     val tarball = fetchNpm.flatMap { it.dest }
     inputs.file(tarball)
-    doFirst { systemProperty("pocketsk.npmTarball", tarball.get().asFile.absolutePath) }
+    inputs.dir(preloadDir)
+    doFirst {
+        systemProperty("pocketsk.npmTarball", tarball.get().asFile.absolutePath)
+        systemProperty("pocketsk.preloadDir", preloadDir.absolutePath)
+    }
 }
