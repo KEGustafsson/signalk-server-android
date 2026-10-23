@@ -41,6 +41,12 @@ const QU = 0x8000;
 /** How long one query waits, and how many are sent, before a name is left to Node's lookup. */
 const TIMEOUT_MS = 1000;
 const TRIES = 2;
+/**
+ * How long the first answer waits for more. A responder may answer the A and AAAA questions in
+ * separate messages (RFC 6762 §6), and a host with no IPv6 sends no AAAA at all, so a query ends
+ * when both families are in or this long after its first answer, whichever comes first.
+ */
+const COLLECT_MS = 150;
 /** The longest an answer is kept, whatever its TTL says. */
 const MAX_TTL_S = 60;
 const INSTALLED = Symbol.for("pocketsk.mdnsLookup");
@@ -167,13 +173,14 @@ function ipv4Interfaces() {
 }
 
 /**
- * Asks the network for [name]: the records found, or none after [tries] queries [timeoutMs]
- * apart. Never rejects. The socket, the interface list and where the query goes are injectable
- * for the tests.
+ * Asks the network for [name]: the records found, collected for [collectMs] after the first
+ * answer ([COLLECT_MS]), or none after [tries] queries [timeoutMs] apart. Never rejects. The
+ * socket, the interface list and where the query goes are injectable for the tests.
  */
 function resolve(name, {
   timeoutMs = TIMEOUT_MS,
   tries = TRIES,
+  collectMs = COLLECT_MS,
   createSocket = () => dgram.createSocket("udp4"),
   interfaces = ipv4Interfaces,
   address = MDNS_ADDRESS,
@@ -193,6 +200,7 @@ function resolve(name, {
     let finished = false;
     let timer = null;
     let sent = 0;
+    const found = [];
     const finish = (found) => {
       if (finished) return;
       finished = true;
@@ -229,9 +237,18 @@ function resolve(name, {
     };
     socket.on("error", () => finish([]));
     socket.on("message", (msg) => {
-      if (msg.length < 2 || msg.readUInt16BE(0) !== id) return;
-      const found = answers(msg, name);
-      if (found.length > 0) finish(found);
+      if (finished || msg.length < 2 || msg.readUInt16BE(0) !== id) return;
+      const fresh = answers(msg, name).filter((r) => !found.some((f) => f.family === r.family && f.address === r.address));
+      if (fresh.length === 0) return;
+      const first = found.length === 0;
+      found.push(...fresh);
+      if (found.some((r) => r.family === 4) && found.some((r) => r.family === 6)) {
+        finish(found);
+      } else if (first) {
+        // No more queries now: the rest of this answer may still be on its way.
+        clearTimeout(timer);
+        timer = setTimeout(() => finish(found), collectMs);
+      }
     });
     try {
       socket.bind(0, () => {
@@ -243,13 +260,34 @@ function resolve(name, {
   });
 }
 
-/** The records in [found] that [options] asks for (`family` 0, 4 or 6), IPv4 first. */
-function pick(found, options) {
+/**
+ * The order `dns.lookup` gives its results in for [options], as Node decides it: `order` first,
+ * then the older `verbatim`, then the process's default ([defaultOrder], `verbatim` since Node 22
+ * unless `--dns-result-order` or `dns.setDefaultResultOrder` said otherwise).
+ */
+function resultOrder(options, defaultOrder = defaultResultOrder()) {
+  if (options.order === "ipv4first" || options.order === "ipv6first" || options.order === "verbatim") return options.order;
+  if (options.verbatim === true) return "verbatim";
+  if (options.verbatim === false) return "ipv4first";
+  return defaultOrder;
+}
+
+function defaultResultOrder() {
+  return typeof dns.getDefaultResultOrder === "function" ? dns.getDefaultResultOrder() : "verbatim";
+}
+
+/**
+ * The records in [found] that [options] asks for (`family` 0, 4 or 6), in the order it asks for
+ * ([resultOrder]): `verbatim` keeps the order the responder gave them in.
+ */
+function pick(found, options, defaultOrder = defaultResultOrder()) {
   const family = options.family === "IPv4" ? 4 : options.family === "IPv6" ? 6 : Number(options.family) || 0;
-  return found
-    .filter((r) => family === 0 || r.family === family)
-    .sort((a, b) => a.family - b.family)
-    .map(({ address, family }) => ({ address, family }));
+  const order = resultOrder(options, defaultOrder);
+  const list = found.filter((r) => family === 0 || r.family === family);
+  // Array.prototype.sort is stable, so each family keeps the responder's order.
+  if (order === "ipv4first") list.sort((a, b) => a.family - b.family);
+  else if (order === "ipv6first") list.sort((a, b) => b.family - a.family);
+  return list.map(({ address, family }) => ({ address, family }));
 }
 
 /**
@@ -331,4 +369,4 @@ try {
   // Never in the way of the process it was loaded into: without it, `.local` names fail as before.
 }
 
-module.exports = { localName, query, readName, answers, ipv4Interfaces, resolve, pick, makeLookup, promiseLookup, install, MDNS_ADDRESS, MDNS_PORT, MAX_TTL_S };
+module.exports = { localName, query, readName, answers, ipv4Interfaces, resolve, resultOrder, pick, makeLookup, promiseLookup, install, MDNS_ADDRESS, MDNS_PORT, MAX_TTL_S };

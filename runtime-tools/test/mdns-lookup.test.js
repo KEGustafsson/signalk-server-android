@@ -97,15 +97,37 @@ test("queries, garbage and cut messages give what they can and never throw", () 
   assert.deepEqual(m.answers(two.subarray(0, two.length - 1), "boat.local").map((r) => r.address), ["10.1.2.3"]);
 });
 
-test("pick filters by family, IPv4 first", () => {
+test("pick filters by family", () => {
   const found = [
     { address: "fd00::7", family: 6, ttl: 1 },
     { address: "10.0.0.2", family: 4, ttl: 1 },
   ];
-  assert.deepEqual(m.pick(found, {}), [{ address: "10.0.0.2", family: 4 }, { address: "fd00::7", family: 6 }]);
   assert.deepEqual(m.pick(found, { family: 6 }), [{ address: "fd00::7", family: 6 }]);
   assert.deepEqual(m.pick(found, { family: "IPv4" }), [{ address: "10.0.0.2", family: 4 }]);
   assert.deepEqual(m.pick(found, { family: "IPv6" }), [{ address: "fd00::7", family: 6 }]);
+});
+
+test("pick gives the order dns.lookup would: order, then verbatim, then the default", () => {
+  const found = [
+    { address: "fd00::7", family: 6, ttl: 1 },
+    { address: "10.0.0.2", family: 4, ttl: 1 },
+    { address: "fd00::8", family: 6, ttl: 1 },
+    { address: "10.0.0.3", family: 4, ttl: 1 },
+  ];
+  const addresses = (options, defaultOrder) => m.pick(found, options, defaultOrder).map((r) => r.address);
+  const asGiven = ["fd00::7", "10.0.0.2", "fd00::8", "10.0.0.3"];
+  const v4First = ["10.0.0.2", "10.0.0.3", "fd00::7", "fd00::8"];
+  const v6First = ["fd00::7", "fd00::8", "10.0.0.2", "10.0.0.3"];
+  assert.deepEqual(addresses({}, "verbatim"), asGiven);
+  assert.deepEqual(addresses({}, "ipv4first"), v4First);
+  assert.deepEqual(addresses({}, "ipv6first"), v6First);
+  assert.deepEqual(addresses({ order: "ipv4first" }, "verbatim"), v4First);
+  assert.deepEqual(addresses({ order: "ipv6first" }, "ipv4first"), v6First);
+  assert.deepEqual(addresses({ order: "verbatim", verbatim: false }, "ipv4first"), asGiven, "order wins over verbatim");
+  assert.deepEqual(addresses({ verbatim: true }, "ipv4first"), asGiven);
+  assert.deepEqual(addresses({ verbatim: false }, "verbatim"), v4First);
+  assert.equal(m.resultOrder({ order: "sideways" }, "ipv6first"), "ipv6first", "an unknown order is the default's");
+  assert.equal(m.resultOrder({}), dns.getDefaultResultOrder(), "the process's default when none is given");
 });
 
 /** A responder on the loopback that answers [name] with [ip] to whoever asked, as an mDNS responder answers a one-shot query. */
@@ -199,6 +221,36 @@ test("resolve takes only an answer that echoes its query's id", async () => {
   assert.deepEqual((await pending).map((r) => r.address), ["10.0.0.2"]);
 });
 
+/** An answer to the query [socket] sent, echoing its id, with the records [rr]. */
+function answerTo(socket, ...rr) {
+  const msg = response("boat.local", rr);
+  msg.writeUInt16BE(socket.sent[0].packet.readUInt16BE(0), 0);
+  return msg;
+}
+
+const AAAA = a(0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7);
+
+test("resolve keeps collecting when A and AAAA come in separate answers", async () => {
+  const socket = new FakeSocket();
+  const pending = m.resolve("boat.local", { createSocket: () => socket, interfaces: () => [], timeoutMs: 5000, collectMs: 5000 });
+  await new Promise((ok) => setImmediate(ok));
+  socket.emit("message", answerTo(socket, record(POINTER_TO_QUESTION, 28, AAAA)));
+  socket.emit("message", answerTo(socket, record(POINTER_TO_QUESTION, 28, AAAA)));
+  assert.equal(socket.closed, false, "one family in: still listening");
+  socket.emit("message", answerTo(socket, record(POINTER_TO_QUESTION, 1, a(10, 0, 0, 2))));
+  assert.deepEqual((await pending).map((r) => r.address), ["fd00:0:0:0:0:0:0:7", "10.0.0.2"], "both, each once, as soon as both are in");
+  assert.ok(socket.closed);
+});
+
+test("resolve ends a short while after an answer that has one family only", async () => {
+  const socket = new FakeSocket();
+  const pending = m.resolve("boat.local", { createSocket: () => socket, interfaces: () => [], timeoutMs: 30, tries: 3, collectMs: 60 });
+  await new Promise((ok) => setImmediate(ok));
+  socket.emit("message", answerTo(socket, record(POINTER_TO_QUESTION, 1, a(10, 0, 0, 2))));
+  assert.deepEqual((await pending).map((r) => r.address), ["10.0.0.2"]);
+  assert.equal(socket.sent.length, 1, "no second query once an answer came");
+});
+
 test("resolve ignores answers about other names", async () => {
   const socket = new FakeSocket();
   const pending = m.resolve("boat.local", { createSocket: () => socket, interfaces: () => [], timeoutMs: 50, tries: 1 });
@@ -236,8 +288,9 @@ test("a .local name is answered from mDNS, everything else by Node's own lookup"
       return [{ address: "fd00::7", family: 6, ttl: 5 }, { address: "192.168.1.9", family: 4, ttl: 5 }];
     },
   });
-  assert.deepEqual(await lookupOnce(lookup, "jetson.local."), { address: "192.168.1.9", family: 4 });
-  assert.deepEqual(await lookupOnce(lookup, "jetson.local", { all: true }), {
+  assert.deepEqual(await lookupOnce(lookup, "jetson.local.", { order: "ipv4first" }), { address: "192.168.1.9", family: 4 });
+  assert.deepEqual(await lookupOnce(lookup, "jetson.local", { order: "verbatim" }), { address: "fd00::7", family: 6 });
+  assert.deepEqual(await lookupOnce(lookup, "jetson.local", { all: true, order: "ipv4first" }), {
     address: [{ address: "192.168.1.9", family: 4 }, { address: "fd00::7", family: 6 }],
     family: undefined,
   });
