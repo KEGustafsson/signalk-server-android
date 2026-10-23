@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0
+
+- The server's delta rate for the app's Dock: every 5 s the plugin passes on what the server's own
+  statistics last counted (`SERVERSTATISTICS`, the figure the admin UI's dashboard shows), read
+  from the server's last events rather than through a listener of the plugin's own.
+
 ## 0.7.0
 
 - The phone's cellular network, under `$source: android.cellular`: `communication.cellular.signalStrength`

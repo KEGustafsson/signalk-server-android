@@ -23,6 +23,9 @@ GNSS needs precise location allowed in the app (its Dock has the button); withou
 sensors still run. The cellular reading needs no permission; a tablet without a cellular radio
 says so in the server log and sends none.
 
+The other way, besides the boat's alarms, the plugin tells the app the server's delta rate every
+5 s, as the server's own statistics count it, for the Status card of the app's Dock.
+
 The attitude is the boat's, not the phone's. With the phone in its holder and the boat lying level
 and still, tap **Level now** in the app's Sensors card: roll and pitch then read zero as the phone
 sits. Until then the phone is taken to lie flat, screen up, with its top towards the bow. The

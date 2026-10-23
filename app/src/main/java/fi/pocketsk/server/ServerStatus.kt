@@ -41,6 +41,13 @@ internal object ServerStatus {
     @Volatile var locationHeld: Boolean? = null
         private set
 
+    /**
+     * The deltas a second the running server takes in, as its own statistics count them every
+     * 5 s and the bridge's plugin passes them on; null while no plugin is connected.
+     */
+    @Volatile var deltaRate: Double? = null
+        private set
+
     private val observers = CopyOnWriteArraySet<Observer>()
     private var log: ServerLog? = null
     private val main = Handler(Looper.getMainLooper())
@@ -84,6 +91,13 @@ internal object ServerStatus {
     fun publishLocation(held: Boolean?) {
         if (locationHeld == held) return
         locationHeld = held
+        main.post(::tell)
+    }
+
+    /** From the bridge's reader: the server's delta rate, or null when the plugin has gone. */
+    fun publishDeltaRate(rate: Double?) {
+        if (deltaRate == rate) return
+        deltaRate = rate
         main.post(::tell)
     }
 

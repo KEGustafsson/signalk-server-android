@@ -12,8 +12,8 @@ import java.util.Base64
  * serial devices plugged into the phone change, `serial` lines with the bytes each one sent, and
  * `silence` when the owner silences an alarm on the phone.
  * Plugin to app: `subscribe`, which names the sensors it wants and how often, and whether and at
- * which baud rates to read the serial devices, and `alarms`, the boat's alarms whenever they
- * change. Pure, so it is unit-tested.
+ * which baud rates to read the serial devices, `alarms`, the boat's alarms whenever they
+ * change, and `stats`, the server's own delta rate, for the Dock. Pure, so it is unit-tested.
  */
 internal object BridgeProtocol {
     const val VERSION = 1
@@ -189,10 +189,15 @@ internal object BridgeProtocol {
         }
     }
 
-    /** A line from the plugin, read: a subscription, the alarms, or why it was dropped. */
+    /** Most deltas a second a stats line may give; more is a broken plugin, not a boat. */
+    const val MAX_DELTA_RATE = 1_000_000.0
+
+    /** A line from the plugin, read: a subscription, the alarms, the server's stats, or why it was dropped. */
     sealed interface Incoming {
         data class Subscribe(val subscription: Subscription) : Incoming
         data class Alarms(val list: List<Alarm>) : Incoming
+        /** The deltas a second the server took in, as its own statistics count them. */
+        data class Stats(val deltaRate: Double) : Incoming
         data class Dropped(val reason: String) : Incoming
     }
 
@@ -265,6 +270,8 @@ internal object BridgeProtocol {
         return when (val t = msg["t"]) {
             "subscribe" -> subscribe(msg)
             "alarms" -> alarms(msg)
+            "stats" -> (msg["deltaRate"] as? Double)?.takeIf { it.isFinite() && it in 0.0..MAX_DELTA_RATE }
+                ?.let { Incoming.Stats(it) } ?: Incoming.Dropped("stats without a delta rate")
             else -> Incoming.Dropped("unknown type ${(t as? String)?.take(32) ?: t}")
         }
     }

@@ -22,16 +22,19 @@
  */
 
 const { Link } = require("./lib/link");
-const { parseLine, toDelta, subscribeMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
+const { parseLine, toDelta, subscribeMessage, statsMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
 const { SerialInput, loadNmeaParser } = require("./lib/serial");
 const { Alarms, LEVELS } = require("./lib/alarms");
 const pkg = require("./package.json");
 
 const ENV = "POCKETSK_BRIDGE";
+/** How often the server's delta rate goes to the app: the server itself counts every 5 s. */
+const STATS_MS = 5000;
 
 /**
- * @param {object} app the Signal K plugin API; `deps.env` lets tests name a socket, and
- * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's
+ * @param {object} app the Signal K plugin API; `deps.env` lets tests name a socket,
+ * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's, and `deps.statsMs`
+ * how often the server's delta rate is sent
  */
 module.exports = function androidBridge(app, deps = {}) {
   const env = deps.env ?? process.env;
@@ -45,6 +48,7 @@ module.exports = function androidBridge(app, deps = {}) {
   let Parser = null;
   let alarms = null;
   let unsubscribes = [];
+  let statsTimer = null;
 
   const plugin = {
     id: "pocketsk-android-bridge",
@@ -225,11 +229,17 @@ module.exports = function androidBridge(app, deps = {}) {
       });
       link = new Link(socketPath, { onLine, onState });
       link.start();
+      // Read from the server's own last statistics, not a listener of ours: a listener a plugin
+      // adds with app.on stays on the server's emitter after the plugin stops.
+      statsTimer = setInterval(sendStats, deps.statsMs ?? STATS_MS);
+      statsTimer.unref?.();
       if (options.alarms !== false) watchNotifications();
       app.setPluginStatus("Connecting to the phone");
     },
 
     stop() {
+      clearInterval(statsTimer);
+      statsTimer = null;
       for (const u of unsubscribes) u();
       unsubscribes = [];
       // The link goes first, with no word of the alarms: a server restart stops the plugin, and an
@@ -275,6 +285,12 @@ module.exports = function androidBridge(app, deps = {}) {
     );
   }
 
+  /** The server's delta rate to the app, while connected and once the server has counted. */
+  function sendStats() {
+    const msg = statsMessage(app.lastServerEvents);
+    if (msg && link?.connected) link.send(msg);
+  }
+
   /** The devices plugged in now, for the settings' description of the per-device rates. */
   function pluggedIn() {
     const usb = devices.filter((d) => d.kind === "usb");
@@ -293,6 +309,7 @@ module.exports = function androidBridge(app, deps = {}) {
     if (up) {
       link.send(subscribeMessage(options));
       alarms?.resend();
+      sendStats();
     }
     showStatus(detail);
   }

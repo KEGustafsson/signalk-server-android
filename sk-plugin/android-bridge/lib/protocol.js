@@ -30,6 +30,8 @@
  *    "state":"alarm","message":"Anchor dragging","sound":true,"action":"silence"}]}
  *     (the boat's alarms whenever they change, the most urgent first; action is silence,
  *     acknowledge or null, what the server allows done to it)
+ *   {"t":"stats","deltaRate":12.4}
+ *     (the deltas a second the server takes in, from its own statistics, for the app's Dock)
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -227,6 +229,15 @@ function subscribeMessage(options = {}) {
   };
 }
 
+/**
+ * The server's delta rate for the app, from the last SERVERSTATISTICS event the server keeps in
+ * `app.lastServerEvents` (it counts every 5 s); null while it has none, or one that is not a rate.
+ */
+function statsMessage(lastServerEvents) {
+  const rate = lastServerEvents?.SERVERSTATISTICS?.data?.deltaRate;
+  return Number.isFinite(rate) && rate >= 0 ? { t: "stats", deltaRate: rate } : null;
+}
+
 module.exports = {
   VERSION,
   MAX_LINE,
@@ -238,5 +249,6 @@ module.exports = {
   parseLine,
   toDelta,
   subscribeMessage,
+  statsMessage,
   validValue,
 };
