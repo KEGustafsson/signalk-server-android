@@ -126,7 +126,6 @@ test("pick gives the order dns.lookup would: order, then verbatim, then the defa
   assert.deepEqual(addresses({ order: "verbatim", verbatim: false }, "ipv4first"), asGiven, "order wins over verbatim");
   assert.deepEqual(addresses({ verbatim: true }, "ipv4first"), asGiven);
   assert.deepEqual(addresses({ verbatim: false }, "verbatim"), v4First);
-  assert.equal(m.resultOrder({ order: "sideways" }, "ipv6first"), "ipv6first", "an unknown order is the default's");
   assert.equal(m.resultOrder({}), dns.getDefaultResultOrder(), "the process's default when none is given");
 });
 
@@ -350,6 +349,29 @@ test("no answer is cached past MAX_TTL_S, and a zero TTL not at all", async () =
   await lookupOnce(lookup, "a.local");
   await lookupOnce(lookup, "a.local");
   assert.equal(queries, 4);
+});
+
+test("options dns.lookup would refuse are left to it, so it refuses them as it always does", async () => {
+  for (const bad of [{ order: "sideways" }, { family: 5 }, 5, { verbatim: "yes" }, { all: 1 }, "IPv4"]) {
+    assert.equal(m.lookupOptionsValid(bad), false, JSON.stringify(bad));
+  }
+  for (const good of [undefined, null, {}, 0, 4, 6, { family: "IPv6", order: "ipv6first", verbatim: false, all: true }]) {
+    assert.equal(m.lookupOptionsValid(good), true, JSON.stringify(good));
+  }
+  const calls = [];
+  let asked = 0;
+  const lookup = m.makeLookup((hostname, options) => calls.push({ hostname, options }), {
+    resolveName: async () => {
+      asked++;
+      return [];
+    },
+  });
+  lookup("jetson.local", { order: "sideways" }, () => {});
+  assert.deepEqual(calls, [{ hostname: "jetson.local", options: { order: "sideways" } }]);
+  assert.equal(asked, 0, "no mDNS query for options Node refuses");
+  // And the installed lookup throws what Node's own does.
+  assert.throws(() => dns.lookup("jetson.local", { order: "sideways" }, () => {}), { code: "ERR_INVALID_ARG_VALUE" });
+  assert.throws(() => dns.lookup("jetson.local", { family: 5 }, () => {}), { code: "ERR_INVALID_ARG_VALUE" });
 });
 
 test("a lookup without a callback is Node's to refuse", () => {

@@ -266,7 +266,7 @@ function resolve(name, {
  * unless `--dns-result-order` or `dns.setDefaultResultOrder` said otherwise).
  */
 function resultOrder(options, defaultOrder = defaultResultOrder()) {
-  if (options.order === "ipv4first" || options.order === "ipv6first" || options.order === "verbatim") return options.order;
+  if (ORDERS.includes(options.order)) return options.order;
   if (options.verbatim === true) return "verbatim";
   if (options.verbatim === false) return "ipv4first";
   return defaultOrder;
@@ -288,6 +288,24 @@ function pick(found, options, defaultOrder = defaultResultOrder()) {
   if (order === "ipv4first") list.sort((a, b) => a.family - b.family);
   else if (order === "ipv6first") list.sort((a, b) => b.family - a.family);
   return list.map(({ address, family }) => ({ address, family }));
+}
+
+const ORDERS = ["ipv4first", "ipv6first", "verbatim"];
+const FAMILIES = [undefined, 0, 4, 6, "IPv4", "IPv6"];
+
+/**
+ * Whether [options] are ones `dns.lookup` takes. Anything else is left to Node's own lookup, which
+ * throws ERR_INVALID_ARG_VALUE or ERR_INVALID_ARG_TYPE at once, exactly as it would without this
+ * wrapper, rather than have the mDNS path quietly read it as some default.
+ */
+function lookupOptionsValid(options) {
+  if (typeof options === "number") return FAMILIES.includes(options);
+  if (options === undefined || options === null) return true;
+  if (typeof options !== "object") return false;
+  return FAMILIES.includes(options.family)
+    && (options.order === undefined || ORDERS.includes(options.order))
+    && (options.verbatim === undefined || typeof options.verbatim === "boolean")
+    && (options.all === undefined || typeof options.all === "boolean");
 }
 
 /**
@@ -323,7 +341,9 @@ function makeLookup(original, { resolveName = resolve, now = Date.now } = {}) {
       options = {};
     }
     const name = localName(hostname);
-    if (name === null || typeof callback !== "function") return original.call(dns, hostname, options, callback);
+    if (name === null || typeof callback !== "function" || !lookupOptionsValid(options)) {
+      return original.call(dns, hostname, options, callback);
+    }
     const opts = typeof options === "number" ? { family: options } : (options ?? {});
     records(name).then((found) => {
       const list = pick(found, opts);
@@ -369,4 +389,4 @@ try {
   // Never in the way of the process it was loaded into: without it, `.local` names fail as before.
 }
 
-module.exports = { localName, query, readName, answers, ipv4Interfaces, resolve, resultOrder, pick, makeLookup, promiseLookup, install, MDNS_ADDRESS, MDNS_PORT, MAX_TTL_S };
+module.exports = { localName, query, readName, answers, ipv4Interfaces, resolve, resultOrder, pick, lookupOptionsValid, makeLookup, promiseLookup, install, MDNS_ADDRESS, MDNS_PORT, MAX_TTL_S };
