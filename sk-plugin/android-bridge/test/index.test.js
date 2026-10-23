@@ -263,3 +263,33 @@ test("with alarms off, or no subscription manager, the phone hears of none", asy
   p.start({});
   assert.ok(app.debugs.some((d) => d.includes("no subscription manager")));
 });
+
+test("the server's delta rate goes to the phone, from the server's own last statistics", async (t) => {
+  const sock = socketPath();
+  let got = "";
+  const server = await listen(sock, (c) => {
+    c.setEncoding("utf8");
+    c.on("data", (d) => (got += d));
+    c.write('{"t":"hello","v":1,"app":"1.200"}\n');
+  });
+  const app = fakeApp();
+  app.lastServerEvents = {};
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, statsMs: 20 });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  const stats = () => got.split("\n").slice(0, -1).filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.t === "stats");
+  p.start({});
+  await until(() => p.statusNow().connected);
+  // Nothing until the server has counted once.
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(stats(), []);
+  app.lastServerEvents.SERVERSTATISTICS = { type: "SERVERSTATISTICS", data: { deltaRate: 12.4 } };
+  await until(() => stats().length > 0);
+  assert.deepEqual(stats()[0], { t: "stats", deltaRate: 12.4 });
+  p.stop();
+  const sent = stats().length;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(stats().length, sent, "nothing more once stopped");
+});

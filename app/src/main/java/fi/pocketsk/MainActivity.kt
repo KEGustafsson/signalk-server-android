@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
         model.locationHeld = ServerStatus.locationHeld
+        model.deltaRate = ServerStatus.deltaRate
         finishRestart()
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()

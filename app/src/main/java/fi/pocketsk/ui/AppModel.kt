@@ -35,6 +35,8 @@ internal class AppModel {
     var locationHeld by mutableStateOf<Boolean?>(null)
     /** The running server's uptime, CPU and memory, looked at while the Dock is in front; null while none runs. */
     var usage by mutableStateOf<ServerUsage.Usage?>(null)
+    /** [ServerStatus.deltaRate]: what the server takes in, deltas a second; null without the bridge's plugin. */
+    var deltaRate by mutableStateOf<Double?>(null)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)

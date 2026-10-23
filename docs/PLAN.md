@@ -270,6 +270,7 @@ Plugin → bridge:
 ```json
 {"t":"alarms","list":[{"id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f","path":"notifications.navigation.anchor","state":"alarm","message":"Anchor dragging","sound":true,"action":"silence"}]}
 {"t":"subscribe","sensors":["gnss","imu","baro"],"rateHz":{"imu":5},"serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400}}}
+{"t":"stats","deltaRate":12.4}
 ```
 
 - **USB serial**: `usb-serial-for-android` (MIT). Each attached device's bytes go to the plugin raw, base64 in `serial` lines over the bridge socket, not to a localhost TCP port (§16 9.5.4 says why). Handles `USB_DEVICE_ATTACHED` intent with a device filter so the app launches on plug-in.
@@ -291,7 +292,7 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 
 ### 8.1 Dock (native Compose, bottom nav tab 1)
 
-**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1). Not yet: the delta rate on the Status card, the changelog, and the Devices, Sensors, Power, Logs (filter, diagnostics bundle) and Backup cards, which come with the steps that give them something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
+**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1), and the delta rate (10.2). Not yet: the changelog, and the Devices, Sensors, Power, Logs (filter, diagnostics bundle) and Backup cards, which come with the steps that give them something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
 
 - **Status card**: running/stopped, version, uptime, URL(s), CPU/RAM of child process, delta rate.
 - **Updates**: current slot, available versions, "Install", "Rollback to <prev>", install history with pass/fail. Changelog pulled from GitHub releases.
@@ -456,6 +457,10 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
        - **Decisions (not made by the plan).**
          - **Only while the Dock is in front.** Nothing reads `/proc` with no screen to show it, so the figures cost nothing on a passage.
          - **Percent of one core.** Node runs JavaScript on one thread, so a server near 100 % is the one that is saturated, however many cores the phone has.
+    2. ~~The Status card's delta rate~~ **Done** (`stats` lines, `ServerStatus.deltaRate`):
+       - **What it shows.** Under the uptime: "Taking in 12 deltas a second", a tenth under ten ("2.4").
+       - **How.** signalk-server counts its deltas and emits `SERVERSTATISTICS` every 5 s (the figure its dashboard shows), and keeps the last event of each type in `app.lastServerEvents`. The bridge's plugin reads it from there every 5 s and sends `{"t":"stats","deltaRate":…}` to the app; the bridge publishes it to the Dock, and clears it when the plugin goes.
+       - **Decision (not made by the plan).** **Read from the server's last events, not listened to.** A listener a plugin adds with `app.on` stays on the server's emitter after the plugin stops (signalk-server 2.33 removes a data connection's listeners, not a plugin's), so a plugin restarted again and again would pile them up.
 
 ## 17. Reuse from Crew Radio
 

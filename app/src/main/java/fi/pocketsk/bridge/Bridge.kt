@@ -50,6 +50,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         usb.stop()
         bluetooth.stop()
         alarms.stop()
+        ServerStatus.publishDeltaRate(null)
     }
 
     /**
@@ -105,6 +106,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
                 bluetooth.apply(msg.subscription.serial)
             }
             is BridgeProtocol.Incoming.Alarms -> if (p === peer) alarms.update(msg.list)
+            is BridgeProtocol.Incoming.Stats -> if (p === peer) ServerStatus.publishDeltaRate(msg.deltaRate)
             is BridgeProtocol.Incoming.Dropped -> if (droppedNotes++ < MAX_DROPPED_NOTES) log.note("bridge: dropped a line from the plugin: ${msg.reason}")
         }
     }
@@ -116,6 +118,8 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         usb.apply(BridgeProtocol.Serial.NONE)
         bluetooth.apply(BridgeProtocol.Serial.NONE)
         alarms.lost()
+        // With the plugin gone, nobody counts: no rate is better than the last one shown as current.
+        ServerStatus.publishDeltaRate(null)
         if (p.dropped > 0) log.note("bridge: ${p.dropped} readings were dropped while the plugin was not reading")
     }
 

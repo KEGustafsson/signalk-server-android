@@ -33,6 +33,7 @@ import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerUsage
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -159,7 +160,10 @@ private fun StatusCard(model: AppModel, actions: AppActions) {
     val port = (state as? ServerState.Running)?.port
     Section(stringResource(R.string.dock_status_title)) {
         Text(serverStateText(state, ServerActions.localUrl(port ?: ServerActions.port())))
-        if (state is ServerState.Running) model.usage?.let { Text(usageText(it), style = MaterialTheme.typography.bodySmall) }
+        if (state is ServerState.Running) {
+            model.usage?.let { Text(usageText(it), style = MaterialTheme.typography.bodySmall) }
+            model.deltaRate?.let { Text(stringResource(R.string.dock_delta_rate, deltaRateText(it)), style = MaterialTheme.typography.bodySmall) }
+        }
         if (port != null) {
             model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:$port")) }
             Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(port)))
@@ -252,6 +256,10 @@ private fun usageText(u: ServerUsage.Usage): String {
         else -> stringResource(R.string.dock_uptime, up)
     }
 }
+
+/** A delta rate as a person reads it: a tenth under ten a second ("2.4"), whole above ("118"). */
+private fun deltaRateText(rate: Double): String =
+    if (rate < 10) String.format(Locale.getDefault(), "%.1f", rate) else rate.roundToInt().toString()
 
 private const val INSTALL_LINES = 15
 private const val HISTORY_LINES = 5

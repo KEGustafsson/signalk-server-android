@@ -89,6 +89,15 @@ class BridgeProtocolTest {
     }
 
     @Test
+    fun theServersDeltaRateIsRead() {
+        assertEquals(Incoming.Stats(12.4), BridgeProtocol.parse("""{"t":"stats","deltaRate":12.4}"""))
+        assertEquals(Incoming.Stats(0.0), BridgeProtocol.parse("""{"t":"stats","deltaRate":0}"""))
+        for (bad in listOf("""{"t":"stats"}""", """{"t":"stats","deltaRate":-1}""", """{"t":"stats","deltaRate":"fast"}""", """{"t":"stats","deltaRate":1e9}""")) {
+            assertEquals(bad, Incoming.Dropped("stats without a delta rate"), BridgeProtocol.parse(bad))
+        }
+    }
+
+    @Test
     fun theCellularReadingIsSubscribedWithItsPeriod() {
         assertEquals(
             Incoming.Subscribe(Subscription(setOf("cellular"), cellularHz = 0.1)),

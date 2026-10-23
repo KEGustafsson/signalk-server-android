@@ -3,7 +3,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, toDelta, subscribeMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
+const { parseLine, toDelta, subscribeMessage, statsMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
 
 test("a sensor line becomes a message", () => {
   const r = parseLine('{"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}');
@@ -206,5 +206,13 @@ test("a silence from the app names the alarm by an id the plugin gave it", () =>
   assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id: urn })).msg.id, urn);
   for (const bad of [undefined, 7, "", "a b", "x".repeat(257)]) {
     assert.deepEqual(parseLine(JSON.stringify({ t: "silence", id: bad })), { ok: false, reason: "silence with a bad id" });
+  }
+});
+
+test("the delta rate for the phone comes from the server's last statistics, when it has a rate", () => {
+  assert.deepEqual(statsMessage({ SERVERSTATISTICS: { data: { deltaRate: 3.2, wsClients: 1 } } }), { t: "stats", deltaRate: 3.2 });
+  assert.deepEqual(statsMessage({ SERVERSTATISTICS: { data: { deltaRate: 0 } } }), { t: "stats", deltaRate: 0 });
+  for (const events of [undefined, null, {}, { SERVERSTATISTICS: {} }, { SERVERSTATISTICS: { data: { deltaRate: -1 } } }, { SERVERSTATISTICS: { data: { deltaRate: "fast" } } }, { SERVERSTATISTICS: { data: { deltaRate: Infinity } } }]) {
+    assert.equal(statsMessage(events), null, JSON.stringify(events));
   }
 });
