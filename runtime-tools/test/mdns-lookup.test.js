@@ -107,6 +107,32 @@ test("pick filters by family", () => {
   assert.deepEqual(m.pick(found, { family: "IPv6" }), [{ address: "fd00::7", family: 6 }]);
 });
 
+test("pick reads null as unset, and V4MAPPED as getaddrinfo does", () => {
+  const v4only = [{ address: "10.0.0.2", family: 4, ttl: 1 }];
+  const both = [{ address: "fd00::7", family: 6, ttl: 1 }, ...v4only];
+  assert.deepEqual(m.pick(both, { family: null, order: null, verbatim: null }, "ipv4first"), [
+    { address: "10.0.0.2", family: 4 },
+    { address: "fd00::7", family: 6 },
+  ]);
+  assert.deepEqual(m.pick(v4only, { family: 6 }), [], "no AAAA and no V4MAPPED: nothing for IPv6");
+  assert.deepEqual(m.pick(v4only, { family: 6, hints: dns.V4MAPPED }), [{ address: "::ffff:10.0.0.2", family: 6 }]);
+  assert.deepEqual(m.pick(both, { family: 6, hints: dns.V4MAPPED }), [{ address: "fd00::7", family: 6 }], "AAAA found: no mapping");
+  assert.deepEqual(m.pick(both, { family: 6, hints: dns.V4MAPPED | dns.ALL }), [
+    { address: "fd00::7", family: 6 },
+    { address: "::ffff:10.0.0.2", family: 6 },
+  ]);
+  assert.deepEqual(m.pick(v4only, { family: 4, hints: dns.V4MAPPED }), [{ address: "10.0.0.2", family: 4 }], "V4MAPPED is for IPv6 lookups");
+  assert.deepEqual(m.pick(both, { hints: dns.ADDRCONFIG }, "verbatim").map((r) => r.address), ["fd00::7", "10.0.0.2"], "ADDRCONFIG filters nothing");
+});
+
+test("a .local lookup with null fields or net's hints stays on mDNS", async () => {
+  const { original, calls } = fakeOriginal();
+  const lookup = m.makeLookup(original, { resolveName: async () => [{ address: "10.0.0.2", family: 4, ttl: 5 }] });
+  assert.deepEqual(await lookupOnce(lookup, "a.local", { family: null, all: null, verbatim: null, order: null }), { address: "10.0.0.2", family: 4 });
+  assert.deepEqual(await lookupOnce(lookup, "a.local", { hints: dns.ADDRCONFIG, all: true }), { address: [{ address: "10.0.0.2", family: 4 }], family: undefined });
+  assert.deepEqual(calls, [], "Node's lookup never asked");
+});
+
 test("pick gives the order dns.lookup would: order, then verbatim, then the default", () => {
   const found = [
     { address: "fd00::7", family: 6, ttl: 1 },
@@ -352,11 +378,20 @@ test("no answer is cached past MAX_TTL_S, and a zero TTL not at all", async () =
 });
 
 test("options dns.lookup would refuse are left to it, so it refuses them as it always does", async () => {
-  for (const bad of [{ order: "sideways" }, { family: 5 }, 5, { verbatim: "yes" }, { all: 1 }, "IPv4"]) {
+  const refused = [{ order: "sideways" }, { family: 5 }, 5, { verbatim: "yes" }, { all: 1 }, "IPv4", { hints: 1024 }, { hints: "x" }];
+  for (const bad of refused) {
     assert.equal(m.lookupOptionsValid(bad), false, JSON.stringify(bad));
+    assert.throws(() => dns.lookup("localhost", bad, () => {}), /ERR_INVALID_ARG/, `Node refuses ${JSON.stringify(bad)} too`);
   }
-  for (const good of [undefined, null, {}, 0, 4, 6, { family: "IPv6", order: "ipv6first", verbatim: false, all: true }]) {
+  const taken = [
+    undefined, null, {}, 0, 4, 6,
+    { family: "IPv6", order: "ipv6first", verbatim: false, all: true },
+    { family: null, order: null, verbatim: null, all: null, hints: null },
+    { hints: dns.ADDRCONFIG }, { hints: dns.V4MAPPED | dns.ALL }, { hints: 0 }, { hints: 8.5 },
+  ];
+  for (const good of taken) {
     assert.equal(m.lookupOptionsValid(good), true, JSON.stringify(good));
+    assert.doesNotThrow(() => dns.lookup("localhost", good, () => {}), `Node takes ${JSON.stringify(good)} too`);
   }
   const calls = [];
   let asked = 0;

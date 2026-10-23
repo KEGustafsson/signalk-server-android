@@ -279,11 +279,22 @@ function defaultResultOrder() {
 /**
  * The records in [found] that [options] asks for (`family` 0, 4 or 6), in the order it asks for
  * ([resultOrder]): `verbatim` keeps the order the responder gave them in.
+ *
+ * `hints` as getaddrinfo reads them: with V4MAPPED, an IPv6 lookup that found no AAAA gives the
+ * A records as IPv4-mapped IPv6 addresses, and with ALL as well it gives those beside the AAAA.
+ * ADDRCONFIG, which `net` passes on every connect, is not a filter here: it drops a family the
+ * phone has no address in, and the phone that asked has the IPv4 address on the boat's network
+ * that the answer came over; an IPv6 answer it cannot route costs `net` one failed attempt
+ * before the IPv4 one, as it would on a desktop whose IPv6 is broken.
  */
 function pick(found, options, defaultOrder = defaultResultOrder()) {
   const family = options.family === "IPv4" ? 4 : options.family === "IPv6" ? 6 : Number(options.family) || 0;
+  const hints = Number(options.hints) || 0;
   const order = resultOrder(options, defaultOrder);
-  const list = found.filter((r) => family === 0 || r.family === family);
+  let list = found.filter((r) => family === 0 || r.family === family);
+  if (family === 6 && (hints & dns.V4MAPPED) && (list.length === 0 || (hints & dns.ALL))) {
+    list = list.concat(found.filter((r) => r.family === 4).map((r) => ({ address: `::ffff:${r.address}`, family: 6 })));
+  }
   // Array.prototype.sort is stable, so each family keeps the responder's order.
   if (order === "ipv4first") list.sort((a, b) => a.family - b.family);
   else if (order === "ipv6first") list.sort((a, b) => b.family - a.family);
@@ -291,21 +302,28 @@ function pick(found, options, defaultOrder = defaultResultOrder()) {
 }
 
 const ORDERS = ["ipv4first", "ipv6first", "verbatim"];
-const FAMILIES = [undefined, 0, 4, 6, "IPv4", "IPv6"];
+const FAMILIES = [0, 4, 6, "IPv4", "IPv6"];
+const HINTS = dns.ADDRCONFIG | dns.V4MAPPED | dns.ALL;
+
+/** Unset, as Node reads an option: missing or null. */
+const unset = (value) => value === undefined || value === null;
 
 /**
- * Whether [options] are ones `dns.lookup` takes. Anything else is left to Node's own lookup, which
- * throws ERR_INVALID_ARG_VALUE or ERR_INVALID_ARG_TYPE at once, exactly as it would without this
- * wrapper, rather than have the mDNS path quietly read it as some default.
+ * Whether [options] are ones `dns.lookup` takes, null fields read as unset as Node reads them.
+ * Anything else is left to Node's own lookup, which throws ERR_INVALID_ARG_VALUE or
+ * ERR_INVALID_ARG_TYPE at once, exactly as it would without this wrapper, rather than have the
+ * mDNS path quietly read it as some default.
  */
 function lookupOptionsValid(options) {
   if (typeof options === "number") return FAMILIES.includes(options);
-  if (options === undefined || options === null) return true;
+  if (unset(options)) return true;
   if (typeof options !== "object") return false;
-  return FAMILIES.includes(options.family)
-    && (options.order === undefined || ORDERS.includes(options.order))
-    && (options.verbatim === undefined || typeof options.verbatim === "boolean")
-    && (options.all === undefined || typeof options.all === "boolean");
+  const { family, order, verbatim, all, hints } = options;
+  return (unset(family) || FAMILIES.includes(family))
+    && (unset(order) || ORDERS.includes(order))
+    && (unset(verbatim) || typeof verbatim === "boolean")
+    && (unset(all) || typeof all === "boolean")
+    && (unset(hints) || (typeof hints === "number" && (hints & ~HINTS) === 0));
 }
 
 /**
