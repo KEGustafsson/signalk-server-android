@@ -62,7 +62,8 @@ app/                 the Android app
                      tested)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
-                     barometer, GNSS, attitude, compass, cabin sensors), SensorPrefs (the level),
+                     barometer, GNSS, attitude, compass, cabin sensors, cellular network),
+                     SensorPrefs (the level),
                      UsbSerial (USB serial adapters, their bytes to the plugin), BluetoothSerial
                      (the paired SPP devices chosen in the Dock, SerialPrefs), PhoneAlarm (the
                      boat's alarms: notification, full-screen intent, alarm sound, vibration),

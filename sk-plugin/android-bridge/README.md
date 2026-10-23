@@ -16,10 +16,12 @@ knows as ordinary Signal K data:
 | Attitude and rate of turn | `navigation.attitude` (roll, pitch), `navigation.rateOfTurn` | `android.imu` |
 | Magnetic heading (off by default) | `navigation.headingMagnetic`, and the attitude's yaw | `android.compass` |
 | Cabin sensors | `environment.inside.temperature`, `.relativeHumidity`, `.illuminance`, those the phone has | `android.environment` |
+| Cellular network | `communication.cellular.signalStrength` (0 to 1: the phone's bars), `.dbm` (the serving cell's power), `.operator`, `.roaming`, read every 30 s by default | `android.cellular` |
 | USB and Bluetooth serial devices | whatever their NMEA 0183 says (position, AIS targets, depth, wind...) | `android.<device id>.<talker>` |
 
 GNSS needs precise location allowed in the app (its Dock has the button); without it the other
-sensors still run.
+sensors still run. The cellular reading needs no permission; a tablet without a cellular radio
+says so in the server log and sends none.
 
 The attitude is the boat's, not the phone's. With the phone in its holder and the boat lying level
 and still, tap **Level now** in the app's Sensors card: roll and pitch then read zero as the phone

@@ -3,9 +3,9 @@ package fi.pocketsk.bridge
 import kotlin.math.abs
 
 /**
- * What the phone's sensors report, in Signal K's units (SI: ratios, volts, kelvin, pascals),
- * and when a reading is worth a line on the socket. Pure, so the conversions are unit-tested;
- * [PhoneSensors] feeds it from the platform.
+ * What the phone's sensors report, in Signal K's units (SI: ratios, volts, kelvin, pascals; a
+ * cell's power in dBm, as every phone and modem gives it), and when a reading is worth a line on
+ * the socket. Pure, so the conversions are unit-tested; [PhoneSensors] feeds it from the platform.
  */
 internal object Readings {
 
@@ -22,6 +22,12 @@ internal object Readings {
     const val INSIDE_TEMPERATURE_PATH = "environment.inside.temperature"
     const val INSIDE_HUMIDITY_PATH = "environment.inside.relativeHumidity"
     const val INSIDE_ILLUMINANCE_PATH = "environment.inside.illuminance"
+    /** The cellular network the phone is on: Signal K names no such group, so it is the plan's own (§7.1). */
+    const val CELLULAR_PATH = "communication.cellular"
+    const val CELLULAR_STRENGTH_PATH = "$CELLULAR_PATH.signalStrength"
+    const val CELLULAR_DBM_PATH = "$CELLULAR_PATH.dbm"
+    const val CELLULAR_OPERATOR_PATH = "$CELLULAR_PATH.operator"
+    const val CELLULAR_ROAMING_PATH = "$CELLULAR_PATH.roaming"
     const val SRC_BATTERY = "android.battery"
     const val SRC_BARO = "android.baro"
     const val SRC_GNSS = "android.gnss"
@@ -30,6 +36,7 @@ internal object Readings {
     /** The magnetic heading: the rotation sensor with the magnetometer, a source of its own so a server can rank it below a real compass. */
     const val SRC_COMPASS = "android.compass"
     const val SRC_ENVIRONMENT = "android.environment"
+    const val SRC_CELLULAR = "android.cellular"
 
     /** The battery is told at most this often, however often Android announces a change. */
     const val BATTERY_MIN_GAP_MS = 10_000L
@@ -112,6 +119,29 @@ internal object Readings {
 
     /** The light sensor's lux, as they are; null for a reading no light gives. */
     fun cabinLight(lux: Double): Double? = lux.takeIf { it.isFinite() && it in 0.0..200_000.0 }
+
+    /**
+     * The signal's bars as Android counts them (SignalStrength.getLevel: 0, none or unknown, to 4,
+     * great) as Signal K's ratio; null for a level Android does not give.
+     */
+    fun cellularStrength(level: Int): Double? = level.takeIf { it in 0..MAX_CELL_LEVEL }?.let { it.toDouble() / MAX_CELL_LEVEL }
+
+    /** One cell the modem hears, as CellSignalStrength reports it: its bars and its power in dBm. */
+    data class Cell(val level: Int, val dbm: Int)
+
+    /**
+     * The power of the cell the phone is best served by, in dBm: the one with the most bars, the
+     * stronger of two alike. Android gives CellInfo.UNAVAILABLE (Int.MAX_VALUE) where a radio cannot
+     * tell, and a figure outside what any cell gives is left out with it; null when none is left.
+     */
+    fun cellularDbm(cells: List<Cell>): Double? =
+        cells.filter { it.dbm in MIN_DBM..MAX_DBM }.maxWithOrNull(compareBy({ it.level }, { it.dbm }))?.dbm?.toDouble()
+
+    /** Bars a cell may have: SignalStrength's SIGNAL_STRENGTH_GREAT. */
+    private const val MAX_CELL_LEVEL = 4
+    /** The weakest and the strongest power a phone reports for a cell, with room to spare (3GPP's RSRP runs -140 to -44). */
+    private const val MIN_DBM = -150
+    private const val MAX_DBM = -20
 
     /**
      * The mean of a period's samples, for the readings that come many times a second and are

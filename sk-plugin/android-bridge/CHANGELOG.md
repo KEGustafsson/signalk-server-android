@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+- The phone's cellular network, under `$source: android.cellular`: `communication.cellular.signalStrength`
+  (the phone's bars as 0 to 1), `.dbm` (the serving cell's power), `.operator` (the network's
+  name) and `.roaming`. Settings: on or off and the period (30 s by default). A sensor value may
+  now be a short text or a yes or no as well as a number.
+
 ## 0.6.0
 
 - The boat's alarms on the phone: the server's notifications at the **Alarm level** or above

@@ -109,4 +109,23 @@ class ReadingsTest {
         assertEquals(2.0, m.take()!!, 1e-9)
         assertNull("each period starts empty", m.take())
     }
+
+    @Test
+    fun theCellularSignalInSignalKTerms() {
+        assertEquals(0.0, Readings.cellularStrength(0)!!, 0.0)
+        assertEquals(0.75, Readings.cellularStrength(3)!!, 0.0)
+        assertEquals(1.0, Readings.cellularStrength(4)!!, 0.0)
+        assertNull(Readings.cellularStrength(5))
+        assertNull(Readings.cellularStrength(-1))
+    }
+
+    @Test
+    fun theBestServingCellsPower() {
+        val unavailable = Int.MAX_VALUE
+        assertEquals(-95.0, Readings.cellularDbm(listOf(Readings.Cell(2, -110), Readings.Cell(3, -95)))!!, 0.0)
+        assertEquals("the stronger of two alike", -90.0, Readings.cellularDbm(listOf(Readings.Cell(3, -100), Readings.Cell(3, -90)))!!, 0.0)
+        assertEquals("a radio that cannot tell is left out", -120.0, Readings.cellularDbm(listOf(Readings.Cell(4, unavailable), Readings.Cell(1, -120)))!!, 0.0)
+        assertNull(Readings.cellularDbm(listOf(Readings.Cell(0, unavailable), Readings.Cell(2, -200), Readings.Cell(2, 0))))
+        assertNull(Readings.cellularDbm(emptyList()))
+    }
 }

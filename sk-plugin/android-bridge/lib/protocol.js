@@ -11,6 +11,9 @@
  *   {"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}
  *   {"t":"sensor","path":"navigation.courseOverGroundTrue","value":null,"src":"android.gnss","ts":1760000000000}
  *     (null: the sensor has no reading now, so the server stops showing the last one as current)
+ *   {"t":"sensor","path":"communication.cellular.operator","value":"Elisa FI","src":"android.cellular","ts":1760000000000}
+ *   {"t":"sensor","path":"communication.cellular.roaming","value":false,"src":"android.cellular","ts":1760000000000}
+ *     (a value is a number, an object of numbers, a short text or a yes or no)
  *   {"t":"devices","list":[{"id":"usb-1a86-7523","kind":"usb","name":"USB Serial","baud":4800,"state":"open"}]}
  *     (the serial devices plugged into the phone or chosen among its paired Bluetooth ones, kind
  *     usb or bt, whenever that changes; state is open, connecting, needs-permission, idle or
@@ -20,8 +23,8 @@
  *   {"t":"silence","id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f"}
  *     (the owner silenced that alarm on the phone; lib/alarms.js does it through the server)
  * Plugin to app:
- *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment"],
- *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1},"bowOffsetDeg":0,
+ *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment","cellular"],
+ *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1,"cellular":0.0333},"bowOffsetDeg":0,
  *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400},"bt":true}}
  *   {"t":"alarms","list":[{"id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f","path":"notifications.navigation.anchor",
  *    "state":"alarm","message":"Anchor dragging","sound":true,"action":"silence"}]}
@@ -37,7 +40,9 @@ const VERSION = 1;
 /** Longest line either side sends or accepts; a longer one is a broken peer, not a message. */
 const MAX_LINE = 64 * 1024;
 /** The sensors a subscribe may name; the app ignores any other. */
-const SENSORS = ["battery", "baro", "gnss", "attitude", "heading", "environment"];
+const SENSORS = ["battery", "baro", "gnss", "attitude", "heading", "environment", "cellular"];
+/** Longest text a sensor value may be (an operator's name), as the app cuts it. */
+const MAX_TEXT = 64;
 
 /** The largest time, in ms either side of 1970, a JavaScript Date can hold. */
 const MAX_TIME_MS = 8.64e15;
@@ -132,12 +137,14 @@ function text(value, max) {
 }
 
 /**
- * A number, null (no reading now, as Signal K's own deltas say it), or an object of numbers and
- * nulls (a position, an attitude): what a sensor reports.
+ * A number, null (no reading now, as Signal K's own deltas say it), an object of numbers and
+ * nulls (a position, an attitude), a short text without control characters (a name, as the app
+ * cleans it) or a yes or no: what a sensor reports.
  */
 function validValue(value) {
-  if (value === null) return true;
+  if (value === null || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "string") return value.length > 0 && value.length <= MAX_TEXT && !/[\u0000-\u001f\u007f-\u009f]/.test(value);
   if (typeof value !== "object" || Array.isArray(value)) return false;
   const entries = Object.entries(value);
   return entries.length > 0 && entries.every(([k, v]) => PATH.test(k) && (v === null || Number.isFinite(v)));
@@ -204,6 +211,7 @@ function subscribeMessage(options = {}) {
   if (options.attitude !== false) sensors.push("attitude");
   if (options.heading === true) sensors.push("heading");
   if (options.environment !== false) sensors.push("environment");
+  if (options.cellular !== false) sensors.push("cellular");
   return {
     t: "subscribe",
     sensors,
@@ -212,6 +220,7 @@ function subscribeMessage(options = {}) {
       gnss: 1 / seconds(options.gnssSeconds, 1),
       attitude: 1 / seconds(options.attitudeSeconds, 1),
       environment: 1 / seconds(options.environmentSeconds, 10),
+      cellular: 1 / seconds(options.cellularSeconds, 30),
     },
     bowOffsetDeg: degrees(options.bowOffset),
     serial: serialMessage(options),

@@ -65,12 +65,12 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
     p.stop();
     await server.closeAll();
   });
-  p.start({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 5 });
+  p.start({ battery: false, gnss: false, attitude: false, environment: false, cellular: false, barometerSeconds: 5 });
   await until(() => app.deltas.length === 1 && p.statusNow().dropped === 1 && subscribe.endsWith("\n"));
   assert.deepEqual(JSON.parse(subscribe.split("\n")[0]), {
     t: "subscribe",
     sensors: ["baro"],
-    rateHz: { baro: 0.2, gnss: 1, attitude: 1, environment: 0.1 },
+    rateHz: { baro: 0.2, gnss: 1, attitude: 1, environment: 0.1, cellular: 1 / 30 },
     bowOffsetDeg: 0,
     serial: { usb: true, baud: 4800, devices: {}, bt: true },
   });

@@ -42,7 +42,11 @@ test("what is not a known message is dropped with a reason", () => {
     '{"t":"reboot"}': 'unknown type "reboot"',
     '{"t":"sensor","path":"../etc","value":1,"src":"android.baro"}': "sensor with a bad path",
     '{"t":"sensor","path":"a.b","value":1,"src":"gps"}': "sensor with a bad source",
-    '{"t":"sensor","path":"a.b","value":"high","src":"android.baro"}': "sensor a.b with a bad value",
+    [`{"t":"sensor","path":"a.b","value":"${"x".repeat(65)}","src":"android.baro"}`]: "sensor a.b with a bad value",
+    '{"t":"sensor","path":"a.b","value":"two\\nlines","src":"android.baro"}': "sensor a.b with a bad value",
+    '{"t":"sensor","path":"a.b","value":"\\u0085","src":"android.baro"}': "sensor a.b with a bad value",
+    '{"t":"sensor","path":"a.b","value":"","src":"android.baro"}': "sensor a.b with a bad value",
+    '{"t":"sensor","path":"a.b","value":{"x":true},"src":"android.baro"}': "sensor a.b with a bad value",
     '{"t":"sensor","path":"a.b","value":{},"src":"android.baro"}': "sensor a.b with a bad value",
     '{"t":"sensor","path":"a.b","value":[1],"src":"android.baro"}': "sensor a.b with a bad value",
     '{"t":"sensor","path":"a.b","value":{"x":"1"},"src":"android.baro"}': "sensor a.b with a bad value",
@@ -68,19 +72,19 @@ test("a delta carries the sensor's source and time", () => {
 test("subscribe follows the settings", () => {
   assert.deepEqual(subscribeMessage(), {
     t: "subscribe",
-    sensors: ["battery", "baro", "gnss", "attitude", "environment"],
-    rateHz: { baro: 0.1, gnss: 1, attitude: 1, environment: 0.1 },
+    sensors: ["battery", "baro", "gnss", "attitude", "environment", "cellular"],
+    rateHz: { baro: 0.1, gnss: 1, attitude: 1, environment: 0.1, cellular: 1 / 30 },
     bowOffsetDeg: 0,
     serial: { usb: true, baud: 4800, devices: {}, bt: true },
   });
-  assert.deepEqual(subscribeMessage({ battery: false, gnss: false, attitude: false, environment: false, barometerSeconds: 2 }), {
+  assert.deepEqual(subscribeMessage({ battery: false, gnss: false, attitude: false, environment: false, cellular: false, barometerSeconds: 2 }), {
     t: "subscribe",
     sensors: ["baro"],
-    rateHz: { baro: 0.5, gnss: 1, attitude: 1, environment: 0.1 },
+    rateHz: { baro: 0.5, gnss: 1, attitude: 1, environment: 0.1, cellular: 1 / 30 },
     bowOffsetDeg: 0,
     serial: { usb: true, baud: 4800, devices: {}, bt: true },
   });
-  assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, attitude: false, environment: false, barometerSeconds: -1 }).sensors, ["battery"]);
+  assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, attitude: false, environment: false, cellular: false, barometerSeconds: -1 }).sensors, ["battery"]);
   assert.equal(subscribeMessage({ barometerSeconds: "x" }).rateHz.baro, 0.1);
   assert.equal(subscribeMessage({ gnssSeconds: 0.5 }).rateHz.gnss, 2);
   assert.equal(subscribeMessage({ gnssSeconds: 0 }).rateHz.gnss, 1);
@@ -109,6 +113,18 @@ test("a null value is a sensor value: the reading is gone", () => {
   const r = parseLine('{"t":"sensor","path":"navigation.courseOverGroundTrue","value":null,"src":"android.gnss","ts":1}');
   assert.equal(r.ok, true);
   assert.deepEqual(toDelta(r.msg).updates[0].values[0], { path: "navigation.courseOverGroundTrue", value: null });
+});
+
+test("the cellular network: a name and a yes or no are sensor values, read every 30 s unless set", () => {
+  const op = parseLine('{"t":"sensor","path":"communication.cellular.operator","value":"Elisa FI","src":"android.cellular","ts":1}');
+  assert.equal(op.ok, true);
+  assert.deepEqual(toDelta(op.msg).updates[0].values[0], { path: "communication.cellular.operator", value: "Elisa FI" });
+  const roaming = parseLine('{"t":"sensor","path":"communication.cellular.roaming","value":false,"src":"android.cellular","ts":1}');
+  assert.equal(roaming.ok, true);
+  assert.equal(toDelta(roaming.msg).updates[0].values[0].value, false);
+  assert.equal(parseLine(`{"t":"sensor","path":"a.b","value":"${"x".repeat(64)}","src":"android.cellular"}`).ok, true);
+  assert.equal(subscribeMessage({ cellularSeconds: 60 }).rateHz.cellular, 1 / 60);
+  assert.equal(subscribeMessage({ cellularSeconds: "x" }).rateHz.cellular, 1 / 30);
 });
 
 test("a missing value is not a sensor value", () => {
