@@ -7,7 +7,8 @@ import java.util.Base64
  * socket, one object a line, its type in `t`. The plugin's side is
  * `sk-plugin/android-bridge/lib/protocol.js`; change both together.
  *
- * App to plugin: `hello` once a connection is up, then `sensor` lines, `devices` whenever the
+ * App to plugin: `hello` once a connection is up, then `sensor` lines (a number, an object of
+ * numbers, a short text or a yes or no; null when there is no reading now), `devices` whenever the
  * serial devices plugged into the phone change, `serial` lines with the bytes each one sent, and
  * `silence` when the owner silences an alarm on the phone.
  * Plugin to app: `subscribe`, which names the sensors it wants and how often, and whether and at
@@ -30,7 +31,9 @@ internal object BridgeProtocol {
     const val HEADING = "heading"
     /** The cabin's temperature, humidity and light, as far as the phone has the sensors. */
     const val ENVIRONMENT = "environment"
-    val SENSORS = setOf(BATTERY, BARO, GNSS, ATTITUDE, HEADING, ENVIRONMENT)
+    /** The cellular network: signal strength, the operator and whether the phone roams. */
+    const val CELLULAR = "cellular"
+    val SENSORS = setOf(BATTERY, BARO, GNSS, ATTITUDE, HEADING, ENVIRONMENT, CELLULAR)
 
     /** The barometer's averaging period, at most once a second and at least once every ten minutes. */
     const val BARO_MIN_HZ = 1.0 / 600
@@ -51,6 +54,14 @@ internal object BridgeProtocol {
     const val ENVIRONMENT_MIN_HZ = 1.0 / 600
     const val ENVIRONMENT_MAX_HZ = 1.0
     const val ENVIRONMENT_DEFAULT_HZ = 0.1
+
+    /** The cellular reading, a look at the modem's last report: at most once a second, by default every 30 s. */
+    const val CELLULAR_MIN_HZ = 1.0 / 600
+    const val CELLULAR_MAX_HZ = 1.0
+    const val CELLULAR_DEFAULT_HZ = 1.0 / 30
+
+    /** Longest text a sensor line carries (an operator's name), as [sensorText] cuts it. */
+    const val MAX_TEXT = 64
 
     /** The kinds of serial device a subscribe may ask the app to read: USB adapters, Bluetooth SPP ones. */
     const val USB = "usb"
@@ -128,6 +139,7 @@ internal object BridgeProtocol {
         val gnssHz: Double = GNSS_DEFAULT_HZ,
         val attitudeHz: Double = ATTITUDE_DEFAULT_HZ,
         val environmentHz: Double = ENVIRONMENT_DEFAULT_HZ,
+        val cellularHz: Double = CELLULAR_DEFAULT_HZ,
         val bowOffsetDeg: Double = 0.0,
         val serial: Serial = Serial.NONE,
     ) {
@@ -199,6 +211,25 @@ internal object BridgeProtocol {
         return """{"t":"sensor","path":${Json.quote(path)},"value":{$fields},"src":${Json.quote(src)},"ts":$ts}"""
     }
 
+    /**
+     * A reading that is a name (the cellular operator's): cleared of control characters and runs
+     * of white space, and cut to [MAX_TEXT] without splitting a character in two; null, or nothing
+     * left, says there is none now.
+     */
+    fun sensorText(path: String, value: String?, src: String, ts: Long): String {
+        val text = value?.map { if (it.isISOControl()) ' ' else it }?.joinToString("")
+            ?.trim()?.replace(SPACES, " ")?.take(MAX_TEXT)
+            ?.let { if (it.isNotEmpty() && it.last().isHighSurrogate()) it.dropLast(1) else it }
+            ?.trim()?.takeIf { it.isNotEmpty() }
+        return """{"t":"sensor","path":${Json.quote(path)},"value":${text?.let(Json::quote) ?: "null"},"src":${Json.quote(src)},"ts":$ts}"""
+    }
+
+    /** A reading that is yes or no (whether the phone roams); null when it cannot be told now. */
+    fun sensorFlag(path: String, value: Boolean?, src: String, ts: Long): String =
+        """{"t":"sensor","path":${Json.quote(path)},"value":$value,"src":${Json.quote(src)},"ts":$ts}"""
+
+    private val SPACES = Regex("\\s+")
+
     /** The serial devices plugged in, as the plugin is told of them (no byte counts: they change all the time). */
     fun devices(list: List<Device>): String = list.joinToString(",", """{"t":"devices","list":[""", "]}") { d ->
         val detail = d.detail?.let { ",\"detail\":${Json.quote(it)}" } ?: ""
@@ -249,6 +280,7 @@ internal object BridgeProtocol {
                 gnssHz = rate(rates, GNSS, GNSS_MIN_HZ, GNSS_MAX_HZ, GNSS_DEFAULT_HZ),
                 attitudeHz = rate(rates, ATTITUDE, ATTITUDE_MIN_HZ, ATTITUDE_MAX_HZ, ATTITUDE_DEFAULT_HZ),
                 environmentHz = rate(rates, ENVIRONMENT, ENVIRONMENT_MIN_HZ, ENVIRONMENT_MAX_HZ, ENVIRONMENT_DEFAULT_HZ),
+                cellularHz = rate(rates, CELLULAR, CELLULAR_MIN_HZ, CELLULAR_MAX_HZ, CELLULAR_DEFAULT_HZ),
                 bowOffsetDeg = (msg["bowOffsetDeg"] as? Double)?.takeIf { it.isFinite() }?.coerceIn(-180.0, 180.0) ?: 0.0,
                 serial = serial(msg["serial"] as? Map<*, *>),
             ),

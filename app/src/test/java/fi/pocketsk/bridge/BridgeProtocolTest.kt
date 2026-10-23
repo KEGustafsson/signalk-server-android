@@ -54,6 +54,58 @@ class BridgeProtocolTest {
     }
 
     @Test
+    fun aNameAndAYesOrNoAreSensorLinesToo() {
+        assertEquals(
+            """{"t":"sensor","path":"communication.cellular.operator","value":"Elisa FI","src":"android.cellular","ts":3}""",
+            BridgeProtocol.sensorText("communication.cellular.operator", " Elisa\n\t FI ", "android.cellular", 3),
+        )
+        assertEquals(
+            "cut to the longest text, quotes escaped",
+            """{"t":"sensor","path":"a.b","value":"\"${"x".repeat(BridgeProtocol.MAX_TEXT - 1)}","src":"android.x","ts":0}""",
+            BridgeProtocol.sensorText("a.b", "\"" + "x".repeat(100), "android.x", 0),
+        )
+        assertEquals(
+            "a character is not cut in two",
+            """{"t":"sensor","path":"a.b","value":"${"x".repeat(BridgeProtocol.MAX_TEXT - 1)}","src":"android.x","ts":0}""",
+            BridgeProtocol.sensorText("a.b", "x".repeat(BridgeProtocol.MAX_TEXT - 1) + "\uD83D\uDEA2", "android.x", 0),
+        )
+        assertEquals(
+            "nothing left is no name",
+            """{"t":"sensor","path":"a.b","value":null,"src":"android.x","ts":0}""",
+            BridgeProtocol.sensorText("a.b", " \u0007 ", "android.x", 0),
+        )
+        assertEquals(
+            """{"t":"sensor","path":"a.b","value":null,"src":"android.x","ts":0}""",
+            BridgeProtocol.sensorText("a.b", null, "android.x", 0),
+        )
+        assertEquals(
+            """{"t":"sensor","path":"communication.cellular.roaming","value":false,"src":"android.cellular","ts":9}""",
+            BridgeProtocol.sensorFlag("communication.cellular.roaming", false, "android.cellular", 9),
+        )
+        assertEquals(
+            """{"t":"sensor","path":"communication.cellular.roaming","value":null,"src":"android.cellular","ts":9}""",
+            BridgeProtocol.sensorFlag("communication.cellular.roaming", null, "android.cellular", 9),
+        )
+    }
+
+    @Test
+    fun theCellularReadingIsSubscribedWithItsPeriod() {
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("cellular"), cellularHz = 0.1)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["cellular"],"rateHz":{"cellular":0.1}}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("cellular"), cellularHz = BridgeProtocol.CELLULAR_MAX_HZ)),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["cellular"],"rateHz":{"cellular":20}}"""),
+        )
+        assertEquals(
+            Incoming.Subscribe(Subscription(setOf("cellular"))),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":["cellular"],"rateHz":{"cellular":"often"}}"""),
+        )
+        assertEquals(BridgeProtocol.CELLULAR_DEFAULT_HZ, Subscription(setOf("cellular")).cellularHz, 0.0)
+    }
+
+    @Test
     fun theMotionAndCabinSensorsAndTheBowOffsetAreRead() {
         assertEquals(
             Incoming.Subscribe(

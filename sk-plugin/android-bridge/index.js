@@ -133,6 +133,20 @@ module.exports = function androidBridge(app, deps = {}) {
           minimum: 1,
           maximum: 600,
         },
+        cellular: {
+          type: "boolean",
+          title: "Cellular network",
+          description: "The phone's mobile network as communication.cellular.signalStrength (0 to 1, the phone's bars), .dbm (the serving cell's power), .operator and .roaming, where the phone has a cellular radio",
+          default: true,
+        },
+        cellularSeconds: {
+          type: "number",
+          title: "Cellular period (seconds)",
+          description: "How often the cellular network is read",
+          default: 30,
+          minimum: 1,
+          maximum: 600,
+        },
         usb: {
           type: "boolean",
           title: "USB serial devices",

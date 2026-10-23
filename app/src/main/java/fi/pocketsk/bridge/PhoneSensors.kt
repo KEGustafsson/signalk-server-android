@@ -13,9 +13,11 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
+import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.GnssStatusCompat
 import androidx.core.location.LocationListenerCompat
@@ -29,11 +31,12 @@ import fi.pocketsk.net.reporting
  * The phone's own sensors, as the plugin asked for them ([apply]): the battery from the sticky
  * ACTION_BATTERY_CHANGED broadcast, the barometer averaged over the subscribed period, the GNSS
  * receiver at the subscribed rate with the count of satellites in its fix, the boat's attitude
- * and rate of turn from the rotation sensor and the gyroscope, its magnetic heading, and the
- * cabin's temperature, humidity and light where the phone has those sensors. They run only while
- * a plugin wants them, on a thread of their own ("bridge-sensors"), and every reading leaves
- * through [send] as a protocol line. Readings and their units: [Readings]; the geometry of the
- * attitude, and how the phone's mounting is found ([level]): [Attitude].
+ * and rate of turn from the rotation sensor and the gyroscope, its magnetic heading, the cabin's
+ * temperature, humidity and light where the phone has those sensors, and the cellular network it
+ * is on. They run only while a plugin wants them, on a thread of their own ("bridge-sensors"),
+ * and every reading leaves through [send] as a protocol line. Readings and their units:
+ * [Readings]; the geometry of the attitude, and how the phone's mounting is found ([level]):
+ * [Attitude].
  *
  * The attitude uses the game rotation vector, which has no magnetometer and so is not thrown by
  * the steel and wiring around a mounted phone; only when the plugin also wants the heading does
@@ -43,6 +46,11 @@ import fi.pocketsk.net.reporting
  * (Play services' fused provider is a third-party library, and the boat wants the receiver, not
  * a network guess). It needs precise location granted; without it the plugin's GNSS stays off
  * and the log says so once, and [reapply] after a grant starts it.
+ *
+ * The cellular reading asks for no permission: the signal strength, the operator's name and
+ * roaming are open to every app, while the network's generation (LTE, 5G) would need the phone
+ * permission, which a Signal K server has no other use for. It is the modem's last report, read
+ * once a period rather than listened to, since a listener below Android 12 is a deprecated API.
  */
 internal class PhoneSensors(context: Context, private val send: (String) -> Unit, private val note: (String) -> Unit) {
     private val app = context.applicationContext
@@ -105,6 +113,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     private var lastHumidity: Double? = null
     private var lastLight: Double? = null
     private var toldNoEnvironment = false
+    private val telephony = app.getSystemService(TelephonyManager::class.java)
+    private var cellularOn = false
+    private var cellularHzOn = BridgeProtocol.CELLULAR_DEFAULT_HZ
+    private var toldNoCellular = false
 
     private val gnssListener = LocationListenerCompat { location -> gnss(location) }
 
@@ -157,6 +169,13 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         override fun run() {
             environment()
             handler.postDelayed(this, periodMs(subscription.environmentHz))
+        }
+    }
+
+    private val cellularTick = object : Runnable {
+        override fun run() {
+            if (!cellularOn) return
+            if (cellular()) handler.postDelayed(this, periodMs(subscription.cellularHz))
         }
     }
 
@@ -281,6 +300,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         switchMotion(next)
         switchEnvironment(next, rateChanged = next.environmentHz != previousEnvironmentHz)
         previousEnvironmentHz = next.environmentHz
+        switchCellular(next)
     }
 
     private var previousEnvironmentHz = BridgeProtocol.ENVIRONMENT_DEFAULT_HZ
@@ -371,6 +391,72 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             handler.removeCallbacks(environmentTick)
             handler.postDelayed(environmentTick, periodMs(next.environmentHz))
         }
+    }
+
+    /** The cellular reading while wanted, on a phone with a cellular radio: one at once, then one a period. */
+    private fun switchCellular(next: Subscription) {
+        val want = BridgeProtocol.CELLULAR in next.sensors
+        if (want && !cellularOn) {
+            if (telephony == null || !hasCellularRadio()) {
+                if (!toldNoCellular) note("this phone has no cellular radio: no cellular signal for Signal K")
+                toldNoCellular = true
+                return
+            }
+            cellularOn = true
+            cellularHzOn = next.cellularHz
+            handler.post(cellularTick)
+        } else if (!want && cellularOn) {
+            cellularOn = false
+            handler.removeCallbacks(cellularTick)
+        } else if (cellularOn && next.cellularHz != cellularHzOn) {
+            cellularHzOn = next.cellularHz
+            handler.removeCallbacks(cellularTick)
+            handler.postDelayed(cellularTick, periodMs(next.cellularHz))
+        }
+    }
+
+    /**
+     * Whether the phone has a radio to read: from Android 13 the feature the telephony calls below
+     * are tied to (a phone without it throws UnsupportedOperationException from them), before that
+     * telephony at all.
+     */
+    private fun hasCellularRadio(): Boolean = app.packageManager.hasSystemFeature(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) PackageManager.FEATURE_TELEPHONY_RADIO_ACCESS else PackageManager.FEATURE_TELEPHONY,
+    )
+
+    /**
+     * One cellular reading: the bars, the best cell's power, the operator and roaming. With no
+     * signal report, or one with no measurement in it (no SIM, the modem off in flight mode), the
+     * strength and power are null, so the server stops showing the last ones as current. A call
+     * the platform refuses clears all four the same way and stops the reading, with a line in the
+     * log, until the sensors are switched again ([apply], [reapply]); returns whether to go on.
+     */
+    private fun cellular(): Boolean {
+        val tm = telephony ?: return false
+        val ts = System.currentTimeMillis()
+        // Only the platform's calls are inside: a failure to read the phone, not to send.
+        val reading = try {
+            val strength = tm.signalStrength
+            val cells = strength?.cellSignalStrengths.orEmpty().map { Readings.Cell(it.level, it.dbm) }
+            Readings.Cellular(
+                strength = strength?.let { Readings.cellularStrength(it.level, cells) },
+                dbm = Readings.cellularDbm(cells),
+                operator = tm.networkOperatorName,
+                roaming = tm.isNetworkRoaming,
+            )
+        } catch (e: RuntimeException) {
+            // SecurityException or UnsupportedOperationException from a vendor's telephony: asking
+            // again every period would only fill the log. The next [apply] or [reapply] tries again.
+            cellularOn = false
+            note("cellular: cannot read the cellular network ($e); no cellular signal for Signal K")
+            null
+        }
+        val r = reading ?: Readings.Cellular.NONE
+        send(BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, r.strength, Readings.SRC_CELLULAR, ts))
+        send(BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, r.dbm, Readings.SRC_CELLULAR, ts))
+        send(BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, r.operator, Readings.SRC_CELLULAR, ts))
+        send(BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, r.roaming, Readings.SRC_CELLULAR, ts))
+        return reading != null
     }
 
     /** The latest rotation, unless the sensor has gone quiet: an old one is no attitude. */
