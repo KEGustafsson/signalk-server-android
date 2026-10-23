@@ -10,6 +10,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
+import fi.pocketsk.server.ServerUsage
 import java.io.File
 
 /**
@@ -32,6 +33,8 @@ internal class AppModel {
     var alarms by mutableStateOf(AlarmBook.View.NONE)
     /** [ServerStatus.locationHeld]: false is a server that runs without the phone's GNSS. */
     var locationHeld by mutableStateOf<Boolean?>(null)
+    /** The running server's uptime, CPU and memory, looked at while the Dock is in front; null while none runs. */
+    var usage by mutableStateOf<ServerUsage.Usage?>(null)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)

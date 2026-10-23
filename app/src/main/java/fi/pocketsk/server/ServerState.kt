@@ -11,7 +11,9 @@ internal sealed interface ServerState {
     /**
      * Up, its plain HTTP on [port] ([ServerEndpoint]). [answering] is the last health poll's
      * result; [onTrial] is true while a freshly promoted version is still inside its health gate
-     * and may yet be rolled back.
+     * and may yet be rolled back. [startedAt] is when this run's node was started
+     * (SystemClock.elapsedRealtime), and [group] its process group ([fi.pocketsk.node.NodeProcess]),
+     * null where there is none: the Dock's uptime, CPU and memory.
      */
     data class Running(
         val version: String,
@@ -19,6 +21,8 @@ internal sealed interface ServerState {
         val port: Int,
         val answering: Boolean,
         val onTrial: Boolean,
+        val startedAt: Long,
+        val group: Int?,
     ) : ServerState
 
     /** Exited unasked, [reason], and starts again after [delayMs]. */
