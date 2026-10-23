@@ -1,5 +1,6 @@
 package fi.pocketsk.ui
 
+import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,8 +30,10 @@ import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.server.ServerState
+import fi.pocketsk.server.ServerUsage
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.roundToInt
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
@@ -146,13 +149,17 @@ private fun deviceText(d: BridgeProtocol.Device): String {
     }
 }
 
-/** Running or not, which version from which slot, where the boat reaches it; Start, Stop, Restart, admin UI. */
+/**
+ * Running or not, which version from which slot, for how long and at what cost (CPU, memory),
+ * where the boat reaches it; Start, Stop, Restart, admin UI.
+ */
 @Composable
 private fun StatusCard(model: AppModel, actions: AppActions) {
     val state = model.server
     val port = (state as? ServerState.Running)?.port
     Section(stringResource(R.string.dock_status_title)) {
         Text(serverStateText(state, ServerActions.localUrl(port ?: ServerActions.port())))
+        if (state is ServerState.Running) model.usage?.let { Text(usageText(it), style = MaterialTheme.typography.bodySmall) }
         if (port != null) {
             model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:$port")) }
             Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(port)))
@@ -230,6 +237,19 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
                 )
             }
         }
+    }
+}
+
+/** "Up 3:12:05 · CPU 4 % of one core · memory 182 MB", as much of it as is known. */
+@Composable
+private fun usageText(u: ServerUsage.Usage): String {
+    val up = DateUtils.formatElapsedTime(u.up / 1000)
+    val cpu = u.cpuPercent?.roundToInt()
+    val memory = u.memoryBytes?.let { Formatter.formatShortFileSize(LocalContext.current, it) }
+    return when {
+        cpu != null && memory != null -> stringResource(R.string.dock_usage, up, cpu, memory)
+        memory != null -> stringResource(R.string.dock_usage_memory, up, memory)
+        else -> stringResource(R.string.dock_uptime, up)
     }
 }
 

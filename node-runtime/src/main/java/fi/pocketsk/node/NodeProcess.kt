@@ -41,6 +41,14 @@ class NodeProcess internal constructor(val process: Process, private val groupFi
         @Synchronized get() = group != null || groupId() != null
 
     /**
+     * The id of the group the process leads, for whoever wants to see what it is running (the
+     * Dock's CPU and memory): null before the launcher has written it, when there is none, and
+     * after [reap], since the id may then belong to another process.
+     */
+    val groupIdOrNull: Int?
+        @Synchronized get() = groupId()
+
+    /**
      * Reads the output to its end, line by line, waits for the process, reaps the group and
      * returns the exit code; null when the reading had not ended after [timeoutS] seconds and
      * the group was killed. Blocking, so never on the main thread.

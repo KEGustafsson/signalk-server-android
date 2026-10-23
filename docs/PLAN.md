@@ -291,7 +291,7 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 
 ### 8.1 Dock (native Compose, bottom nav tab 1)
 
-**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Not yet: uptime, CPU/RAM and delta rate on the Status card, the changelog, and the Devices, Sensors, Power, Logs (filter, diagnostics bundle) and Backup cards, which come with the steps that give them something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
+**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1). Not yet: the delta rate on the Status card, the changelog, and the Devices, Sensors, Power, Logs (filter, diagnostics bundle) and Backup cards, which come with the steps that give them something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
 
 - **Status card**: running/stopped, version, uptime, URL(s), CPU/RAM of child process, delta rate.
 - **Updates**: current slot, available versions, "Install", "Rollback to <prev>", install history with pass/fail. Changelog pulled from GitHub releases.
@@ -447,6 +447,15 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
            - **No permission is asked for.** The network's generation (LTE, 5G: `getDataNetworkType`) needs READ_PHONE_STATE, the phone permission, which a Signal K server has no other use for, so it is left out. The strength, the operator and roaming need none.
            - **Read, not listened to.** The modem's last report is read once a period. A listener below Android 12 is `PhoneStateListener`, a deprecated API, and a reading every 30 s is all a boat needs to know whether it has a signal.
            - **The paths are the plan's own.** Signal K's specification has no cellular group. The power is in dBm, as every phone and modem gives it, rather than in an SI unit nobody reads.
+
+10. M5 UI (§13: §8.1–8.3), in parts, one each, after the bridge (9.5).
+    1. ~~The Status card's uptime, CPU and memory~~ **Done** (`ProcStat`, pure and tested; `ServerUsage`; `ServerState.Running.startedAt`, `.group`):
+       - **What it shows.** Under the server's state: "Up 3:12:05 · CPU 4 % of one core · memory 182 MB".
+       - **How.** The supervisor puts the run's start time and its process group (`NodeProcess.groupIdOrNull`) into `ServerState.Running`. While the Dock is in front, `ServerUsage` lists `/proc` every 5 s and reads `/proc/<pid>/stat` for each process of that group: signalk-server and whatever a plugin started. Android hides other apps' processes, so the list is short.
+       - **The figures.** CPU is the group's user and system ticks between two looks, as a percentage of one core, as `top` gives it; the first look of a run has none. Memory is the processes' resident sets added up, which counts a shared page twice: an upper bound, what a phone's own process list shows.
+       - **Decisions (not made by the plan).**
+         - **Only while the Dock is in front.** Nothing reads `/proc` with no screen to show it, so the figures cost nothing on a passage.
+         - **Percent of one core.** Node runs JavaScript on one thread, so a server near 100 % is the one that is saturated, however many cores the phone has.
 
 ## 17. Reuse from Crew Radio
 

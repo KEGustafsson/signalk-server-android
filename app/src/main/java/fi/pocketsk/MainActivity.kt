@@ -40,6 +40,7 @@ import fi.pocketsk.server.LanAddress
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
+import fi.pocketsk.server.ServerUsage
 import fi.pocketsk.server.SignalKService
 import fi.pocketsk.ui.AppActions
 import fi.pocketsk.ui.AppModel
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var installs: InstallManager
     private lateinit var prefs: ServerPrefs
     private val model = AppModel()
+    private val usage = ServerUsage { model.usage = it }
 
     /** A restartWithLocation stop is on its way; the start follows once the server has stopped. Main thread. */
     private var restartPending = false
@@ -155,7 +157,19 @@ class MainActivity : ComponentActivity() {
         ServerStatus.observe(serverObserver)
         // Not from onResume, which runs before the lifecycle says RESUMED: AndroidX moves it there
         // only once onResume has returned, so the check in finishRestart would always fail.
-        lifecycle.addObserver(LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) finishRestart() })
+        lifecycle.addObserver(
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> {
+                        finishRestart()
+                        usage.start()
+                    }
+                    // The figures are for this screen only: nothing reads /proc while it is hidden.
+                    Lifecycle.Event.ON_PAUSE -> usage.stop()
+                    else -> Unit
+                }
+            },
+        )
         InstallJob.observe(installObserver)
         refreshSlots()
         if (savedInstanceState == null) handle(intent)

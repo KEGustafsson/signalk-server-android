@@ -253,7 +253,7 @@ internal class Supervisor(
                     }
                 }
             }
-            val health = thread(name = "sk-health", isDaemon = true) { watch(n, version, slot, endpoint) }
+            val health = thread(name = "sk-health", isDaemon = true) { watch(n, version, slot, endpoint, startedAt) }
             val code = n.process.waitFor()
             val whole = n.reap()
             health.interrupt()
@@ -303,7 +303,7 @@ internal class Supervisor(
      * [HEALTH_POLL_MS]; publishes [ServerState.Running] whenever the answer changes, and feeds
      * the gate. A failed gate ends the run, and [runLoop] rolls back.
      */
-    private fun watch(n: NodeProcess, version: String, slot: String, endpoint: ServerEndpoint) {
+    private fun watch(n: NodeProcess, version: String, slot: String, endpoint: ServerEndpoint, startedAt: Long) {
         val base = "http://127.0.0.1:${endpoint.port}"
         val client = SignalKClient(app, base, null)
         var answering: Boolean? = null
@@ -340,7 +340,7 @@ internal class Supervisor(
                 // Nothing before the first answer: until then the run is Starting.
                 if ((ok || answering != null) && (ok != answering || onTrial != trial)) {
                     if (answering == true && !ok) log.note("not answering on $base")
-                    publish(ServerState.Running(version, slot, endpoint.port, ok, onTrial))
+                    publish(ServerState.Running(version, slot, endpoint.port, ok, onTrial, startedAt, n.groupIdOrNull))
                     answering = ok
                     trial = onTrial
                 }

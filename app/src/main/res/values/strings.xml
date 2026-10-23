@@ -74,6 +74,9 @@
     <string name="dock_stopped">Stopped</string>
     <string name="dock_starting">Starting %1$s from slot %2$s…</string>
     <string name="dock_running">Running %1$s from slot %2$s</string>
+    <string name="dock_uptime">Up %1$s</string>
+    <string name="dock_usage_memory">Up %1$s · memory %2$s</string>
+    <string name="dock_usage">Up %1$s · CPU %2$d %% of one core · memory %3$s</string>
     <string name="dock_running_on_trial">Running %1$s from slot %2$s, on trial after its update</string>
     <string name="dock_failed">Stopped: %1$s</string>
     <string name="dock_url_lan">On the boat\'s network: %1$s</string>

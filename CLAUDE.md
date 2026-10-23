@@ -57,9 +57,9 @@ app/                 the Android app
                      Slots, ServerVersion, InstallHistory, HealthGate, UpdateOffer (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
                      health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver,
-                     ServerTile (Quick Settings);
-                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint (pure,
-                     tested)
+                     ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc);
+                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint, ProcStat
+                     (pure, tested)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),
