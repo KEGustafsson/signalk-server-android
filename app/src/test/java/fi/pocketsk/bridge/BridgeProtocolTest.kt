@@ -82,6 +82,10 @@ class BridgeProtocolTest {
             """{"t":"sensor","path":"communication.cellular.roaming","value":false,"src":"android.cellular","ts":9}""",
             BridgeProtocol.sensorFlag("communication.cellular.roaming", false, "android.cellular", 9),
         )
+        assertEquals(
+            """{"t":"sensor","path":"communication.cellular.roaming","value":null,"src":"android.cellular","ts":9}""",
+            BridgeProtocol.sensorFlag("communication.cellular.roaming", null, "android.cellular", 9),
+        )
     }
 
     @Test

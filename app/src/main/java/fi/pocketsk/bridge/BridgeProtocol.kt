@@ -224,8 +224,8 @@ internal object BridgeProtocol {
         return """{"t":"sensor","path":${Json.quote(path)},"value":${text?.let(Json::quote) ?: "null"},"src":${Json.quote(src)},"ts":$ts}"""
     }
 
-    /** A reading that is yes or no (whether the phone roams). */
-    fun sensorFlag(path: String, value: Boolean, src: String, ts: Long): String =
+    /** A reading that is yes or no (whether the phone roams); null when it cannot be told now. */
+    fun sensorFlag(path: String, value: Boolean?, src: String, ts: Long): String =
         """{"t":"sensor","path":${Json.quote(path)},"value":$value,"src":${Json.quote(src)},"ts":$ts}"""
 
     private val SPACES = Regex("\\s+")

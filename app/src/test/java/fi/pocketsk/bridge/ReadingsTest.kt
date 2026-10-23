@@ -112,11 +112,13 @@ class ReadingsTest {
 
     @Test
     fun theCellularSignalInSignalKTerms() {
-        assertEquals(0.0, Readings.cellularStrength(0)!!, 0.0)
-        assertEquals(0.75, Readings.cellularStrength(3)!!, 0.0)
-        assertEquals(1.0, Readings.cellularStrength(4)!!, 0.0)
-        assertNull(Readings.cellularStrength(5))
-        assertNull(Readings.cellularStrength(-1))
+        val measured = listOf(Readings.Cell(0, -120))
+        assertEquals("no bars on a cell measured", 0.0, Readings.cellularStrength(0, measured)!!, 0.0)
+        assertEquals(0.75, Readings.cellularStrength(3, measured)!!, 0.0)
+        assertEquals(1.0, Readings.cellularStrength(4, measured)!!, 0.0)
+        assertNull(Readings.cellularStrength(5, measured))
+        assertNull(Readings.cellularStrength(-1, measured))
+        assertNull("a report that measured no cell is no reading", Readings.cellularStrength(0, emptyList()))
     }
 
     @Test

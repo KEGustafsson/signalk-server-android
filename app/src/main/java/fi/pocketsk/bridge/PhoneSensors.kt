@@ -426,29 +426,37 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
 
     /**
      * One cellular reading: the bars, the best cell's power, the operator and roaming. With no
-     * signal report (no SIM, the modem off in flight mode) the strength and power are null, so the
-     * server stops showing the last ones as current. A call the platform refuses stops the reading,
-     * with a line in the log, until the sensors are switched again ([apply], [reapply]); returns
-     * whether to go on.
+     * signal report, or one with no measurement in it (no SIM, the modem off in flight mode), the
+     * strength and power are null, so the server stops showing the last ones as current. A call
+     * the platform refuses clears all four the same way and stops the reading, with a line in the
+     * log, until the sensors are switched again ([apply], [reapply]); returns whether to go on.
      */
     private fun cellular(): Boolean {
         val tm = telephony ?: return false
         val ts = System.currentTimeMillis()
-        try {
+        // Only the platform's calls are inside: a failure to read the phone, not to send.
+        val reading = try {
             val strength = tm.signalStrength
             val cells = strength?.cellSignalStrengths.orEmpty().map { Readings.Cell(it.level, it.dbm) }
-            send(BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, strength?.let { Readings.cellularStrength(it.level) }, Readings.SRC_CELLULAR, ts))
-            send(BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, Readings.cellularDbm(cells), Readings.SRC_CELLULAR, ts))
-            send(BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, tm.networkOperatorName, Readings.SRC_CELLULAR, ts))
-            send(BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, tm.isNetworkRoaming, Readings.SRC_CELLULAR, ts))
+            Readings.Cellular(
+                strength = strength?.let { Readings.cellularStrength(it.level, cells) },
+                dbm = Readings.cellularDbm(cells),
+                operator = tm.networkOperatorName,
+                roaming = tm.isNetworkRoaming,
+            )
         } catch (e: RuntimeException) {
             // SecurityException or UnsupportedOperationException from a vendor's telephony: asking
             // again every period would only fill the log. The next [apply] or [reapply] tries again.
             cellularOn = false
             note("cellular: cannot read the cellular network ($e); no cellular signal for Signal K")
-            return false
+            null
         }
-        return true
+        val r = reading ?: Readings.Cellular.NONE
+        send(BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, r.strength, Readings.SRC_CELLULAR, ts))
+        send(BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, r.dbm, Readings.SRC_CELLULAR, ts))
+        send(BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, r.operator, Readings.SRC_CELLULAR, ts))
+        send(BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, r.roaming, Readings.SRC_CELLULAR, ts))
+        return reading != null
     }
 
     /** The latest rotation, unless the sensor has gone quiet: an old one is no attitude. */

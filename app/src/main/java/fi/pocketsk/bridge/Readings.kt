@@ -122,9 +122,18 @@ internal object Readings {
 
     /**
      * The signal's bars as Android counts them (SignalStrength.getLevel: 0, none or unknown, to 4,
-     * great) as Signal K's ratio; null for a level Android does not give.
+     * great) as Signal K's ratio. Null for a level Android does not give, and for a report that
+     * measured no cell at all ([cells] empty): its level 0 then means unknown, not no signal.
      */
-    fun cellularStrength(level: Int): Double? = level.takeIf { it in 0..MAX_CELL_LEVEL }?.let { it.toDouble() / MAX_CELL_LEVEL }
+    fun cellularStrength(level: Int, cells: List<Cell>): Double? =
+        level.takeIf { it in 0..MAX_CELL_LEVEL && cells.isNotEmpty() }?.let { it.toDouble() / MAX_CELL_LEVEL }
+
+    /** One cellular reading as it is sent; null where there is nothing to say ([NONE]: no reading at all). */
+    data class Cellular(val strength: Double?, val dbm: Double?, val operator: String?, val roaming: Boolean?) {
+        companion object {
+            val NONE = Cellular(null, null, null, null)
+        }
+    }
 
     /** One cell the modem hears, as CellSignalStrength reports it: its bars and its power in dBm. */
     data class Cell(val level: Int, val dbm: Int)

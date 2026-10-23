@@ -441,7 +441,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
            - `communication.cellular.dbm`: the power of the cell with the most bars, in dBm.
            - `communication.cellular.operator`: the network's name.
            - `communication.cellular.roaming`: whether the phone roams.
-         - **No signal report** (no SIM, flight mode): the strength and power are null, so the server stops showing the last ones. A tablet without a cellular radio says so once in the log and sends nothing.
+         - **No signal report**, or one that measured no cell (no SIM, flight mode): the strength and power are null, so the server stops showing the last ones. A telephony call the phone refuses clears all four and stops the reading until the sensors are switched again. A tablet without a cellular radio says so once in the log and sends nothing.
          - **Protocol.** A sensor value may now be a short text (at most 64 characters, no control characters, cleaned by the app) or a yes or no, besides a number or an object of numbers; both halves check it.
          - **Decisions (not made by the plan).**
            - **No permission is asked for.** The network's generation (LTE, 5G: `getDataNetworkType`) needs READ_PHONE_STATE, the phone permission, which a Signal K server has no other use for, so it is left out. The strength, the operator and roaming need none.
