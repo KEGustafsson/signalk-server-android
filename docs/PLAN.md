@@ -449,13 +449,13 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
            - **The paths are the plan's own.** Signal K's specification has no cellular group. The power is in dBm, as every phone and modem gives it, rather than in an SI unit nobody reads.
 
 10. M5 UI (§13: §8.1–8.3), in parts, one each, after the bridge (9.5).
-   1. ~~The Status card's uptime, CPU and memory~~ **Done** (`ProcStat`, pure and tested; `ServerUsage`; `ServerState.Running.startedAt`, `.group`):
-      - **What it shows.** Under the server's state: "Up 3:12:05 · CPU 4 % of one core · memory 182 MB".
-      - **How.** The supervisor puts the run's start time and its process group (`NodeProcess.groupIdOrNull`) into `ServerState.Running`. While the Dock is in front, `ServerUsage` lists `/proc` every 5 s and reads `/proc/<pid>/stat` for each process of that group: signalk-server and whatever a plugin started. Android hides other apps' processes, so the list is short.
-      - **The figures.** CPU is the group's user and system ticks between two looks, as a percentage of one core, as `top` gives it; the first look of a run has none. Memory is the processes' resident sets added up, which counts a shared page twice: an upper bound, what a phone's own process list shows.
-      - **Decisions (not made by the plan).**
-        - **Only while the Dock is in front.** Nothing reads `/proc` with no screen to show it, so the figures cost nothing on a passage.
-        - **Percent of one core.** Node runs JavaScript on one thread, so a server near 100 % is the one that is saturated, however many cores the phone has.
+    1. ~~The Status card's uptime, CPU and memory~~ **Done** (`ProcStat`, pure and tested; `ServerUsage`; `ServerState.Running.startedAt`, `.group`):
+       - **What it shows.** Under the server's state: "Up 3:12:05 · CPU 4 % of one core · memory 182 MB".
+       - **How.** The supervisor puts the run's start time and its process group (`NodeProcess.groupIdOrNull`) into `ServerState.Running`. While the Dock is in front, `ServerUsage` lists `/proc` every 5 s and reads `/proc/<pid>/stat` for each process of that group: signalk-server and whatever a plugin started. Android hides other apps' processes, so the list is short.
+       - **The figures.** CPU is the group's user and system ticks between two looks, as a percentage of one core, as `top` gives it; the first look of a run has none. Memory is the processes' resident sets added up, which counts a shared page twice: an upper bound, what a phone's own process list shows.
+       - **Decisions (not made by the plan).**
+         - **Only while the Dock is in front.** Nothing reads `/proc` with no screen to show it, so the figures cost nothing on a passage.
+         - **Percent of one core.** Node runs JavaScript on one thread, so a server near 100 % is the one that is saturated, however many cores the phone has.
 
 ## 17. Reuse from Crew Radio
 
