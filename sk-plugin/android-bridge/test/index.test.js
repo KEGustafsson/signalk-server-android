@@ -279,7 +279,7 @@ test("the server's delta rate goes to the phone, from the server's own last stat
     p.stop();
     await server.closeAll();
   });
-  const stats = () => got.split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.t === "stats");
+  const stats = () => got.split("\n").slice(0, -1).filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.t === "stats");
   p.start({});
   await until(() => p.statusNow().connected);
   // Nothing until the server has counted once.
