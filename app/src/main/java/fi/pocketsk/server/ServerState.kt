@@ -28,6 +28,13 @@ internal sealed interface ServerState {
     /** Exited unasked, [reason], and starts again after [delayMs]. */
     data class Waiting(val version: String, val delayMs: Long, val reason: String) : ServerState
 
+    /**
+     * Not started yet because of the card the data lives on ([DataStore]): [waiting] for the card
+     * [volume] to be put in (or to come back after it was taken out), or moving the data folders
+     * to [volume], or to the phone when [volume] is null.
+     */
+    data class Storage(val waiting: Boolean, val volume: String?) : ServerState
+
     /** Asked to stop or restart; the group has had SIGTERM and gets SIGKILL after 10 s. */
     data object Stopping : ServerState
 

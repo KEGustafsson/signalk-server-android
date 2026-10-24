@@ -9,19 +9,27 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
@@ -29,6 +37,7 @@ import fi.pocketsk.ServerActions
 import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.UpdateOffer
+import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerUsage
 import java.text.DateFormat
@@ -59,6 +68,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
         SensorsCard(model, actions)
         DevicesCard(model, actions)
+        StorageCard(model, actions)
         Section(stringResource(R.string.dock_log_title)) {
             LogText(model.log.ifEmpty { stringResource(R.string.dock_log_empty) })
         }
@@ -130,6 +140,79 @@ private fun DevicesCard(model: AppModel, actions: AppActions) {
                 Switch(checked = d.chosen, onCheckedChange = { actions.chooseBluetooth(d.address, it) })
             }
         }
+    }
+}
+
+/**
+ * Where the server keeps its data (docs/PLAN.md §16 9.5.9): the phone or a card, each with its
+ * room. A choice is confirmed first, since it restarts the server and may copy gigabytes; a chosen
+ * card that is out of the phone stays listed, so the owner can see why the server waits.
+ */
+@Composable
+private fun StorageCard(model: AppModel, actions: AppActions) {
+    val view = model.storage ?: return
+    var asked by remember { mutableStateOf<Choice?>(null) }
+    Section(stringResource(R.string.dock_storage_title)) {
+        Text(stringResource(R.string.dock_storage_body), style = MaterialTheme.typography.bodySmall)
+        StorageRow(
+            stringResource(R.string.dock_storage_phone) + " · " + room(view.phoneFree, view.phoneTotal),
+            selected = view.chosen == null,
+        ) { if (view.chosen != null) asked = Choice(null) }
+        val inPhone = view.volumes.filter { it.mounted }
+        for (v in inPhone) {
+            StorageRow("${v.name} · ${room(v.free, v.total)}", selected = v.uuid == view.chosen) {
+                if (v.uuid != view.chosen) asked = Choice(v)
+            }
+        }
+        if (view.chosen != null && inPhone.none { it.uuid == view.chosen }) {
+            StorageRow(stringResource(R.string.dock_storage_missing, view.chosenName ?: view.chosen), selected = true, enabled = false) {}
+        }
+        if (inPhone.isEmpty()) Text(stringResource(R.string.dock_storage_none), style = MaterialTheme.typography.bodySmall)
+        if (view.chosen != null) Text(stringResource(R.string.dock_storage_charts), style = MaterialTheme.typography.bodySmall)
+    }
+    asked?.let { choice ->
+        AlertDialog(
+            onDismissRequest = { asked = null },
+            title = { Text(stringResource(R.string.dock_storage_confirm_title)) },
+            text = {
+                Text(
+                    choice.volume?.let { stringResource(R.string.dock_storage_confirm_card, it.name) }
+                        ?: stringResource(R.string.dock_storage_confirm_phone),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    asked = null
+                    actions.chooseStorage(choice.volume)
+                }) { Text(stringResource(R.string.dock_storage_move)) }
+            },
+            dismissButton = { TextButton(onClick = { asked = null }) { Text(stringResource(R.string.dock_storage_cancel)) } },
+        )
+    }
+}
+
+/** A volume's free and total room in a line. */
+@Composable
+private fun room(free: Long, total: Long): String {
+    val context = LocalContext.current
+    return stringResource(
+        R.string.dock_storage_free,
+        Formatter.formatShortFileSize(context, free),
+        Formatter.formatShortFileSize(context, total),
+    )
+}
+
+/** A choice waiting for its confirmation: a card, or the phone when [volume] is null. */
+private class Choice(val volume: DataVolumes.Volume?)
+
+@Composable
+private fun StorageRow(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+        Text(text, modifier = Modifier.padding(start = 8.dp))
     }
 }
 

@@ -37,6 +37,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.LanAddress
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
@@ -51,6 +52,7 @@ import fi.pocketsk.ui.PermissionsView
 import fi.pocketsk.ui.PocketTheme
 import fi.pocketsk.ui.SetupScreen
 import fi.pocketsk.ui.SlotsView
+import fi.pocketsk.ui.StorageView
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -93,6 +95,8 @@ class MainActivity : ComponentActivity() {
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
+        // A move under way or just done changes what is free where.
+        if (state is ServerState.Storage || state is ServerState.Starting || state.isActive != wasActive) refreshStorage()
     }
 
     private val installObserver = InstallJob.Observer { state, running ->
@@ -174,6 +178,7 @@ class MainActivity : ComponentActivity() {
         )
         InstallJob.observe(installObserver)
         refreshSlots()
+        refreshStorage()
         if (savedInstanceState == null) handle(intent)
     }
 
@@ -187,6 +192,8 @@ class MainActivity : ComponentActivity() {
         // Settings opened from here (battery, an app permission) may have changed something.
         refreshPermissions()
         refreshAddress()
+        // A card put in or taken out while the app was in the background.
+        refreshStorage()
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
@@ -263,6 +270,8 @@ class MainActivity : ComponentActivity() {
             restartPending = true
             stopServer()
         }
+
+        override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
     }
 
     private fun startServer() {
@@ -271,6 +280,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopServer() = SignalKService.stop(this)
+
+    /**
+     * The data's new place, which the supervisor moves it to before the next run: a running
+     * server restarts for it now, a stopped one moves it when it is started.
+     */
+    private fun chooseStorage(volume: DataVolumes.Volume?) {
+        prefs.dataVolume = volume?.uuid
+        prefs.dataVolumeName = volume?.name
+        SignalKService.restart(this)
+        refreshStorage()
+    }
 
     private fun restartServer() = SignalKService.restart(this)
 
@@ -424,6 +444,21 @@ class MainActivity : ComponentActivity() {
                 history = installs.history(),
             )
             runOnUiThread { model.slots = view }
+        }
+    }
+
+    /** The cards and their room: Android makes its folders on them as it lists them, so off the main thread. */
+    private fun refreshStorage() {
+        transportThread("dock-storage", onError = {}) {
+            val files = filesDir
+            val view = StorageView(
+                chosen = prefs.dataVolume,
+                chosenName = prefs.dataVolumeName,
+                phoneFree = DataVolumes.free(files),
+                phoneTotal = DataVolumes.total(files),
+                volumes = DataVolumes.list(this),
+            )
+            runOnUiThread { model.storage = view }
         }
     }
 

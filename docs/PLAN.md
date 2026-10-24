@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
 files/
 ├── home/                    # $HOME
 │   ├── .npmrc               # points node-gyp at the shim, cache dir, prefix
-│   └── .signalk/            # SIGNALK_NODE_CONFIG_DIR (settings, plugins config)
+│   └── .signalk/            # SIGNALK_NODE_CONFIG_DIR (settings, plugins config); its data folders may be links to a card (§16 9.5.9)
 ├── sk/
 │   ├── slots/A/             # npm global prefix: lib/node_modules/signalk-server
 │   ├── slots/B/
@@ -466,6 +466,19 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
            - **No GATT yet.** It needs connections from the app, a queue for them and a protocol of its own; it is its own step if the owner wants battery monitors.
          - **To check on a device:** a RuuviTag, Victron or other advertising sensor is found by BT Sensors on the phone and its readings arrive; the screen off for ten minutes, a watched sensor keeps arriving; the Dock asks for Nearby devices once and the scan starts after it is granted.
 
+      9. ~~The server's data on an SD card~~ **Done** (`DataStore`, pure and tested; `DataVolumes`; the Dock's Storage card; `ServerState.Storage`). Asked for by the owner (2026-10-24): offline charts and other bulky data on a card, the owner choosing the card or the phone's own storage (eMMC), in space Android frees when the app is uninstalled.
+         - **Where.** The app's own folder on each removable volume (`getExternalFilesDirs`: an SD card, a USB drive where the phone gives one), `Android/data/fi.pocketsk/files/signalk`. No permission, a real path the server's node uses as the app does (same user), and removed with the app. The phone is `files/home/.signalk` as before.
+         - **What moves.** `.signalk` stays on the phone, and so do the files directly in it (`settings.json`, `security.json`, the SSL key, `package.json`), `node_modules` and the plugins' settings files in `plugin-config-data`. Every other folder (charts, server state, application data, logs) and each plugin's data folder in `plugin-config-data` is copied to the card and replaced by a symbolic link to the copy, so the server and its plugins find it where they always did. Before every start (`Supervisor.placeData`), so a folder a plugin made during a run follows on the next.
+         - **Moves.** A copy into `<name>.partial` and a rename; the source is renamed to `<name>.moved` before it is deleted. A process killed at any point leaves the data whole in one place, and the next start carries on. A folder the card has already (charts copied onto it with a PC) is merged with; a name taken there keeps the phone's copy as `<name>.from-phone`. A card without the room (plus 64 MB) is refused before anything is written, and the server gives up with the reason. Back to the phone the same way; a folder whose card is gone comes back empty, said in the log, so the server still starts.
+         - **The card out.** A chosen card that is not in the phone is waited for (`ServerState.Storage`, "Waiting for <card>"), looked for every 10 s and at once on `MEDIA_MOUNTED`, never started without: the server without its data would start as a new one. `MEDIA_EJECT` (and the unmount and removal broadcasts) end a run on it while the card is still mounted, so its files close first; the next run waits for it to come back.
+         - **The smoke test.** The installer copies `.signalk` with `cp -a`, which keeps the links; `DataStore.detach` turns them into empty folders in the copy, so the test server never writes the live data on the card.
+         - **The Dock.** A Storage card: the phone and each card in it, with their room, the chosen one marked; a chosen card that is out stays listed as "not in the phone". A choice is confirmed, then the server restarts and moves the data first (a stopped server moves it when started).
+         - **Decisions (not made by the plan).**
+           - **The secrets stay on the phone.** The owner asked for `.signalk` on its own partition; a FAT32 or exFAT card is readable by anyone who takes it out, and has no symbolic links, which npm and the bridge's plugin need in `node_modules`. So the configuration and the plugins stay in the phone's encrypted storage, and the data moves.
+           - **Links, not settings.** No plugin is told a new path: Signal K and its plugins write where they always do, so it works for plugins the app knows nothing of (the charts plugin reads `~/.signalk/charts` by default).
+           - **The app's folder, not "All files access".** It needs no permission and is freed on uninstall, as asked; charts kept elsewhere on a card are copied into `Android/data/fi.pocketsk/files/signalk/charts` with a PC.
+           - **Waiting, not falling back.** A server started on the phone while its data is on a missing card would make new, empty state and plugin data, and merge it with the card's on its return.
+         - **To check on a device:** moving to a card and back with a few GB of MBTiles; the charts plugin serving them from the card; ejecting the card in Android's settings while the server runs (the server stops, waits, and comes back when the card is put in again); a FAT32 card with a file over 4 GB (refused, with the reason); a USB drive where the phone offers one.
 10. M5 UI (§13: §8.1–8.3), in parts, one each, after the bridge (9.5).
     1. ~~The Status card's uptime, CPU and memory~~ **Done** (`ProcStat`, pure and tested; `ServerUsage`; `ServerState.Running.startedAt`, `.group`):
        - **What it shows.** Under the server's state: "Up 3:12:05 · CPU 4 % of one core · memory 182 MB".

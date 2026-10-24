@@ -4,6 +4,8 @@ import android.content.Context
 import android.system.ErrnoException
 import android.system.Os
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.DataStore
+import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.signalk.SignalKClient
 import org.json.JSONArray
 import org.json.JSONException
@@ -298,7 +300,8 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         /**
          * The live configuration, plugins and all, copied with the system's own `cp -a` so its
          * symlinks (`node_modules/.bin`) stay links. A phone with no configuration yet gets an
-         * empty one, as a first start would.
+         * empty one, as a first start would. Data folders on a card ([DataStore]) are links too,
+         * and become empty folders in the copy ([DataStore.detach]).
          */
         private fun copyConfig(verify: File, log: Writer): String? {
             val live = runtime.configDir
@@ -321,7 +324,13 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 return when {
                     !finished -> "copying the configuration for the smoke test ran out of time"
                     cp.exitValue() != 0 -> "copying the configuration for the smoke test failed (cp exit ${cp.exitValue()})"
-                    else -> null
+                    else -> try {
+                        // Data folders on a card are links in the copy: the test must not write the live data.
+                        DataStore(verify, { line(log, it, now = false) }, DataVolumes::free).detach()
+                        null
+                    } catch (e: IOException) {
+                        "preparing the smoke test's configuration failed: $e"
+                    }
                 }
             } finally {
                 out.delete()

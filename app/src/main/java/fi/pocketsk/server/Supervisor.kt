@@ -46,6 +46,9 @@ import kotlin.concurrent.thread
  * version bad, and the server starts again from there. That call waits for an install in
  * progress to finish, since both rewrite `current`.
  *
+ * Before every run the data folders are put where the owner chose ([placeData], [DataStore]): on
+ * the phone or on a card, which is waited for while it is out ([ServerState.Storage]).
+ *
  * Everything reported goes through [onState]; [onAlert] is for what the user should hear about
  * even with no screen open: a rollback, or giving up (with the [ServerState.Failed] it ends in).
  * Both are called on the supervisor's threads.
@@ -78,6 +81,9 @@ internal class Supervisor(
 
     /** The slot of the run in progress, set with [node]. */
     private var runSlot: String? = null
+
+    /** When the data's card was last ejected ([storageEjected]), until it is seen gone. */
+    private var ejectedAt: Long? = null
 
     @Volatile var state: ServerState = ServerState.Stopped
         private set
@@ -209,6 +215,9 @@ internal class Supervisor(
             val version = slot?.let { installs.installedVersion(it) }
             if (slot == null || version == null) return failed("signalk-server is not installed")
             val main = runtime.serverMain(File(runtime.slots, slot))
+            placeData()?.let { return it }
+            // A stop that came during a long move: the move is done, and nothing is started.
+            if (!synchronized(this) { wanted }) return ServerState.Stopped
             val trial = armGate(version)
             val endpoint = readEndpoint()
             publish(ServerState.Starting(version, slot))
@@ -408,6 +417,87 @@ internal class Supervisor(
         onAlert("signalk-server $version $why. Back to $back.", null)
     }
 
+    /**
+     * Puts the data folders where the owner chose ([DataStore]) before a run; null when the run
+     * may go on, else the state to end in. A chosen card that is not in the phone, or that was
+     * just taken out ([storageEjected]), is waited for, checked every [CARD_POLL_MS] and at once
+     * when it is put in ([storageMounted]), rather than given up on: the server without its
+     * data would start as a new one. A folder that cannot be moved (a full card) gives up, with
+     * the data left whole where it was.
+     */
+    private fun placeData(): ServerState? {
+        var told: String? = null
+        var root: File? = null
+        var to: String? = null
+        while (true) {
+            // Read again on every look: the owner may choose the phone while the card is away.
+            val uuid = prefs.dataVolume ?: break
+            val name = prefs.dataVolumeName ?: uuid
+            val volume = DataVolumes.mounted(app, uuid)
+            val ejecting = synchronized(this) {
+                val at = ejectedAt
+                // Ejected and gone again: from here on it is a card coming back.
+                if (at != null && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) ejectedAt = null
+                ejectedAt != null
+            }
+            if (volume != null && !ejecting) {
+                root = volume.root
+                to = name
+                break
+            }
+            if (told != name) log.note("waiting for $name, the card the server's data is on")
+            told = name
+            publish(ServerState.Storage(waiting = true, volume = name))
+            waiter.await(CARD_POLL_MS)
+            synchronized(this) {
+                if (!wanted) return ServerState.Stopped
+                // A restart asked for while waiting (a new choice in the Dock) is this look.
+                if (ask == Ask.RESTART) ask = Ask.NONE
+            }
+        }
+        if (told != null && to != null) log.note("$to is in")
+        return try {
+            DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
+                log.note("moving $rel to ${to ?: "the phone"}")
+                publish(ServerState.Storage(waiting = false, volume = to))
+            }
+            null
+        } catch (e: IOException) {
+            failed("the server's data could not be moved: ${e.message ?: e}")
+        }
+    }
+
+    /**
+     * The card at [path] is being taken out ([ejecting]: Android's eject, sent while it is still
+     * mounted) or is gone: a run on it ends now, so its files are closed before the card goes, and
+     * the next waits until it is back ([placeData]). Only the eject is remembered: after the others
+     * the card is not mounted, which is all [placeData] needs to wait.
+     */
+    @Synchronized
+    fun storageEjected(path: String?, ejecting: Boolean) {
+        val uuid = prefs.dataVolume ?: return
+        if (!DataVolumes.isVolume(path, uuid)) return
+        if (ejecting) ejectedAt = SystemClock.elapsedRealtime()
+        if (node != null) {
+            log.note("${prefs.dataVolumeName ?: uuid} is being taken out: stopping the server until it is back")
+            end(Ask.RESTART)
+        } else {
+            waiter.wake()
+        }
+    }
+
+    /**
+     * The card at [path] was put in: when it is the data's, it is back (whatever eject came
+     * before), and a run waiting for it looks now rather than at its next poll.
+     */
+    @Synchronized
+    fun storageMounted(path: String?) {
+        val uuid = prefs.dataVolume ?: return
+        if (!DataVolumes.isVolume(path, uuid)) return
+        ejectedAt = null
+        if (state is ServerState.Storage) waiter.wake()
+    }
+
     private fun failed(reason: String): ServerState {
         log.note("giving up: $reason")
         synchronized(this) { wanted = false }
@@ -449,5 +539,11 @@ internal class Supervisor(
 
         /** How long the exit waits for the last of the output once the group is gone. */
         private const val DRAIN_MS = 2_000L
+
+        /** How often a run waiting for its card looks for it. */
+        private const val CARD_POLL_MS = 10_000L
+
+        /** A card ejected and somehow still mounted after this is taken to have stayed. */
+        private const val EJECT_HOLD_MS = 120_000L
     }
 }

@@ -10,6 +10,8 @@
   (the preload every node loads) hold nothing of the boat's: the APK unpacks or fetches them again, and files/bin/node points into the old install's nativeLibraryDir, which a new
   phone does not have. files/logs is the server's output, this phone's story, and may carry
   whatever a plugin printed.
+  The data folders the owner may move to an SD card or USB drive (DataStore) are in the app's
+  folder on that card, which neither backup nor device transfer takes.
 -->
 <data-extraction-rules>
     <cloud-backup>

@@ -7,8 +7,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
@@ -95,6 +97,23 @@ class SignalKService : Service() {
         }
     }
 
+    /**
+     * Cards going and coming, for the one the server's data may be on ([Supervisor.storageEjected]):
+     * an eject arrives while the card is still mounted, which is the moment to close the server's
+     * files on it. Not exported: these are the system's broadcasts, which such a receiver gets.
+     */
+    private val media = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val path = intent.data?.path
+            when (intent.action) {
+                Intent.ACTION_MEDIA_EJECT -> supervisor.storageEjected(path, ejecting = true)
+                Intent.ACTION_MEDIA_UNMOUNTED, Intent.ACTION_MEDIA_BAD_REMOVAL, Intent.ACTION_MEDIA_REMOVED ->
+                    supervisor.storageEjected(path, ejecting = false)
+                Intent.ACTION_MEDIA_MOUNTED -> supervisor.storageMounted(path)
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         prefs = ServerPrefs(this)
@@ -109,6 +128,17 @@ class SignalKService : Service() {
             .build()
         reporting({ log.note("cannot watch the network: $it") }) {
             getSystemService(ConnectivityManager::class.java)?.registerNetworkCallback(request, networks)
+        }
+        val cards = IntentFilter().apply {
+            addAction(Intent.ACTION_MEDIA_EJECT)
+            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+            addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+            addAction(Intent.ACTION_MEDIA_REMOVED)
+            addAction(Intent.ACTION_MEDIA_MOUNTED)
+            addDataScheme("file")
+        }
+        reporting({ log.note("cannot watch the cards: $it") }) {
+            ContextCompat.registerReceiver(this, media, cards, ContextCompat.RECEIVER_NOT_EXPORTED)
         }
     }
 
@@ -142,6 +172,7 @@ class SignalKService : Service() {
         alive = false
         // Throws when the registration above failed; there is nothing to undo then.
         reporting({}) { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(networks) }
+        reporting({}) { unregisterReceiver(media) }
         main.removeCallbacksAndMessages(null)
         // The finish() that would have said so may have been among the callbacks just dropped.
         ServerStatus.publishLocation(null)
@@ -320,6 +351,7 @@ class SignalKService : Service() {
                 }
             is ServerState.Waiting -> getString(R.string.server_title, state.version) to
                 getString(R.string.server_waiting, state.reason, state.delayMs / 1000)
+            is ServerState.Storage -> getString(R.string.app_name) to storageText(this, state)
             ServerState.Stopping -> getString(R.string.app_name) to getString(R.string.server_stopping)
             ServerState.Stopped, is ServerState.Failed -> getString(R.string.app_name) to getString(R.string.server_starting)
         }

@@ -84,6 +84,7 @@ class ServerTile : TileService() {
             when (state) {
                 is ServerState.Running -> if (state.answering) R.string.tile_running else R.string.tile_not_answering
                 is ServerState.Starting, is ServerState.Waiting -> R.string.tile_starting
+                is ServerState.Storage -> if (state.waiting) R.string.tile_storage_waiting else R.string.tile_starting
                 ServerState.Stopping -> R.string.server_stopping
                 ServerState.Stopped -> R.string.tile_stopped
                 is ServerState.Failed -> R.string.tile_failed

@@ -57,9 +57,10 @@ app/                 the Android app
                      Slots, ServerVersion, InstallHistory, HealthGate, UpdateOffer (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
                      health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver,
-                     ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc);
-                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint, ProcStat
-                     (pure, tested)
+                     ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc),
+                     DataVolumes (the cards the data may go to);
+                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint, ProcStat,
+                     DataStore (the data folders on a card, linked from .signalk) (pure, tested)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),
@@ -111,7 +112,9 @@ Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap, `p
   carries a comment saying why.
 - Secrets (the admin token, anything under `files/home/.signalk`) never enter backups, logs or
   the diagnostics bundle. `data_extraction_rules.xml` excludes them; keep it in step with the
-  layout in `NodeRuntime`. `files/npm`, `files/bin`, `files/prebuilds`, `files/plugins` (the
+  layout in `NodeRuntime`. When the owner moves the server's data to a card, `DataStore` moves
+  data folders only: the files directly in `.signalk`, `node_modules` and the plugins' settings
+  files stay on the phone. `files/npm`, `files/bin`, `files/prebuilds`, `files/plugins` (the
   bridge's plugin) and `files/runtime` (the preload) are excluded too, with `files/bridge.sock`: the APK makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
   server's output, which may carry whatever a plugin printed.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of

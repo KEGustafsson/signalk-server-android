@@ -49,6 +49,11 @@ internal fun serverStateText(state: ServerState, url: String): String = when (st
         else -> stringResource(R.string.dock_running, state.version, state.slot)
     }
     is ServerState.Waiting -> stringResource(R.string.server_waiting, state.reason, state.delayMs / 1000)
+    is ServerState.Storage -> when {
+        state.waiting -> stringResource(R.string.server_storage_waiting, state.volume ?: "")
+        state.volume == null -> stringResource(R.string.server_storage_moving_phone)
+        else -> stringResource(R.string.server_storage_moving, state.volume)
+    }
     ServerState.Stopping -> stringResource(R.string.server_stopping)
     is ServerState.Failed -> stringResource(R.string.dock_failed, state.reason)
 }
