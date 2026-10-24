@@ -51,6 +51,15 @@ class DataStoreTest {
     }
 
     @Test
+    fun aServerWithoutChartsGetsTheFolderOnTheCard() {
+        write(File(config, "settings.json"), "{}")
+        store().place(cardA)
+        assertTrue(isLink(File(config, "charts")))
+        assertEquals(File(cardA, "charts").absolutePath, linkOf(File(config, "charts")).absolutePath)
+        assertTrue(File(cardA, "charts").isDirectory)
+    }
+
+    @Test
     fun theDataFoldersGoToTheCardAndTheRestStays() {
         server()
         val moved = mutableListOf<String>()

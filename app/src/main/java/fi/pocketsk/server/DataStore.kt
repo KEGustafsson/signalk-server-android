@@ -56,6 +56,9 @@ internal class DataStore(
             if (!root.isDirectory && !root.mkdirs()) throw IOException("cannot make $root")
             sweep(root)
             sweep(File(root, PLUGIN_DATA))
+            // The charts folder is there from the start, so the first chart uploaded or taken in
+            // goes to the card through its link rather than to a folder made on the phone.
+            if (!exists(File(configDir, CHARTS))) File(root, CHARTS).mkdirs()
         }
         recover(configDir)
         recover(File(configDir, PLUGIN_DATA))
@@ -310,6 +313,9 @@ internal class DataStore(
     companion object {
         /** The data's folder in the app's own folder on a card. */
         const val CARD_DIR = "signalk"
+
+        /** The charts plugin's folder, the one the upload page and the USB inbox offer from the start. */
+        const val CHARTS = "charts"
 
         /** Where Signal K keeps the plugins' settings files and, beside them, their data folders. */
         const val PLUGIN_DATA = "plugin-config-data"
