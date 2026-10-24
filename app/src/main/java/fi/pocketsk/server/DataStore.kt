@@ -32,7 +32,9 @@ import java.nio.file.attribute.BasicFileAttributes
  * kept as `<name>.from-phone`.
  *
  * Plain java.nio, so it is unit-tested on the host's file system; it never follows a link into
- * what it deletes. Blocking, and a large folder takes minutes to copy: the supervisor's thread only.
+ * what it deletes. Blocking, and a large folder takes minutes to copy: the supervisor's thread only,
+ * and under [LOCK], which [Inbox] takes too, so a file the Dock takes in while a folder is being
+ * moved waits for the move rather than landing in the copy left behind and deleted with it.
  */
 internal class DataStore(
     private val configDir: File,
@@ -49,7 +51,7 @@ internal class DataStore(
      * data cannot be fetched and the server must still start.
      */
     @Throws(IOException::class)
-    fun place(root: File?, moving: (String) -> Unit = {}) {
+    fun place(root: File?, moving: (String) -> Unit = {}): Unit = synchronized(LOCK) {
         if (root != null) {
             if (!root.isDirectory && !root.mkdirs()) throw IOException("cannot make $root")
             sweep(root)
@@ -311,6 +313,9 @@ internal class DataStore(
 
         /** Where Signal K keeps the plugins' settings files and, beside them, their data folders. */
         const val PLUGIN_DATA = "plugin-config-data"
+
+        /** One writer of the data folders' places at a time in the process: [place] and [Inbox.take]. */
+        val LOCK = Any()
 
         /** What stays in `.signalk` on the phone whatever is chosen: the plugins, and the plugins' settings. */
         private val KEEP = setOf("node_modules", PLUGIN_DATA)

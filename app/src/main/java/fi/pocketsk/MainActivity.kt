@@ -452,12 +452,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun inbox(): Inbox? = DataVolumes.inbox(this)?.let { Inbox(it, runtime.configDir, ServerStatus.log(this)::note, DataVolumes::free) }
+    private fun inbox(card: File? = null): Inbox? =
+        DataVolumes.inbox(this)?.let { Inbox(it, runtime.configDir, ServerStatus.log(this)::note, DataVolumes::free, card = card) }
 
     /** The USB inbox into the data folders, on a worker thread; what came is in the server's log. */
     private fun takeInbox() {
         transportThread("dock-inbox", onError = {}) {
-            val taken = inbox()?.take().orEmpty()
+            // A new folder goes where the data is: the chosen card, while it is in.
+            val card = prefs.dataVolume?.let { DataVolumes.mounted(this, it) }?.root
+            val taken = inbox(card)?.take().orEmpty()
             if (taken.isNotEmpty()) ServerStatus.log(this).note("taken in from the USB inbox: ${taken.joinToString()}")
             refreshStorage()
         }

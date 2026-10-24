@@ -72,6 +72,28 @@ class InboxTest {
     }
 
     @Test
+    fun aFolderNewToTheServerIsMadeOnTheCardAndLinked() {
+        val card = tmp.newFolder("card", "signalk")
+        drop("charts/bay.mbtiles", "tiles")
+        val inbox = Inbox(inbox, config, { notes += it }, { Long.MAX_VALUE / 2 }, { clock }, card = card)
+        assertEquals(listOf("charts/bay.mbtiles"), inbox.take())
+        assertTrue(Files.isSymbolicLink(File(config, "charts").toPath()))
+        assertEquals("tiles", File(card, "charts/bay.mbtiles").readText())
+    }
+
+    @Test
+    fun aTakeThatFailsLeavesNoHalfCopyAndKeepsTheFile() {
+        // A folder in the way of the file: the rename into place fails.
+        File(config, "charts/bay.mbtiles/inside").mkdirs()
+        File(config, "charts/bay.mbtiles/inside/x").writeText("x")
+        val f = drop("charts/bay.mbtiles", "tiles")
+        assertEquals(emptyList<String>(), box().take())
+        assertTrue(f.exists())
+        assertEquals(0, File(config, ".pocketsk-uploads/charts").list()!!.size)
+        assertTrue(notes.any { it.startsWith("charts/bay.mbtiles stays in the inbox") })
+    }
+
+    @Test
     fun aFileOfTheSameNameIsReplaced() {
         File(config, "charts").mkdirs()
         File(config, "charts/bay.mbtiles").writeText("old")

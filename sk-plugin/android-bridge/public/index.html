@@ -59,7 +59,10 @@
     async function call(url, init) {
       const res = await fetch(url, { credentials: "same-origin", ...init });
       const body = await res.json().catch(() => ({}));
-      if (res.status === 401 || res.status === 403) throw new Error("Log in to the server's admin UI as an admin first.");
+      if (res.status === 401 || res.status === 403) {
+        // Not a network that went: no retry brings a login back.
+        throw Object.assign(new Error("Log in to the server's admin UI as an admin first."), { auth: true });
+      }
       return { res, body };
     }
 
@@ -134,14 +137,21 @@
           }));
         } catch (e) {
           // The network went: wait and carry on from what the server has.
-          if (++tries > 20) throw e;
+          if (e.auth || ++tries > 20) throw e;
           label.textContent = `${file.name}: connection lost, trying again…`;
-          await new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** Math.min(tries, 5))));
+          await pause(tries);
           offset = await received(file) ?? offset;
           continue;
         }
-        if (res.status === 409 && typeof body.received === "number") {
-          offset = body.received;
+        if (res.status === 409) {
+          if (++tries > 20) throw new Error(`${file.name}: ${body.message ?? "HTTP 409"}`);
+          if (typeof body.received === "number") {
+            offset = body.received;
+          } else {
+            // The request a dropped connection left on the server still writes this file: wait for it.
+            await pause(tries);
+            offset = await received(file) ?? offset;
+          }
           continue;
         }
         if (!res.ok) throw new Error(`${file.name}: ${body.message ?? `HTTP ${res.status}`}`);
@@ -151,6 +161,11 @@
       }
       label.textContent = `${file.name}: done, ${size(file.size)}`;
       bar.value = bar.max;
+    }
+
+    /** The wait before the next try: doubling from 2 s to 30 s. */
+    function pause(tries) {
+      return new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** Math.min(tries, 5))));
     }
 
     /** What the server has of an upload of `file`, from its list; null when it cannot be asked. */

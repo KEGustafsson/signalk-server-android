@@ -16,10 +16,13 @@ import java.nio.file.StandardCopyOption
  * A file is taken once it has been still for [SETTLE_MS], since a copy over USB may still be
  * writing it. It is copied into the folder's staging beside it, on its volume (the bridge plugin's
  * uploads use the same, `.pocketsk-uploads`), renamed into the folder whole, over a file of the
- * same name, and then deleted from the inbox: the charts plugin never sees half a chart.
+ * same name, and then deleted from the inbox: the charts plugin never sees half a chart. A folder
+ * the server has not got yet is made on the [card] when the data is kept on one, and linked from
+ * `.signalk` as [DataStore.place] links it, so a large chart never has to fit on the phone first.
  *
  * Plain java.nio, unit-tested on the host's file system, with the clock passed in. Blocking: a
- * worker thread or the supervisor's only, and one at a time ([LOCK]).
+ * worker thread or the supervisor's only, and one at a time with [DataStore.place]
+ * ([DataStore.LOCK]).
  */
 internal class Inbox(
     private val inbox: File,
@@ -27,6 +30,8 @@ internal class Inbox(
     private val note: (String) -> Unit,
     private val free: (File) -> Long,
     private val now: () -> Long = System::currentTimeMillis,
+    /** The data's folder on the chosen card ([DataVolumes.Volume.root]); null: the phone. */
+    private val card: File? = null,
 ) {
     /** What waits in the inbox: [files] of [bytes] in all, those still being written among them. */
     data class Waiting(val files: Int, val bytes: Long)
@@ -48,7 +53,7 @@ internal class Inbox(
      * Takes every settled file into its data folder; returns them as `<folder>/<name>`. A file that
      * cannot be taken (no room) stays in the inbox, said in [note], and the others are still taken.
      */
-    fun take(): List<String> = synchronized(LOCK) {
+    fun take(): List<String> = synchronized(DataStore.LOCK) {
         val taken = mutableListOf<String>()
         for ((folder, f) in candidates(settledOnly = true)) {
             try {
@@ -63,6 +68,12 @@ internal class Inbox(
 
     private fun takeOne(folder: String, f: File) {
         val dest = File(configDir, folder)
+        if (card != null && !Files.exists(dest.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            val there = File(card, folder)
+            Files.createDirectories(there.toPath())
+            Files.createDirectories(configDir.toPath())
+            Files.createSymbolicLink(dest.toPath(), there.toPath())
+        }
         Files.createDirectories(dest.toPath())
         val real = dest.toPath().toRealPath()
         val staging = real.resolveSibling(UPLOADS).resolve(folder)
@@ -71,9 +82,15 @@ internal class Inbox(
         val room = free(staging.toFile())
         if (room < size + MARGIN) throw IOException("it needs ${size / MB} MB, and there are ${room / MB} MB free")
         val part = staging.resolve(f.name + PART)
-        Files.copy(f.toPath(), part, StandardCopyOption.REPLACE_EXISTING)
-        part.toFile().setLastModified(f.lastModified())
-        Files.move(part, real.resolve(f.name), StandardCopyOption.REPLACE_EXISTING)
+        try {
+            Files.copy(f.toPath(), part, StandardCopyOption.REPLACE_EXISTING)
+            part.toFile().setLastModified(f.lastModified())
+            Files.move(part, real.resolve(f.name), StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: IOException) {
+            // Half a copy would only take room from the next try; the inbox still has the file.
+            Files.deleteIfExists(part)
+            throw e
+        }
         Files.delete(f.toPath())
     }
 
@@ -97,9 +114,6 @@ internal class Inbox(
 
         /** How long a file must be unchanged before it is taken. */
         const val SETTLE_MS = 30_000L
-
-        /** One take at a time in the process: the Dock's button and a server start may meet. */
-        private val LOCK = Any()
 
         /** The bridge plugin's staging folder name (sk-plugin/android-bridge/lib/files.js). */
         private const val UPLOADS = ".pocketsk-uploads"

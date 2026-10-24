@@ -464,9 +464,10 @@ internal class Supervisor(
                 log.note("moving $rel to ${to ?: "the phone"}")
                 publish(ServerState.Storage(waiting = false, volume = to))
             }
-            // What a computer left in the USB inbox, now the folders are where they belong.
+            // What a computer left in the USB inbox, now the folders are where they belong; a
+            // folder new to the server is made where they are.
             DataVolumes.inbox(app)?.let { dir ->
-                val taken = Inbox(dir, runtime.configDir, log::note, DataVolumes::free).take()
+                val taken = Inbox(dir, runtime.configDir, log::note, DataVolumes::free, card = root).take()
                 if (taken.isNotEmpty()) log.note("taken in from the USB inbox: ${taken.joinToString()}")
             }
             null
