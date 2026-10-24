@@ -163,9 +163,9 @@ internal class BleScanner(
         // A start costs one of the budget's; a stop costs nothing and goes at once, or a scan the
         // plugin is done with would run on until the budget had room. A start held back is tried
         // again when there is, each scan going its own way meanwhile.
-        // What is scanning is recorded only once the stack took the call: a start that threw (a
-        // permission taken back) is then still to do, and [rescan] or the adapter coming back
-        // tries it again.
+        // What is scanning is recorded call by call: a scan is off once its stop went through and
+        // on only once its start did, so a start that threw (a permission taken back) is still to
+        // do, and [rescan] or the adapter coming back tries it again.
         val now = SystemClock.elapsedRealtime()
         var wait = 0L
         if (openOn != wantOpen) {
@@ -175,11 +175,12 @@ internal class BleScanner(
             } else {
                 reporting({ note("ble: the open scan: $it") }) {
                     scanner.stopScan(open)
+                    openOn = false
                     if (wantOpen) {
                         scanner.startScan(null, settings(), open)
                         budget.started(now)
+                        openOn = true
                     }
-                    openOn = wantOpen
                 }
             }
         }
@@ -190,11 +191,12 @@ internal class BleScanner(
             } else {
                 reporting({ note("ble: the watch scan: $it") }) {
                     scanner.stopScan(watch)
+                    watching = emptyList()
                     if (wantWatch.isNotEmpty()) {
                         scanner.startScan(filters(wantWatch), settings(), watch)
                         budget.started(now)
+                        watching = wantWatch
                     }
-                    watching = wantWatch
                 }
             }
         }
