@@ -37,6 +37,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.DataStore
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LanAddress
@@ -458,10 +459,20 @@ class MainActivity : ComponentActivity() {
     /** The USB inbox into the data folders, on a worker thread; what came is in the server's log. */
     private fun takeInbox() {
         transportThread("dock-inbox", onError = {}) {
-            // A new folder goes where the data is: the chosen card, while it is in.
-            val card = prefs.dataVolume?.let { DataVolumes.mounted(this, it) }?.root
-            val taken = inbox(card)?.take().orEmpty()
-            if (taken.isNotEmpty()) ServerStatus.log(this).note("taken in from the USB inbox: ${taken.joinToString()}")
+            // A new folder goes where the data is, read under the lock a move holds, so a choice
+            // made meanwhile is the one used; with the chosen card not in, the files wait for it.
+            val log = ServerStatus.log(this)
+            val taken = synchronized(DataStore.LOCK) {
+                val uuid = prefs.dataVolume
+                val card = uuid?.let { DataVolumes.mounted(this, it) }?.root
+                if (uuid != null && card == null) {
+                    log.note("the USB inbox waits for ${prefs.dataVolumeName ?: uuid}, the card the server's data is on")
+                    emptyList()
+                } else {
+                    inbox(card)?.take().orEmpty()
+                }
+            }
+            if (taken.isNotEmpty()) log.note("taken in from the USB inbox: ${taken.joinToString()}")
             refreshStorage()
         }
     }
