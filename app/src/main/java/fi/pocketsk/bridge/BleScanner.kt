@@ -163,7 +163,7 @@ internal class BleScanner(
         // Each scan that changes costs a start; when the budget is spent, the rest waits.
         val now = SystemClock.elapsedRealtime()
         if (openOn != wantOpen) {
-            val wait = budget.wait(now)
+            val wait = budget.delayFor(now)
             if (wait > 0) return retry(wait)
             reporting({ note("ble: the open scan: $it") }) {
                 scanner.stopScan(open)
@@ -175,7 +175,7 @@ internal class BleScanner(
             openOn = wantOpen
         }
         if (watching != wantWatch) {
-            val wait = budget.wait(now)
+            val wait = budget.delayFor(now)
             if (wait > 0) return retry(wait)
             reporting({ note("ble: the watch scan: $it") }) {
                 scanner.stopScan(watch)

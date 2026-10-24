@@ -11,13 +11,13 @@ class BleRulesTest {
     fun startsKeepWithinTheBudget() {
         val b = ScanBudget(starts = 4, windowMs = 30_000)
         for (t in listOf(0L, 1_000, 2_000, 3_000)) {
-            assertEquals(0L, b.wait(t))
+            assertEquals(0L, b.delayFor(t))
             b.started(t)
         }
-        assertEquals("the fifth waits for the first to leave the window", 26_000L, b.wait(4_000))
-        assertEquals(0L, b.wait(30_000))
+        assertEquals("the fifth waits for the first to leave the window", 26_000L, b.delayFor(4_000))
+        assertEquals(0L, b.delayFor(30_000))
         b.started(30_000)
-        assertEquals(1_000L, b.wait(30_000))
+        assertEquals(1_000L, b.delayFor(30_000))
     }
 
     @Test

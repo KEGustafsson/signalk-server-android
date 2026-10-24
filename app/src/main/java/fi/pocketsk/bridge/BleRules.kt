@@ -11,7 +11,7 @@ internal class ScanBudget(private val starts: Int = MAX_STARTS, private val wind
     private val times = ArrayDeque<Long>()
 
     /** How long until a start is allowed at [now]; 0 when it is. */
-    fun wait(now: Long): Long {
+    fun delayFor(now: Long): Long {
         while (times.isNotEmpty() && now - times.first() >= windowMs) times.removeFirst()
         return if (times.size < starts) 0 else times.first() + windowMs - now
     }
