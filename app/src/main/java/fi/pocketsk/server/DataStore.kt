@@ -58,7 +58,8 @@ internal class DataStore(
             sweep(File(root, PLUGIN_DATA))
             // The charts folder is there from the start, so the first chart uploaded or taken in
             // goes to the card through its link rather than to a folder made on the phone.
-            if (!exists(File(configDir, CHARTS))) File(root, CHARTS).mkdirs()
+            val charts = File(root, CHARTS)
+            if (!exists(File(configDir, CHARTS)) && !isDir(charts) && !charts.mkdirs()) throw IOException("cannot make $charts")
         }
         recover(configDir)
         recover(File(configDir, PLUGIN_DATA))

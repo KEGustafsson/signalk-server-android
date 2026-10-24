@@ -60,6 +60,18 @@ class DataStoreTest {
     }
 
     @Test
+    fun aChartsFolderTheCardCannotHoldIsAnError() {
+        write(File(cardA, "charts"), "a file where the folder goes")
+        try {
+            store().place(cardA)
+            fail("placed without charts on the card")
+        } catch (e: IOException) {
+            assertTrue(e.message!!.startsWith("cannot make"))
+        }
+        assertFalse(File(config, "charts").exists())
+    }
+
+    @Test
     fun theDataFoldersGoToTheCardAndTheRestStays() {
         server()
         val moved = mutableListOf<String>()
