@@ -20,6 +20,7 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import fi.pocketsk.net.Backoff
 import fi.pocketsk.net.reporting
 
 /**
@@ -64,6 +65,8 @@ internal class BleScanner(
     private var watching: List<String> = emptyList()
     private val budget = ScanBudget()
     private val repeats = Repeats()
+    /** The pause before starting again a scan Android refused; back to the first once one is heard. */
+    private val failures = Backoff(firstMs = 5_000, maxMs = 300_000)
     private var toldNoPermission = false
     private var toldFailure = false
     private val apply = Runnable { look() }
@@ -78,11 +81,19 @@ internal class BleScanner(
             for (r in results) heard(r)
         }
 
+        /**
+         * Android refused the scan after [android.bluetooth.le.BluetoothLeScanner.startScan]
+         * returned: out of hardware filters, an internal error, too many starts. It is off now,
+         * and is started again after a growing pause (5 s doubling to 5 min, back to 5 s once
+         * anything is heard), since nothing else may ask for it for hours; a phone whose stack
+         * has no Bluetooth LE scanning at all is not asked again.
+         */
         override fun onScanFailed(errorCode: Int) {
             handler.post {
                 if (this === open) openOn = false else watching = emptyList()
                 if (!toldFailure) note("ble: the $name scan failed (Android's code $errorCode)")
                 toldFailure = true
+                if (running && errorCode != ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED) retry(failures.next())
             }
         }
     }
@@ -222,6 +233,7 @@ internal class BleScanner(
         val record = result.scanRecord ?: return
         val bytes = record.bytes ?: return
         val mac = result.device?.address ?: return
+        failures.reset()
         val length = minOf(bytes.size, BridgeProtocol.MAX_ADV_BYTES)
         // Synchronised with nothing else: the callbacks of both scans come on the stack's own thread.
         synchronized(repeats) {
