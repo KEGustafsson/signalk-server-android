@@ -22,10 +22,16 @@
  *     (bytes a device sent, as they came, base64; lib/serial.js makes sentences of them)
  *   {"t":"silence","id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f"}
  *     (the owner silenced that alarm on the phone; lib/alarms.js does it through the server)
+ *   {"t":"adv","mac":"CB:B8:33:4C:88:4F","rssi":-67,"data":"AgEGG/+ZBAUS/FOUw3wABP/8BAysNkIAzcu4M0yITw==","conn":true,"at":"random","ts":1760000000000}
+ *     (a Bluetooth LE advertisement as the phone heard it: the raw advertising data and scan
+ *     response, base64; conn and at where Android tells; lib/ble.js parses it)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment","cellular"],
  *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1,"cellular":0.0333},"bowOffsetDeg":0,
- *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400},"bt":true}}
+ *    "serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400},"bt":true},
+ *    "ble":{"scan":true,"watch":["CB:B8:33:4C:88:4F"]}}
+ *     (ble: whether to scan for Bluetooth LE devices, and the addresses to keep hearing with the
+ *     screen off, where Android stops a scan that names none)
  *   {"t":"alarms","list":[{"id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f","path":"notifications.navigation.anchor",
  *    "state":"alarm","message":"Anchor dragging","sound":true,"action":"silence"}]}
  *     (the boat's alarms whenever they change, the most urgent first; action is silence,
@@ -63,6 +69,12 @@ const MAX_DEVICES = 32;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 /** An alarm's id, as lib/alarms.js gives them: the server's notification id, or the path. */
 const ALARM_ID = /^[A-Za-z0-9._:-]{1,256}$/;
+/** A Bluetooth address as Android gives it, upper case. */
+const MAC = /^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/;
+/** Longest advertising data in an adv line: an extended advertisement and its scan response. */
+const MAX_ADV_BYTES = 2 * 1650;
+/** Most addresses a subscribe asks the app to keep hearing: Android's hardware filters are few. */
+const MAX_WATCH = 32;
 
 /**
  * Reads one line from the app: `{ok: true, msg}` for a message this plugin knows, `{ok: false,
@@ -90,6 +102,8 @@ function parseLine(line) {
     case "silence":
       if (typeof msg.id !== "string" || !ALARM_ID.test(msg.id)) return { ok: false, reason: "silence with a bad id" };
       return { ok: true, msg: { t: "silence", id: msg.id } };
+    case "adv":
+      return parseAdv(msg);
     default:
       return { ok: false, reason: `unknown type ${JSON.stringify(String(msg.t)).slice(0, 40)}` };
   }
@@ -130,6 +144,24 @@ function parseSerial(msg) {
     return { ok: false, reason: `serial from ${msg.id} that is not base64` };
   }
   return { ok: true, msg: { t: "serial", id: msg.id, data: Buffer.from(msg.data, "base64") } };
+}
+
+/**
+ * A Bluetooth LE advertisement: its address, a signal strength a radio can give (-127 to 20 dBm),
+ * and its advertising data as base64; whether it is connectable and its address type when the app
+ * sends them.
+ */
+function parseAdv(msg) {
+  if (typeof msg.mac !== "string" || !MAC.test(msg.mac)) return { ok: false, reason: "adv with a bad address" };
+  if (!Number.isInteger(msg.rssi) || msg.rssi < -127 || msg.rssi > 20) return { ok: false, reason: `adv from ${msg.mac} with a bad signal` };
+  if (typeof msg.data !== "string" || msg.data.length % 4 !== 0 || !BASE64.test(msg.data) || msg.data.length > Math.ceil(MAX_ADV_BYTES / 3) * 4) {
+    return { ok: false, reason: `adv from ${msg.mac} whose data is not base64` };
+  }
+  const out = { t: "adv", mac: msg.mac, rssi: msg.rssi, data: Buffer.from(msg.data, "base64") };
+  if (typeof msg.conn === "boolean") out.conn = msg.conn;
+  if (msg.at === "public" || msg.at === "random") out.at = msg.at;
+  out.ts = Number.isFinite(msg.ts) && Math.abs(msg.ts) <= MAX_TIME_MS ? msg.ts : null;
+  return { ok: true, msg: out };
 }
 
 /** A string for the status line: no control characters, at most `max` long. */
@@ -201,11 +233,25 @@ function serialMessage(options = {}) {
 }
 
 /**
- * What to ask the app for, from the plugin's settings; the app clamps the rates to its own bounds.
- * Everything is on unless turned off, but the heading, which is off unless turned on: a phone's
- * compass beside a boat's steel and wiring is often wrong, and it would compete with a real one.
+ * The Bluetooth LE part of a subscribe: a scan when the settings turn it on or a Bluetooth LE
+ * plugin asked for one through the node-ble stand-in ([demand], from lib/ble.js), and the
+ * addresses such a plugin was set up for (well-formed ones, at most [MAX_WATCH]).
  */
-function subscribeMessage(options = {}) {
+function bleMessage(options = {}, demand = {}) {
+  const watch = (Array.isArray(demand.watch) ? demand.watch : [])
+    .filter((m) => typeof m === "string" && MAC.test(m))
+    .slice(0, MAX_WATCH);
+  return { scan: options.ble === true || demand.scan === true, watch };
+}
+
+/**
+ * What to ask the app for, from the plugin's settings and what Bluetooth LE plugins want
+ * ([demand]); the app clamps the rates to its own bounds. Everything is on unless turned off,
+ * but the heading, which is off unless turned on: a phone's compass beside a boat's steel and
+ * wiring is often wrong, and it would compete with a real one. Bluetooth LE is off unless the
+ * settings or a plugin ask for it: a scan costs battery.
+ */
+function subscribeMessage(options = {}, demand = {}) {
   const sensors = [];
   if (options.battery !== false) sensors.push("battery");
   if (options.barometer !== false) sensors.push("baro");
@@ -226,6 +272,7 @@ function subscribeMessage(options = {}) {
     },
     bowOffsetDeg: degrees(options.bowOffset),
     serial: serialMessage(options),
+    ble: bleMessage(options, demand),
   };
 }
 
@@ -246,6 +293,8 @@ module.exports = {
   BAUD_RATES,
   DEVICE_ID,
   MAX_DEVICES,
+  MAX_WATCH,
+  MAX_ADV_BYTES,
   parseLine,
   toDelta,
   subscribeMessage,

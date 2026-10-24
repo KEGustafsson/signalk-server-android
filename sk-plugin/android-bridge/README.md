@@ -56,6 +56,18 @@ the app's **Serial devices** card: pairing alone is not enough, since a phone is
 headsets and cars too. The app dials each chosen device, and dials it again whenever the link
 drops. **Bluetooth serial devices** turns them all off.
 
+Bluetooth LE sensors (Ruuvi, Victron, Govee, Inkbird, Xiaomi, BTHome and the many others that
+advertise their readings) are heard by the phone's own Bluetooth. Every advertisement goes to the
+server's Bluetooth LE API, with the phone registered as a provider ("Android phone"), and to
+plugins written for a Raspberry Pi's Bluetooth: the app gives the server a stand-in for
+`@naugehyde/node-ble` that is fed by the phone, so **BT Sensors** (`bt-sensors-plugin-sk`) runs on
+the phone as it is, adapter `hci0` and all. Such a plugin starts the scan itself; **Bluetooth LE
+devices** starts it for the server's API alone. The addresses such a plugin is set up for are kept
+heard with the phone's screen off, which Android stops for a scan that names none. Allow Nearby
+devices in the app when it asks (below Android 12: location). Sensors that need a connection
+(GATT: most battery monitors) do not work yet; they report that connections are not available on
+Android.
+
 The boat's alarms go the other way, to the phone. The server's notifications at **Alarm level** or
 above (alarm and emergency by default; warn as well if set) ring on the phone with its own alarm
 sound on the alarm volume, vibrate it, and fill its locked screen. That is an anchor alarm that

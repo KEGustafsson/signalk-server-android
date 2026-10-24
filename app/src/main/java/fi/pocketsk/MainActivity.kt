@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import fi.pocketsk.bridge.BleScanner
 import fi.pocketsk.bridge.BluetoothSerial
 import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
@@ -119,8 +120,8 @@ class MainActivity : ComponentActivity() {
         SignalKService.permissionsChanged(this)
     }
 
-    /** Bluetooth for the paired serial devices; the bridge looks again whatever the answer. */
-    private val askBluetoothLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+    /** Bluetooth for the paired serial devices and the Bluetooth LE scan; the bridge looks again whatever the answer. */
+    private val askBluetoothLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         refreshPermissions()
         SignalKService.permissionsChanged(this)
     }
@@ -336,13 +337,20 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Asks for Bluetooth (Nearby devices) on Android 12 and later, or, once Android has stopped
-     * showing the dialog, opens this app's settings page, as [askLocation] does.
+     * Asks for Bluetooth (Nearby devices: talking to paired devices and scanning for Bluetooth LE
+     * ones, one dialog for both) on Android 12 and later, or, once Android has stopped showing the
+     * dialog for every one still missing, opens this app's settings page, as [askLocation] does.
      */
     private fun askBluetoothPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         val connect = android.Manifest.permission.BLUETOOTH_CONNECT
-        if (prefs.bluetoothAsked && !shouldShowRequestPermissionRationale(connect)) {
+        val scan = android.Manifest.permission.BLUETOOTH_SCAN
+        val missing = listOf(connect, scan).filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) return
+        // Android shows no rationale both before a first request and after a refusal it will not
+        // ask again; the flags tell the two apart, one per permission, since scanning came later.
+        val asked = mapOf(connect to prefs.bluetoothAsked, scan to prefs.bluetoothScanAsked)
+        if (missing.all { asked[it] == true && !shouldShowRequestPermissionRationale(it) }) {
             try {
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
                 return
@@ -351,7 +359,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         prefs.bluetoothAsked = true
-        askBluetoothLauncher.launch(connect)
+        prefs.bluetoothScanAsked = true
+        askBluetoothLauncher.launch(missing.toTypedArray())
     }
 
     /**
@@ -439,7 +448,8 @@ class MainActivity : ComponentActivity() {
                 null
             },
             location = granted(android.Manifest.permission.ACCESS_FINE_LOCATION),
-            bluetooth = BluetoothSerial.allowed(this),
+            // Below Android 12 both are install-time permissions; the scan's location is the row above.
+            bluetooth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) BluetoothSerial.allowed(this) && BleScanner.allowed(this) else true,
             fullScreen = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == true
             } else {

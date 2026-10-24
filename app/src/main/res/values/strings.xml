@@ -108,7 +108,7 @@
     <string name="dock_devices_usb">USB</string>
     <string name="dock_devices_none">No USB serial device is plugged in.</string>
     <string name="dock_devices_bluetooth">Bluetooth</string>
-    <string name="dock_bluetooth_why">Allow Nearby devices so the app can see the phone\'s paired Bluetooth devices. Pair a device in the phone\'s Bluetooth settings first, then switch it on here.</string>
+    <string name="dock_bluetooth_why">Allow Nearby devices so the app can see the phone\'s paired Bluetooth devices and hear Bluetooth LE sensors. Pair a serial device in the phone\'s Bluetooth settings first, then switch it on here.</string>
     <string name="dock_bluetooth_allow">Allow Bluetooth</string>
     <string name="dock_bluetooth_none">No paired Bluetooth device. Pair the NMEA device in the phone\'s Bluetooth settings, then switch it on here.</string>
     <string name="dock_device_open">%1$s · baud rate %2$d · %3$s read</string>

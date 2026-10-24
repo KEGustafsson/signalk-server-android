@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicLong
  *     files/sk/current      symlink to the live slot
  *     files/npm             npm itself (bin/npm-cli.js, lib, node_modules), extracted from the APK
  *     files/bin             node and npm, symlinks to the executable; later the node-gyp shim
- *     files/runtime         the preload every node loads ([preload], from runtime-tools/preload)
+ *     files/runtime         the preloads every node loads ([preloads], from runtime-tools/preload)
  *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
  *     cache/tmp             $TMPDIR
  *     no_backup/groups      one file per running [spawn], the id of its process group ([NodeProcess])
@@ -65,12 +65,14 @@ class NodeRuntime(context: Context) {
     val tmp = File(cache, "tmp")
 
     /**
-     * runtime-tools/preload/mdns-lookup.js, which every node this runtime starts loads before its
-     * own code ([nodeOptions]): Android has no resolver for `.local` names in native code, and
-     * Signal K connects to other servers by the names their mDNS advertisements give. The APK
-     * carries it as [PRELOAD_ASSET]; [ensureLayout] puts it here.
+     * runtime-tools/preload's files, which every node this runtime starts loads before its own
+     * code ([nodeOptions]), in [PRELOAD_ASSETS]' order: mdns-lookup.js, since Android has no
+     * resolver for `.local` names in native code and Signal K connects to other servers by the
+     * names their mDNS advertisements give, and node-ble.js, the Bluetooth LE that plugins written
+     * for BlueZ expect, fed by the phone's own scanner. The APK carries them as assets;
+     * [ensureLayout] puts them here.
      */
-    val preload = File(runtimeDir, PRELOAD_ASSET)
+    val preloads: List<File> = PRELOAD_ASSETS.map { File(runtimeDir, it) }
 
     /**
      * Where the launcher records each spawned node's process group; see [NodeProcess]. Not in the
@@ -88,7 +90,7 @@ class NodeRuntime(context: Context) {
 
     /**
      * Creates the directories, points `files/bin/node` and `files/bin/npm` at this install's
-     * executable and puts the APK's [preload] in place. Idempotent, and cheap enough to call on
+     * executable and puts the APK's [preloads] in place. Idempotent, and cheap enough to call on
      * every start.
      *
      * The links are checked every time, not only created once: nativeLibraryDir is a new random
@@ -110,7 +112,7 @@ class NodeRuntime(context: Context) {
             groups.listFiles()?.forEach { it.delete() }
             groupsSwept = true
         }
-        installPreload()
+        installPreloads()
         if (!isAvailable) return
         // Symlinks into nativeLibraryDir: `node` is on PATH for npm's lifecycle scripts, `npm`
         // for Signal K Server, which runs it by name. Whether exec follows them across the
@@ -120,22 +122,24 @@ class NodeRuntime(context: Context) {
     }
 
     /**
-     * Writes the APK's [PRELOAD_ASSET] to [preload] unless that file holds it already; under
-     * [LAYOUT_LOCK]. Beside it first and then renamed, so a node starting meanwhile reads the old
-     * file or the new one, never half of one. An APK without the asset (a build that lost it)
-     * writes nothing, and [env] then leaves the preload out rather than name a file that is not
-     * there, which would stop every node from starting.
+     * Writes each of the APK's [PRELOAD_ASSETS] to its file in [preloads] unless the file holds it
+     * already; under [LAYOUT_LOCK]. Beside it first and then renamed, so a node starting meanwhile
+     * reads the old file or the new one, never half of one. An APK without an asset (a build that
+     * lost it) writes nothing for it, and [env] then leaves that preload out rather than name a
+     * file that is not there, which would stop every node from starting.
      */
-    private fun installPreload() {
-        val bytes = try {
-            app.assets.open(PRELOAD_ASSET).use { it.readBytes() }
-        } catch (_: IOException) {
-            return
+    private fun installPreloads() {
+        for ((name, file) in PRELOAD_ASSETS.zip(preloads)) {
+            val bytes = try {
+                app.assets.open(name).use { it.readBytes() }
+            } catch (_: IOException) {
+                continue
+            }
+            if (file.isFile && file.readBytes().contentEquals(bytes)) continue
+            val staging = File(runtimeDir, "$name.new")
+            staging.writeBytes(bytes)
+            if (!staging.renameTo(file)) throw IOException("could not move $staging to $file")
         }
-        if (preload.isFile && preload.readBytes().contentEquals(bytes)) return
-        val staging = File(runtimeDir, "$PRELOAD_ASSET.new")
-        staging.writeBytes(bytes)
-        if (!staging.renameTo(preload)) throw IOException("could not move $staging to $preload")
     }
 
     /** Points [link] at [executable] unless it already does; under [LAYOUT_LOCK]. */
@@ -190,7 +194,7 @@ class NodeRuntime(context: Context) {
     /**
      * The environment every Node process gets. The heap cap is sized from the phone's RAM
      * because the default is a desktop's; a 3 GB tablet should not let V8 grow past 512 MB.
-     * [NODE_OPTIONS][nodeOptions] also loads the [preload], once [ensureLayout] has put it in place.
+     * [NODE_OPTIONS][nodeOptions] also loads the [preloads], those [ensureLayout] has put in place.
      */
     fun env(): Map<String, String> {
         val totalMb = memoryMb()
@@ -201,7 +205,7 @@ class NodeRuntime(context: Context) {
             "PATH" to "${binDir.absolutePath}:/system/bin",
             "LD_LIBRARY_PATH" to nativeLibraryDir.absolutePath,
             "SIGNALK_NODE_CONFIG_DIR" to configDir.absolutePath,
-            "NODE_OPTIONS" to nodeOptions(heapMb, preload.takeIf { it.isFile }),
+            "NODE_OPTIONS" to nodeOptions(heapMb, preloads.filter { it.isFile }),
             NPM_CLI_ENV to npmCli.absolutePath,
             "npm_config_cache" to File(home, ".npm").absolutePath,
             "npm_config_prefix" to current.absolutePath,
@@ -277,16 +281,16 @@ class NodeRuntime(context: Context) {
         /** npm's registry tarball, put into the APK's assets by this module's build. */
         const val NPM_ASSET = "npm.tgz"
 
-        /** runtime-tools/preload/mdns-lookup.js, which this module's build adds to the APK's assets. */
-        const val PRELOAD_ASSET = "mdns-lookup.js"
+        /** runtime-tools/preload's files, which this module's build adds to the APK's assets, in the order they load. */
+        val PRELOAD_ASSETS = listOf("mdns-lookup.js", "node-ble.js")
 
         /**
-         * `NODE_OPTIONS`: the heap cap, and [preload] loaded with `--require` when there is one.
-         * The path is quoted as NODE_OPTIONS reads it, the one form a space in it cannot split.
+         * `NODE_OPTIONS`: the heap cap, and each of [preloads] loaded with `--require`, in order.
+         * Each path is quoted as NODE_OPTIONS reads it, the one form a space in it cannot split.
          */
-        fun nodeOptions(heapMb: Long, preload: File?): String = buildString {
+        fun nodeOptions(heapMb: Long, preloads: List<File>): String = buildString {
             append("--max-old-space-size=").append(heapMb)
-            if (preload != null) append(" --require=\"").append(preload.absolutePath).append('"')
+            for (p in preloads) append(" --require=\"").append(p.absolutePath).append('"')
         }
 
         /** Written last into an unpacked npm: what was unpacked, so the next start can tell. */

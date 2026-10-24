@@ -12,8 +12,9 @@ import java.util.concurrent.Executors
  * The Android bridge's app half (docs/PLAN.md §7.1): the socket the server's plugin connects to
  * ([BridgeServer]), the phone's sensors it asks for ([PhoneSensors]), and the serial devices:
  * USB ones plugged into the phone ([UsbSerial]) and paired Bluetooth ones ([BluetoothSerial]),
- * listed together for the plugin and the Dock by a [DeviceList]; and the other way, the boat's
- * alarms, which ring on the phone ([PhoneAlarm]). Started with the server
+ * listed together for the plugin and the Dock by a [DeviceList]; the Bluetooth LE devices the
+ * phone hears ([BleScanner]); and the other way, the boat's alarms, which ring on the phone
+ * ([PhoneAlarm]). Started with the server
  * and stopped with it by [fi.pocketsk.server.SignalKService]; the plugin itself is put in place by
  * [BridgePlugin] before every start and finds the socket through [ENV].
  *
@@ -26,6 +27,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     private val usb = UsbSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.USB, it) }, log::note)
     private val bluetooth = BluetoothSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.BLUETOOTH, it) }, log::note)
     private val alarms = PhoneAlarm(context, ::sendToPeer, log::note)
+    private val ble = BleScanner(context, ::sendToPeer, log::note)
     private val server = BridgeServer(socketFile(context), ::connected, ::line, ::disconnected, log::note)
 
     @Volatile private var peer: BridgeServer.Peer? = null
@@ -42,6 +44,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         reporting(::failed) { server.start() }
         usb.start()
         bluetooth.start()
+        ble.start()
     }
 
     fun stop() = control.execute {
@@ -49,18 +52,20 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         sensors.apply(BridgeProtocol.Subscription.NONE)
         usb.stop()
         bluetooth.stop()
+        ble.stop()
         alarms.stop()
         ServerStatus.publishDeltaRate(null)
     }
 
     /**
      * A permission may have been granted (location, a USB device, Bluetooth, notifications): the
-     * sensors try again what they could not start, the serial devices are looked at again, and an
-     * alarm that could not be shown is posted.
+     * sensors try again what they could not start, the serial devices are looked at again, the
+     * Bluetooth LE scans are tried again, and an alarm that could not be shown is posted.
      */
     fun permissionsChanged() {
         sensors.reapply()
         devicesChanged()
+        ble.rescan()
         alarms.refresh()
     }
 
@@ -83,6 +88,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             sensors.close()
             usb.close()
             bluetooth.close()
+            ble.close()
             alarms.close()
         }
         control.shutdown()
@@ -104,6 +110,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
                 sensors.apply(msg.subscription)
                 usb.apply(msg.subscription.serial)
                 bluetooth.apply(msg.subscription.serial)
+                ble.apply(msg.subscription.ble)
             }
             is BridgeProtocol.Incoming.Alarms -> if (p === peer) alarms.update(msg.list)
             is BridgeProtocol.Incoming.Stats -> if (p === peer) ServerStatus.publishDeltaRate(msg.deltaRate)
@@ -117,6 +124,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         sensors.apply(BridgeProtocol.Subscription.NONE)
         usb.apply(BridgeProtocol.Serial.NONE)
         bluetooth.apply(BridgeProtocol.Serial.NONE)
+        ble.apply(BridgeProtocol.Ble.NONE)
         alarms.lost()
         // With the plugin gone, nobody counts: no rate is better than the last one shown as current.
         ServerStatus.publishDeltaRate(null)
