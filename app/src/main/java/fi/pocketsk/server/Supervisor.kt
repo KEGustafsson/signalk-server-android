@@ -218,6 +218,8 @@ internal class Supervisor(
             placeData()?.let { return it }
             // A stop that came during a long move: the move is done, and nothing is started.
             if (!synchronized(this) { wanted }) return ServerState.Stopped
+            // The card went while its data was being placed: back to waiting for it, not a start without it.
+            if (dataCardGone()) continue
             val trial = armGate(version)
             val endpoint = readEndpoint()
             publish(ServerState.Starting(version, slot))
@@ -488,8 +490,17 @@ internal class Supervisor(
             log.note("${prefs.dataVolumeName ?: uuid} is being taken out: stopping the server until it is back")
             end(Ask.RESTART)
         } else {
+            // Between runs: a spawn about to happen is ended by the restart it then finds.
+            ask = Ask.RESTART
             waiter.wake()
         }
+    }
+
+    /** Whether the card the data is on was ejected or is not mounted, after [placeData] found it. */
+    private fun dataCardGone(): Boolean {
+        val uuid = prefs.dataVolume ?: return false
+        if (synchronized(this) { ejectedAt != null }) return true
+        return DataVolumes.mounted(app, uuid) == null
     }
 
     /**

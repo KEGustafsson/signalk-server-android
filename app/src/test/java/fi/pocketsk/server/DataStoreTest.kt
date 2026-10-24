@@ -76,6 +76,20 @@ class DataStoreTest {
     }
 
     @Test
+    fun aLinkToASecretIsNotCopiedToTheCard() {
+        server()
+        Files.createSymbolicLink(File(config, "charts/key").toPath(), File(config, "security.json").toPath())
+        Files.createSymbolicLink(File(config, "charts/config").toPath(), File(config, "plugin-config-data/some-plugin.json").toPath())
+        write(File(config, "elsewhere/notes.txt"), "notes")
+        Files.createSymbolicLink(File(config, "charts/notes").toPath(), File(config, "elsewhere/notes.txt").toPath())
+        store().place(cardA)
+        assertFalse(File(cardA, "charts/key").exists())
+        assertFalse(File(cardA, "charts/config").exists())
+        assertEquals("notes", File(cardA, "charts/notes").readText())
+        assertTrue(notes.any { it.contains("a link to a file that stays on the phone") })
+    }
+
+    @Test
     fun placingAgainChangesNothing() {
         server()
         store().place(cardA)

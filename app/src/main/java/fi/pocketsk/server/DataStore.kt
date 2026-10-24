@@ -232,12 +232,34 @@ internal class DataStore(
                 val out = dst.resolve(src.relativize(file).toString())
                 when {
                     attrs.isRegularFile -> copyFile(file, out)
+                    attrs.isSymbolicLink && Files.isRegularFile(file) && phoneOnly(file) ->
+                        note("$rel: left out $file, a link to a file that stays on the phone")
                     attrs.isSymbolicLink && Files.isRegularFile(file) -> copyFile(file, out)
                     else -> note("$rel: left out $file, which is not a file")
                 }
                 return FileVisitResult.CONTINUE
             }
         })
+    }
+
+    /**
+     * Whether the link [link] reaches a file that stays on the phone: one directly in `.signalk`
+     * (`security.json`, the SSL key), in `node_modules`, or a plugin's settings file. Copied, its
+     * secret would be on the card for anyone who takes it out.
+     */
+    private fun phoneOnly(link: Path): Boolean {
+        val home = try {
+            configDir.toPath().toRealPath()
+        } catch (_: IOException) {
+            return false
+        }
+        val target = try {
+            link.toRealPath()
+        } catch (_: IOException) {
+            return false
+        }
+        return target.startsWith(home) &&
+            (target.parent == home || target.startsWith(home.resolve("node_modules")) || target.parent == home.resolve(PLUGIN_DATA))
     }
 
     private fun copyFile(file: Path, out: Path) {

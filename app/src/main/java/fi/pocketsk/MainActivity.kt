@@ -85,7 +85,8 @@ class MainActivity : ComponentActivity() {
     private var setupDone by mutableStateOf<Boolean?>(null)
 
     private val serverObserver = ServerStatus.Observer { state ->
-        val wasActive = model.server.isActive
+        val before = model.server
+        val wasActive = before.isActive
         model.server = state
         model.log = ServerStatus.log(this).tail(LOG_LINES)
         model.devices = ServerStatus.devices
@@ -96,8 +97,9 @@ class MainActivity : ComponentActivity() {
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
-        // A move under way or just done changes what is free where.
-        if (state is ServerState.Storage || state is ServerState.Starting || state.isActive != wasActive) refreshStorage()
+        // A move under way or just done changes what is free where. Not on every publish of the same
+        // state: a starting server's every log line comes here.
+        if (state is ServerState.Storage || state::class != before::class || state.isActive != wasActive) refreshStorage()
     }
 
     private val installObserver = InstallJob.Observer { state, running ->
