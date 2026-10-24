@@ -216,8 +216,9 @@ internal class Supervisor(
             if (slot == null || version == null) return failed("signalk-server is not installed")
             val main = runtime.serverMain(File(runtime.slots, slot))
             placeData()?.let { return it }
-            // A stop that came during a long move: the move is done, and nothing is started.
-            if (!synchronized(this) { wanted }) return ServerState.Stopped
+            // A stop, or a restart (a new choice in the Dock), that came during a long move: the
+            // move is done, and the loop looks again before anything starts.
+            if (synchronized(this) { !wanted || ask == Ask.RESTART }) continue
             // The card went while its data was being placed: back to waiting for it, not a start without it.
             if (dataCardGone()) continue
             val trial = armGate(version)
@@ -425,54 +426,63 @@ internal class Supervisor(
      * may go on, else the state to end in. A chosen card that is not in the phone, or that was
      * just taken out ([storageEjected]), is waited for, checked every [CARD_POLL_MS] and at once
      * when it is put in ([storageMounted]), rather than given up on: the server without its
-     * data would start as a new one. A folder that cannot be moved (a full card) gives up, with
-     * the data left whole where it was.
+     * data would start as a new one, and so is one taken out in the middle of a move. A folder
+     * that cannot be moved with the card in (a full card) gives up, with the data left whole
+     * where it was.
      */
     private fun placeData(): ServerState? {
-        var told: String? = null
-        var root: File? = null
-        var to: String? = null
         while (true) {
-            // Read again on every look: the owner may choose the phone while the card is away.
-            val uuid = prefs.dataVolume ?: break
-            val name = prefs.dataVolumeName ?: uuid
-            val volume = DataVolumes.mounted(app, uuid)
-            val ejecting = synchronized(this) {
-                val at = ejectedAt
-                // Ejected and gone again: from here on it is a card coming back.
-                if (at != null && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) ejectedAt = null
-                ejectedAt != null
+            var told: String? = null
+            var root: File? = null
+            var to: String? = null
+            while (true) {
+                // Read again on every look: the owner may choose the phone while the card is away.
+                val uuid = prefs.dataVolume ?: break
+                val name = prefs.dataVolumeName ?: uuid
+                val volume = DataVolumes.mounted(app, uuid)
+                val ejecting = synchronized(this) {
+                    val at = ejectedAt
+                    // Ejected and gone again: from here on it is a card coming back.
+                    if (at != null && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) ejectedAt = null
+                    ejectedAt != null
+                }
+                if (volume != null && !ejecting) {
+                    root = volume.root
+                    to = name
+                    break
+                }
+                if (told != name) log.note("waiting for $name, the card the server's data is on")
+                told = name
+                publish(ServerState.Storage(waiting = true, volume = name))
+                waiter.await(CARD_POLL_MS)
+                synchronized(this) {
+                    if (!wanted) return ServerState.Stopped
+                    // A restart asked for while waiting (a new choice in the Dock) is this look.
+                    if (ask == Ask.RESTART) ask = Ask.NONE
+                }
             }
-            if (volume != null && !ejecting) {
-                root = volume.root
-                to = name
-                break
+            if (told != null && to != null) log.note("$to is in")
+            try {
+                DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
+                    log.note("moving $rel to ${to ?: "the phone"}")
+                    publish(ServerState.Storage(waiting = false, volume = to))
+                }
+                // What a computer left in the USB inbox, now the folders are where they belong; a
+                // folder new to the server is made where they are.
+                DataVolumes.inbox(app)?.let { dir ->
+                    val taken = Inbox(dir, runtime.configDir, log::note, DataVolumes::free, card = root).take()
+                    if (taken.isNotEmpty()) log.note("taken in from the USB inbox: ${taken.joinToString()}")
+                }
+                return null
+            } catch (e: IOException) {
+                // The card taken out in the middle of a move: the move is whole on one side, and
+                // the next place carries on from it once the card is back.
+                if (dataCardGone()) {
+                    log.note("${to ?: "the card"} went while the server's data was being moved: ${e.message ?: e}")
+                    continue
+                }
+                return failed("the server's data could not be moved: ${e.message ?: e}")
             }
-            if (told != name) log.note("waiting for $name, the card the server's data is on")
-            told = name
-            publish(ServerState.Storage(waiting = true, volume = name))
-            waiter.await(CARD_POLL_MS)
-            synchronized(this) {
-                if (!wanted) return ServerState.Stopped
-                // A restart asked for while waiting (a new choice in the Dock) is this look.
-                if (ask == Ask.RESTART) ask = Ask.NONE
-            }
-        }
-        if (told != null && to != null) log.note("$to is in")
-        return try {
-            DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
-                log.note("moving $rel to ${to ?: "the phone"}")
-                publish(ServerState.Storage(waiting = false, volume = to))
-            }
-            // What a computer left in the USB inbox, now the folders are where they belong; a
-            // folder new to the server is made where they are.
-            DataVolumes.inbox(app)?.let { dir ->
-                val taken = Inbox(dir, runtime.configDir, log::note, DataVolumes::free, card = root).take()
-                if (taken.isNotEmpty()) log.note("taken in from the USB inbox: ${taken.joinToString()}")
-            }
-            null
-        } catch (e: IOException) {
-            failed("the server's data could not be moved: ${e.message ?: e}")
         }
     }
 

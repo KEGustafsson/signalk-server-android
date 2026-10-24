@@ -81,9 +81,13 @@ class Files {
     return [...names].sort();
   }
 
-  /** A folder's files, the uploads under way into it, and the room left where it is. */
+  /**
+   * A folder's files, the uploads under way into it, and the room left where it is. `charts`,
+   * which [folders] offers on a server that has none yet, is made here, or the page could not
+   * list it and so never upload into it.
+   */
   async list(folder) {
-    const dir = await this.folder(folder, false);
+    const dir = await this.folder(folder, folder === "charts");
     const files = [];
     for (const e of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
       if (!e.isFile() || e.name.startsWith(".")) continue;

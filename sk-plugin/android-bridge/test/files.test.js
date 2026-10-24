@@ -139,6 +139,9 @@ test("the folders are the data folders there are, and charts always", async () =
   await rejects(files.list("nothing-here"), 404);
   const none = new Files({ configDir: path.join(dir, "missing"), free: plenty });
   assert.deepEqual(await none.folders(), ["charts"]);
+  // The folder offered is one that can be listed, and so uploaded into.
+  assert.deepEqual((await none.list("charts")).files, []);
+  assert.ok(fs.existsSync(path.join(dir, "missing", "charts")));
 });
 
 test("the room is the volume's own when none is given", async () => {
