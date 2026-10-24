@@ -70,7 +70,7 @@ internal class DataStore(
             when {
                 linked != null && there != null && linked.absolutePath == there.absolutePath -> {
                     // Ours already. A card emptied on a PC gets the folder back, empty.
-                    if (!there.isDirectory) there.mkdirs()
+                    Files.createDirectories(there.toPath())
                 }
                 linked != null -> {
                     moving(rel)
@@ -83,7 +83,7 @@ internal class DataStore(
                     toCard(here, there, rel)
                 }
                 !exists(here) && isDir(there) -> {
-                    here.parentFile?.mkdirs()
+                    here.parentFile?.let { Files.createDirectories(it.toPath()) }
                     Files.createSymbolicLink(here.toPath(), there.toPath())
                 }
             }

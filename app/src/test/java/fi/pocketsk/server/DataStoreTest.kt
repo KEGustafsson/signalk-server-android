@@ -72,6 +72,19 @@ class DataStoreTest {
     }
 
     @Test
+    fun aLinkedFolderTheCardCannotHoldIsAnError() {
+        server()
+        store().place(cardA)
+        File(cardA, "charts").deleteRecursively()
+        write(File(cardA, "charts"), "a file where the folder goes")
+        try {
+            store().place(cardA)
+            fail("placed with charts unusable on the card")
+        } catch (_: IOException) {
+        }
+    }
+
+    @Test
     fun theDataFoldersGoToTheCardAndTheRestStays() {
         server()
         val moved = mutableListOf<String>()
