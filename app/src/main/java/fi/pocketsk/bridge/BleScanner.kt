@@ -65,8 +65,6 @@ internal class BleScanner(
     private var watching: List<String> = emptyList()
     private val budget = ScanBudget()
     private val repeats = Repeats()
-    /** The pause before starting again a scan Android refused; back to the first once one is heard. */
-    private val failures = Backoff(firstMs = 5_000, maxMs = 300_000)
     private var toldNoPermission = false
     private var toldFailure = false
     private val apply = Runnable { look() }
@@ -75,9 +73,20 @@ internal class BleScanner(
     private val watch = Callback("watch")
 
     private inner class Callback(val name: String) : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) = heard(result)
+        /**
+         * The pause before this scan is started again after Android refused it; back to the first
+         * once this scan hears anything. One per scan, so the other scan hearing its devices does
+         * not cut short the pauses of one that keeps being refused.
+         */
+        private val failures = Backoff(firstMs = 5_000, maxMs = 300_000)
+
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            failures.reset()
+            heard(result)
+        }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
+            if (results.isNotEmpty()) failures.reset()
             for (r in results) heard(r)
         }
 
@@ -85,7 +94,7 @@ internal class BleScanner(
          * Android refused the scan after [android.bluetooth.le.BluetoothLeScanner.startScan]
          * returned: out of hardware filters, an internal error, too many starts. It is off now,
          * and is started again after a growing pause (5 s doubling to 5 min, back to 5 s once
-         * anything is heard), since nothing else may ask for it for hours; a phone whose stack
+         * the scan hears anything), since nothing else may ask for it for hours; a phone whose stack
          * has no Bluetooth LE scanning at all is not asked again.
          */
         override fun onScanFailed(errorCode: Int) {
@@ -233,7 +242,6 @@ internal class BleScanner(
         val record = result.scanRecord ?: return
         val bytes = record.bytes ?: return
         val mac = result.device?.address ?: return
-        failures.reset()
         val length = minOf(bytes.size, BridgeProtocol.MAX_ADV_BYTES)
         // Synchronised with nothing else: the callbacks of both scans come on the stack's own thread.
         synchronized(repeats) {
