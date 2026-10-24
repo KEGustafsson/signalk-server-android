@@ -23,6 +23,10 @@
  * And the phone's Bluetooth LE scanner (lib/ble.js): the advertisements it hears go to the
  * server's Bluetooth LE API and to plugins written for BlueZ, through the node-ble stand-in the
  * app preloads, which also says when such a plugin wants a scan.
+ *
+ * Its web page (public/index.html, a Signal K webapp) uploads files into the server's data folders,
+ * charts above all, through the routes in registerWithRouter (lib/files.js). Those work on any
+ * server, phone or not.
  */
 
 const { Link } = require("./lib/link");
@@ -30,6 +34,7 @@ const { parseLine, toDelta, subscribeMessage, statsMessage, VERSION, BAUD_RATES,
 const { SerialInput, loadNmeaParser } = require("./lib/serial");
 const { Alarms, LEVELS } = require("./lib/alarms");
 const { Ble } = require("./lib/ble");
+const { Files, FilesError, bytes } = require("./lib/files");
 const pkg = require("./package.json");
 
 const ENV = "POCKETSK_BRIDGE";
@@ -39,8 +44,9 @@ const STATS_MS = 5000;
 /**
  * @param {object} app the Signal K plugin API; `deps.env` lets tests name a socket,
  * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's, `deps.statsMs`
- * how often the server's delta rate is sent, and `deps.bleHub` the node-ble stand-in's hub
- * (null for none) in place of the one the app preloads
+ * how often the server's delta rate is sent, `deps.bleHub` the node-ble stand-in's hub
+ * (null for none) in place of the one the app preloads, and `deps.configDir` the server's
+ * `.signalk` for the file routes in place of the server's own
  */
 module.exports = function androidBridge(app, deps = {}) {
   const env = deps.env ?? process.env;
@@ -276,6 +282,32 @@ module.exports = function androidBridge(app, deps = {}) {
       ble = null;
     },
 
+    /**
+     * The file routes (lib/files.js), under /plugins/pocketsk-android-bridge/files, which
+     * signalk-server lets admins alone use while security is on:
+     * GET /files the data folders; GET /files/:folder its files and uploads under way;
+     * PUT /files/:folder/:name?offset=&total= one piece of a file, the raw bytes as the body;
+     * DELETE /files/:folder/:name a file (?upload=1: the upload of it under way).
+     */
+    registerWithRouter(router) {
+      router.get("/files", answer(async () => ({ folders: await files().folders() })));
+      router.get("/files/:folder", answer((req) => files().list(req.params.folder)));
+      router.put("/files/:folder/:name", answer((req) =>
+        files().put(
+          req.params.folder,
+          req.params.name,
+          bytes(req.query.offset),
+          bytes(req.query.total),
+          bytes(req.headers["content-length"]),
+          req,
+        ),
+      ));
+      router.delete("/files/:folder/:name", answer(async (req) => {
+        await files().remove(req.params.folder, req.params.name, req.query.upload === "1");
+        return { ok: true };
+      }));
+    },
+
     /** For tests and the status line. */
     statusNow: () => ({
       connected: link?.connected ?? false,
@@ -287,6 +319,33 @@ module.exports = function androidBridge(app, deps = {}) {
       ble: ble?.stats() ?? null,
     }),
   };
+
+  /** The file store on the server's `.signalk`, made when a route first needs it. */
+  let store = null;
+  function files() {
+    const configDir = deps.configDir ?? app.config?.configPath ?? env.SIGNALK_NODE_CONFIG_DIR;
+    if (!configDir) throw new FilesError(503, "the server's configuration folder is not known");
+    if (store?.configDir !== configDir) store = new Files({ configDir });
+    return store;
+  }
+
+  /**
+   * An Express handler from `fn`, whose result is the JSON answer and whose FilesError is the
+   * status. An answer before the whole body was read closes the connection, so a browser does not
+   * go on sending a piece nobody reads.
+   */
+  function answer(fn) {
+    return async (req, res) => {
+      try {
+        res.json(await fn(req));
+      } catch (e) {
+        const status = e instanceof FilesError ? e.status : 500;
+        if (status === 500) app.debug(`files: ${e.stack ?? e}`);
+        if (!req.complete) res.set("Connection", "close");
+        res.status(status).json({ message: e.message, ...(e.extra ?? {}) });
+      }
+    };
+  }
 
   /**
    * The vessel's own notifications, through the server's subscription manager as every plugin

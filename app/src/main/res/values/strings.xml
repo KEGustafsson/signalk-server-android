@@ -129,6 +129,13 @@
     <string name="dock_storage_confirm_title">Move the server\'s data?</string>
     <string name="dock_storage_confirm_card">The server restarts and copies its data to %1$s first; with many charts that takes minutes. From then on it waits for the card whenever the card is out.</string>
     <string name="dock_storage_confirm_phone">The server restarts and copies its data back to the phone first. A folder whose card is not in the phone starts again empty; its data stays on the card.</string>
+    <string name="dock_storage_upload">From a browser: the server\'s Pocket SK files page, among its webapps, uploads charts and other files into its data, wherever it is.</string>
+    <string name="dock_inbox_where">From a computer over USB: copy them into the phone\'s Android/data/fi.pocketsk/files/inbox/charts (or inbox/&lt;folder&gt;). They are taken in when the server starts, or now with Take them in.</string>
+    <plurals name="dock_inbox_waiting">
+        <item quantity="one">%1$d file (%2$s) in the inbox</item>
+        <item quantity="other">%1$d files (%2$s) in the inbox</item>
+    </plurals>
+    <string name="dock_inbox_take">Take them in</string>
     <string name="dock_storage_move">Move</string>
     <string name="dock_storage_cancel">Cancel</string>
     <string name="dock_log_title">Log</string>

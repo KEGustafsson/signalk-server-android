@@ -418,7 +418,8 @@ internal class Supervisor(
     }
 
     /**
-     * Puts the data folders where the owner chose ([DataStore]) before a run; null when the run
+     * Puts the data folders where the owner chose ([DataStore]) before a run, and takes in what
+     * waits in the USB inbox ([Inbox]); null when the run
      * may go on, else the state to end in. A chosen card that is not in the phone, or that was
      * just taken out ([storageEjected]), is waited for, checked every [CARD_POLL_MS] and at once
      * when it is put in ([storageMounted]), rather than given up on: the server without its
@@ -460,6 +461,11 @@ internal class Supervisor(
             DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
                 log.note("moving $rel to ${to ?: "the phone"}")
                 publish(ServerState.Storage(waiting = false, volume = to))
+            }
+            // What a computer left in the USB inbox, now the folders are where they belong.
+            DataVolumes.inbox(app)?.let { dir ->
+                val taken = Inbox(dir, runtime.configDir, log::note, DataVolumes::free).take()
+                if (taken.isNotEmpty()) log.note("taken in from the USB inbox: ${taken.joinToString()}")
             }
             null
         } catch (e: IOException) {

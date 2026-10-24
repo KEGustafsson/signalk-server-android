@@ -11,7 +11,9 @@
   phone does not have. files/logs is the server's output, this phone's story, and may carry
   whatever a plugin printed.
   The data folders the owner may move to an SD card or USB drive (DataStore) are in the app's
-  folder on that card, which neither backup nor device transfer takes.
+  folder on that card, which neither backup nor device transfer takes. The USB inbox (Inbox) is in
+  the app's folder on the phone's shared storage, the external domain: files on their way in, which
+  stay on this phone.
 -->
 <data-extraction-rules>
     <cloud-backup>
@@ -26,6 +28,7 @@
         <exclude domain="file" path="plugins" />
         <exclude domain="file" path="runtime" />
         <exclude domain="file" path="bridge.sock" />
+        <exclude domain="external" path="." />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="." />
@@ -39,5 +42,6 @@
         <exclude domain="file" path="plugins" />
         <exclude domain="file" path="runtime" />
         <exclude domain="file" path="bridge.sock" />
+        <exclude domain="external" path="." />
     </device-transfer>
 </data-extraction-rules>

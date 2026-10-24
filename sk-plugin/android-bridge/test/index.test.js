@@ -341,3 +341,86 @@ test("an adv line reaches the stand-in's hub, and its wishes send the app a new 
   p.stop();
   assert.equal(listeners.size, 0, "stop leaves no listener on the hub");
 });
+
+/** An Express-like router and response, enough for the plugin's file routes. */
+function fakeRouter() {
+  const routes = {};
+  const add = (method) => (p, h) => (routes[`${method} ${p}`] = h);
+  return { routes, get: add("GET"), put: add("PUT"), delete: add("DELETE") };
+}
+
+function fakeRes() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    set(k, v) { this.headers[k] = v; return this; },
+    status(c) { this.statusCode = c; return this; },
+    json(b) { this.body = b; return this; },
+  };
+}
+
+function fakeReq(params, query = {}, bodyText = null) {
+  const { Readable } = require("node:stream");
+  const req = Readable.from(bodyText === null ? [] : [Buffer.from(bodyText)]);
+  req.params = params;
+  req.query = query;
+  req.headers = bodyText === null ? {} : { "content-length": String(Buffer.byteLength(bodyText)) };
+  req.complete = false;
+  return req;
+}
+
+test("the file routes upload into the server's data folders", async () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "routes-"));
+  const p = plugin(fakeApp(), { env: {}, configDir: dir });
+  const router = fakeRouter();
+  p.registerWithRouter(router);
+
+  let res = fakeRes();
+  await router.routes["GET /files"](fakeReq({}), res);
+  assert.deepEqual(res.body, { folders: ["charts"] });
+
+  res = fakeRes();
+  await router.routes["PUT /files/:folder/:name"](fakeReq({ folder: "charts", name: "bay.mbtiles" }, { offset: "0", total: "5" }, "tiles"), res);
+  assert.deepEqual(res.body, { received: 5, done: true });
+  assert.equal(fs.readFileSync(path.join(dir, "charts", "bay.mbtiles"), "utf8"), "tiles");
+
+  res = fakeRes();
+  await router.routes["GET /files/:folder"](fakeReq({ folder: "charts" }), res);
+  assert.equal(res.body.files[0].name, "bay.mbtiles");
+
+  res = fakeRes();
+  await router.routes["PUT /files/:folder/:name"](fakeReq({ folder: "node_modules", name: "x" }, { offset: "0", total: "1" }, "x"), res);
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.headers.Connection, "close");
+
+  res = fakeRes();
+  await router.routes["DELETE /files/:folder/:name"](fakeReq({ folder: "charts", name: "bay.mbtiles" }, {}), res);
+  assert.deepEqual(res.body, { ok: true });
+  assert.ok(!fs.existsSync(path.join(dir, "charts", "bay.mbtiles")));
+});
+
+test("the file routes say so when the server's folder is not known, and log what else goes wrong", async () => {
+  const app = fakeApp();
+  const router = fakeRouter();
+  plugin(app, { env: {} }).registerWithRouter(router);
+  let res = fakeRes();
+  await router.routes["GET /files"](fakeReq({}), res);
+  assert.equal(res.statusCode, 503);
+
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "routes-")), "not-a-folder");
+  fs.writeFileSync(file, "");
+  const broken = fakeRouter();
+  // A file where the configuration folder should be: mkdir fails, which is no FilesError.
+  plugin(app, { env: { SIGNALK_NODE_CONFIG_DIR: file } }).registerWithRouter(broken);
+  res = fakeRes();
+  await broken.routes["PUT /files/:folder/:name"](fakeReq({ folder: "charts", name: "x" }, { offset: "0", total: "1" }, "x"), res);
+  assert.equal(res.statusCode, 500);
+  assert.ok(app.debugs.some((d) => d.startsWith("files: ")));
+});

@@ -38,6 +38,7 @@ import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.DataVolumes
+import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LanAddress
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
@@ -272,6 +273,8 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
+
+        override fun takeInbox() = this@MainActivity.takeInbox()
     }
 
     private fun startServer() {
@@ -447,6 +450,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun inbox(): Inbox? = DataVolumes.inbox(this)?.let { Inbox(it, runtime.configDir, ServerStatus.log(this)::note, DataVolumes::free) }
+
+    /** The USB inbox into the data folders, on a worker thread; what came is in the server's log. */
+    private fun takeInbox() {
+        transportThread("dock-inbox", onError = {}) {
+            val taken = inbox()?.take().orEmpty()
+            if (taken.isNotEmpty()) ServerStatus.log(this).note("taken in from the USB inbox: ${taken.joinToString()}")
+            refreshStorage()
+        }
+    }
+
     /** The cards and their room: Android makes its folders on them as it lists them, so off the main thread. */
     private fun refreshStorage() {
         transportThread("dock-storage", onError = {}) {
@@ -457,6 +471,7 @@ class MainActivity : ComponentActivity() {
                 phoneFree = DataVolumes.free(files),
                 phoneTotal = DataVolumes.total(files),
                 volumes = DataVolumes.list(this),
+                inbox = inbox()?.let { if (it.prepare()) it.waiting() else null },
             )
             runOnUiThread { model.storage = view }
         }

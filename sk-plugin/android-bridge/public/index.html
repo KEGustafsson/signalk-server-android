@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: EUPL-1.2 -->
+<!--
+  Pocket SK files: uploads into the server's data folders (charts above all) through the bridge
+  plugin's routes (lib/files.js), in pieces, so a large chart survives a dropped Wi-Fi and carries
+  on where it stopped when it is chosen again. Plain HTML and JavaScript, no build, no libraries.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket SK files</title>
+  <style>
+    :root { color-scheme: light dark; --line: #8884; --accent: #1565c0; }
+    body { font: 15px/1.4 system-ui, sans-serif; margin: 0 auto; max-width: 52rem; padding: 1rem; }
+    h1 { font-size: 1.3rem; }
+    .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 1.5rem; text-align: center; margin: 1rem 0; }
+    .drop.over { border-color: var(--accent); }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border-bottom: 1px solid var(--line); padding: .35rem .25rem; text-align: left; }
+    td.n { text-align: right; white-space: nowrap; }
+    progress { width: 100%; }
+    .muted { opacity: .7; }
+    .err { color: #c62828; }
+    button { cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Files on the Signal K server</h1>
+  <p class="muted">Charts (MBTiles and the like) go in <b>charts</b>, where the charts plugin finds them. The files
+    go wherever the server keeps its data: on the phone, or on the card chosen in Pocket SK.</p>
+  <label>Folder <select id="folder"></select></label>
+  <span id="free" class="muted"></span>
+  <div id="drop" class="drop">
+    Drop files here, or <label><u>choose them</u><input id="pick" type="file" multiple hidden></label>.
+  </div>
+  <div id="queue"></div>
+  <p id="error" class="err"></p>
+  <h2>In the folder</h2>
+  <table>
+    <thead><tr><th>Name</th><th class="n">Size</th><th class="n">Changed</th><th></th></tr></thead>
+    <tbody id="files"></tbody>
+  </table>
+  <script>
+    "use strict";
+    const API = "/plugins/pocketsk-android-bridge/files";
+    /** Each request carries this much of a file: well under the server's limit and its five minutes. */
+    const PIECE = 16 * 1024 * 1024;
+    const $ = (id) => document.getElementById(id);
+    let folder = "charts";
+
+    function size(n) {
+      const u = ["B", "KB", "MB", "GB", "TB"];
+      let i = 0;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return `${n.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+    }
+
+    async function call(url, init) {
+      const res = await fetch(url, { credentials: "same-origin", ...init });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) throw new Error("Log in to the server's admin UI as an admin first.");
+      return { res, body };
+    }
+
+    async function folders() {
+      const { res, body } = await call(API);
+      if (!res.ok) throw new Error(body.message ?? `HTTP ${res.status}`);
+      const sel = $("folder");
+      sel.replaceChildren(...body.folders.map((f) => new Option(f, f, f === folder, f === folder)));
+    }
+
+    async function refresh() {
+      const { res, body } = await call(`${API}/${encodeURIComponent(folder)}`);
+      if (!res.ok) throw new Error(body.message ?? `HTTP ${res.status}`);
+      $("free").textContent = `${size(body.free)} free`;
+      const rows = [];
+      for (const f of body.files) rows.push(row(f.name, size(f.size), new Date(f.modified).toLocaleString(), false));
+      for (const u of body.uploads) rows.push(row(u.name, `${size(u.received)} of ${size(u.size)}`, "unfinished: choose the file again to carry on", true));
+      $("files").replaceChildren(...rows);
+      return body;
+    }
+
+    function row(name, sizeText, when, upload) {
+      const tr = document.createElement("tr");
+      for (const [text, cls] of [[name, ""], [sizeText, "n"], [when, "n"]]) {
+        const td = document.createElement("td");
+        td.textContent = text;
+        if (cls) td.className = cls;
+        tr.append(td);
+      }
+      const td = document.createElement("td");
+      const b = document.createElement("button");
+      b.textContent = "Delete";
+      b.onclick = async () => {
+        if (!confirm(`Delete ${name}${upload ? " (the unfinished upload)" : ""}?`)) return;
+        await guard(async () => {
+          const q = upload ? "?upload=1" : "";
+          const { res, body } = await call(`${API}/${encodeURIComponent(folder)}/${encodeURIComponent(name)}${q}`, { method: "DELETE" });
+          if (!res.ok) throw new Error(body.message ?? `HTTP ${res.status}`);
+          await refresh();
+        });
+      };
+      td.append(b);
+      tr.append(td);
+      return tr;
+    }
+
+    /** One file, piece by piece, from where an earlier upload of it stopped; retried through drops. */
+    async function upload(file, listed) {
+      const line = document.createElement("div");
+      const label = document.createElement("div");
+      const bar = document.createElement("progress");
+      bar.max = file.size || 1;
+      line.append(label, bar);
+      $("queue").append(line);
+      const target = `${API}/${encodeURIComponent(folder)}/${encodeURIComponent(file.name)}`;
+      const earlier = listed.uploads.find((u) => u.name === file.name && u.size === file.size);
+      let offset = earlier ? earlier.received : 0;
+      let tries = 0;
+      const started = Date.now();
+      const startedAt = offset;
+      while (true) {
+        bar.value = offset;
+        const rate = (offset - startedAt) / Math.max(1, (Date.now() - started) / 1000);
+        label.textContent = `${file.name}: ${size(offset)} of ${size(file.size)}${rate > 0 ? `, ${size(rate)}/s` : ""}`;
+        const end = Math.min(file.size, offset + PIECE);
+        let res, body;
+        try {
+          ({ res, body } = await call(`${target}?offset=${offset}&total=${file.size}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: file.slice(offset, end),
+          }));
+        } catch (e) {
+          // The network went: wait and carry on from what the server has.
+          if (++tries > 20) throw e;
+          label.textContent = `${file.name}: connection lost, trying again…`;
+          await new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** Math.min(tries, 5))));
+          offset = await received(file) ?? offset;
+          continue;
+        }
+        if (res.status === 409 && typeof body.received === "number") {
+          offset = body.received;
+          continue;
+        }
+        if (!res.ok) throw new Error(`${file.name}: ${body.message ?? `HTTP ${res.status}`}`);
+        tries = 0;
+        offset = body.received;
+        if (body.done) break;
+      }
+      label.textContent = `${file.name}: done, ${size(file.size)}`;
+      bar.value = bar.max;
+    }
+
+    /** What the server has of an upload of `file`, from its list; null when it cannot be asked. */
+    async function received(file) {
+      try {
+        const listed = await refresh();
+        const u = listed.uploads.find((x) => x.name === file.name && x.size === file.size);
+        return u ? u.received : 0;
+      } catch {
+        return null;
+      }
+    }
+
+    async function uploadAll(list) {
+      await guard(async () => {
+        for (const file of list) {
+          const listed = await refresh();
+          await upload(file, listed);
+        }
+        await refresh();
+      });
+    }
+
+    async function guard(fn) {
+      $("error").textContent = "";
+      try {
+        await fn();
+      } catch (e) {
+        $("error").textContent = e.message;
+      }
+    }
+
+    $("folder").onchange = (e) => { folder = e.target.value; guard(refresh); };
+    $("pick").onchange = (e) => uploadAll([...e.target.files]);
+    const drop = $("drop");
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+    drop.ondragleave = () => drop.classList.remove("over");
+    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); uploadAll([...e.dataTransfer.files]); };
+    guard(async () => { await folders(); await refresh(); });
+  </script>
+</body>
+</html>

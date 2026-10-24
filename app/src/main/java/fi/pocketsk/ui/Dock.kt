@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -169,6 +170,19 @@ private fun StorageCard(model: AppModel, actions: AppActions) {
         }
         if (inPhone.isEmpty()) Text(stringResource(R.string.dock_storage_none), style = MaterialTheme.typography.bodySmall)
         if (view.chosen != null) Text(stringResource(R.string.dock_storage_charts), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.dock_storage_upload), style = MaterialTheme.typography.bodySmall)
+        view.inbox?.let { waiting ->
+            Text(stringResource(R.string.dock_inbox_where), style = MaterialTheme.typography.bodySmall)
+            if (waiting.files > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        pluralStringResource(R.plurals.dock_inbox_waiting, waiting.files, waiting.files, Formatter.formatShortFileSize(LocalContext.current, waiting.bytes)),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(onClick = actions::takeInbox) { Text(stringResource(R.string.dock_inbox_take)) }
+                }
+            }
+        }
     }
     asked?.let { choice ->
         AlertDialog(

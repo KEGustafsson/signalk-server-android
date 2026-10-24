@@ -58,6 +58,12 @@ internal object DataVolumes {
         }
     }
 
+    /**
+     * The USB inbox ([Inbox]) on the phone's shared storage, which a computer over USB can write;
+     * null while that storage is not available.
+     */
+    fun inbox(context: Context): File? = context.getExternalFilesDir(null)?.let { File(it, Inbox.DIR) }
+
     /** The card [uuid], when it is in the phone and mounted. */
     fun mounted(context: Context, uuid: String): Volume? = list(context).firstOrNull { it.uuid == uuid && it.mounted }
 

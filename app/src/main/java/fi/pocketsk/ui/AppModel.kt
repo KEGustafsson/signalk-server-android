@@ -9,6 +9,7 @@ import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.server.DataVolumes
+import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
@@ -66,6 +67,8 @@ internal data class StorageView(
     val phoneFree: Long,
     val phoneTotal: Long,
     val volumes: List<DataVolumes.Volume>,
+    /** The files waiting in the USB inbox, and their bytes; null when the phone's shared storage is not there. */
+    val inbox: Inbox.Waiting?,
 )
 
 /** signalk-server's published versions, as far as asked. */
@@ -127,4 +130,7 @@ internal interface AppActions {
     fun restartWithLocation()
     /** Moves the server's data to [volume], or to the phone when null; the server restarts to do it. */
     fun chooseStorage(volume: DataVolumes.Volume?)
+
+    /** Takes what waits in the USB inbox into the server's data folders now. */
+    fun takeInbox()
 }
