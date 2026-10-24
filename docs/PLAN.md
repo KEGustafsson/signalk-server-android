@@ -62,6 +62,7 @@ signalk-server-android/
 │   ├── launcher/                    # C++: main() -> node::Start()
 │   └── CMakeLists.txt
 ├── runtime-tools/
+│   ├── preload/                     # mdns-lookup.js, loaded by every node (§4.3)  (present)
 │   ├── gyp-shim/                    # replaces node-gyp on device
 │   └── bootstrap/                   # first-run install scripts (JS)
 ├── sk-plugin/
@@ -127,6 +128,7 @@ files/
 │   ├── node -> <nativeLibraryDir>/libnodeexec.so   # symlink, for PATH; re-pointed on every start
 │   ├── npm  -> <nativeLibraryDir>/libnodeexec.so   # the same executable; runs npm-cli.js when started as npm
 │   └── node-gyp             # the shim (§9.2)
+├── runtime/mdns-lookup.js   # the preload every node loads (§4.3), written from the APK's assets
 └── prebuilds/               # downloaded native addon cache
 cache/tmp/                   # $TMPDIR
 no_backup/groups/            # one record per spawned node: its process group's id (§4.1)
@@ -164,9 +166,11 @@ TMPDIR=<cache>/tmp
 PATH=<files>/bin:/system/bin
 LD_LIBRARY_PATH=<nativeLibraryDir>
 SIGNALK_NODE_CONFIG_DIR=<files>/home/.signalk
-NODE_OPTIONS=--max-old-space-size=<RAM-aware>
+NODE_OPTIONS=--max-old-space-size=<RAM-aware> --require="<files>/runtime/mdns-lookup.js"
 npm_config_cache=<files>/home/.npm
 ```
+
+**`.local` names** (2026-10-23). Android gives native code no mDNS resolver: Node's `getaddrinfo` of `boat.local` goes to the network's unicast DNS and fails. Signal K connects by such names all the time. A server its mDNS discovery finds is saved as a Signal K connection to `<host>.local.` (2.33's `discovery.js` keeps the address it saw beside the name, and `mdns-ws.js` connects by the name), and a name typed into a data connection is often one too. Reported from a phone on Android 17: `Connection error: getaddrinfo ENOTFOUND jetson-xavier-nx-devkit.local.`, while the same server given by its address worked. On a Pi, Avahi's nss-mdns answers these names. Here `runtime-tools/preload/mdns-lookup.js` does: an asset of `node-runtime`, written to `files/runtime` by `ensureLayout` and loaded by every node through `NODE_OPTIONS=--require`, before signalk-server or npm runs. It wraps `dns.lookup` (which `net`, `http`, `ws` and `fetch` all resolve through) and its promise forms. A name ending in `.local` is asked for over mDNS: a one-shot query for A and AAAA from a port of its own, sent to 224.0.0.251:5353 on every IPv4 interface, answered directly to that port (RFC 6762 §6.7), so nothing needs 5353, which the server's own advertising holds. An answer must echo the query's random id. Answers are collected until both families are in or 150 ms after the first, since a responder may answer the two questions separately. They are kept for their TTL, at most 60 s, and given in the order the caller asks for (`order`, `verbatim`, else Node's default result order), as Node's own lookup would. A name nobody answers within two tries of 1 s, and every other name, goes to Node's own lookup as before. Plain CommonJS with no dependencies, unit-tested with `node --test` in CI (`runtime-tools/test`). It never throws while loading, since a preload that failed would stop every node. Checked off the phone: a Signal K server started with it reached another by `testboat.local.` over a WebSocket connection and an NMEA 0183 TCP connection, answered by a responder on 224.0.0.251:5353. Without it, the same connection brought nothing. **To check on a device:** a discovered Signal K server connects; on Android 17 this needs the local network access the server asks for already (§6).
 
 Deliverable: a `node-runtime` AAR usable by any app, published separately. (Side benefit: reusable by other marine Node projects.)
 
@@ -396,6 +400,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 - `signalk-server`: make the module installer pluggable (`app.config.settings.moduleInstaller`) and expose `process.execPath` override — reduces our patch surface to zero even if R1 ever regresses.
 - `node-gyp-build` / `prebuildify`: document `android-arm64` target so plugin authors can publish Android prebuilds themselves.
 - `nodejs-mobile`: contribute the launcher executable as an official artifact (`node` CLI for Android).
+- `@signalk/streams`: connect a discovered Signal K server by the `address` its mDNS record gave (`mdns-ws.js` keeps it but dials the `.local` name), so a host without an mDNS resolver (Android, many containers) reaches it without §4.3's preload.
 
 ## 15. Open questions to resolve during M0
 

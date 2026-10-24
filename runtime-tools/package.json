@@ -1,0 +1,9 @@
+{
+  "name": "pocketsk-runtime-tools",
+  "private": true,
+  "description": "Pocket SK: the JavaScript the app gives every Node process it starts (preload/), with its tests. Not published; the APK carries preload/ as assets.",
+  "license": "EUPL-1.2",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -4,8 +4,8 @@
   token for the local server; the server's own state under files/home/.signalk holds every
   plugin's secrets (security.json, tokens, API keys). None of it belongs in a cloud backup;
   the Dock's explicit backup/restore to a file the user chooses is the way to move it. files/npm,
-  files/bin, files/prebuilds and files/plugins (the Android bridge's plugin) are the APK's own
-  and made again on the next start; files/bridge.sock is the bridge's socket, nothing to keep. files/logs is
+  files/bin, files/prebuilds, files/plugins (the Android bridge's plugin) and files/runtime (the
+  preload every node loads) are the APK's own and made again on the next start; files/bridge.sock is the bridge's socket, nothing to keep. files/logs is
   the server's output, which is this phone's story and may carry whatever a plugin printed.
 -->
 <full-backup-content>
@@ -17,5 +17,6 @@
     <exclude domain="file" path="prebuilds" />
     <exclude domain="file" path="logs" />
     <exclude domain="file" path="plugins" />
+    <exclude domain="file" path="runtime" />
     <exclude domain="file" path="bridge.sock" />
 </full-backup-content>
