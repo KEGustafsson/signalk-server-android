@@ -98,6 +98,37 @@ class BridgeProtocolTest {
     }
 
     @Test
+    fun theBluetoothLeScanIsSubscribedWithTheAddressesToWatch() {
+        val mac = "CB:B8:33:4C:88:4F"
+        assertEquals(
+            Incoming.Subscribe(Subscription(emptySet(), ble = BridgeProtocol.Ble(scan = true, watch = listOf(mac)))),
+            BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"ble":{"scan":true,"watch":["$mac","cb:b8:33:4c:88:4f","nope",7,"$mac"]}}"""),
+        )
+        assertEquals(BridgeProtocol.Ble.NONE, (BridgeProtocol.parse("""{"t":"subscribe","sensors":[]}""") as Incoming.Subscribe).subscription.ble)
+        assertEquals(BridgeProtocol.Ble.NONE, (BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"ble":{"scan":"yes"}}""") as Incoming.Subscribe).subscription.ble)
+        val many = (0 until BridgeProtocol.MAX_WATCH + 5).joinToString(",") { "\"02:00:00:00:00:%02X\"".format(it) }
+        val watch = (BridgeProtocol.parse("""{"t":"subscribe","sensors":[],"ble":{"watch":[$many]}}""") as Incoming.Subscribe).subscription.ble.watch
+        assertEquals(BridgeProtocol.MAX_WATCH, watch.size)
+    }
+
+    @Test
+    fun anAdvertisementIsSentAsItCame() {
+        val data = byteArrayOf(2, 1, 6, 0, 0)
+        assertEquals(
+            """{"t":"adv","mac":"CB:B8:33:4C:88:4F","rssi":-67,"data":"AgEG","conn":true,"at":"random","ts":9}""",
+            BridgeProtocol.adv("CB:B8:33:4C:88:4F", -67, data, 3, true, "random", 9),
+        )
+        assertEquals(
+            """{"t":"adv","mac":"CB:B8:33:4C:88:4F","rssi":-127,"data":"AgEGAAA=","ts":9}""",
+            BridgeProtocol.adv("CB:B8:33:4C:88:4F", -200, data, data.size, null, "other", 9),
+        )
+        assertThrows(IllegalArgumentException::class.java) { BridgeProtocol.adv("CB:B8:33:4C:88:4F", -60, data, 6, null, null, 0) }
+        assertThrows(IllegalArgumentException::class.java) {
+            BridgeProtocol.adv("CB:B8:33:4C:88:4F", -60, ByteArray(BridgeProtocol.MAX_ADV_BYTES + 1), BridgeProtocol.MAX_ADV_BYTES + 1, null, null, 0)
+        }
+    }
+
+    @Test
     fun theCellularReadingIsSubscribedWithItsPeriod() {
         assertEquals(
             Incoming.Subscribe(Subscription(setOf("cellular"), cellularHz = 0.1)),

@@ -76,6 +76,7 @@ test("subscribe follows the settings", () => {
     rateHz: { baro: 0.1, gnss: 1, attitude: 1, environment: 0.1, cellular: 1 / 30 },
     bowOffsetDeg: 0,
     serial: { usb: true, baud: 4800, devices: {}, bt: true },
+    ble: { scan: false, watch: [] },
   });
   assert.deepEqual(subscribeMessage({ battery: false, gnss: false, attitude: false, environment: false, cellular: false, barometerSeconds: 2 }), {
     t: "subscribe",
@@ -83,6 +84,7 @@ test("subscribe follows the settings", () => {
     rateHz: { baro: 0.5, gnss: 1, attitude: 1, environment: 0.1, cellular: 1 / 30 },
     bowOffsetDeg: 0,
     serial: { usb: true, baud: 4800, devices: {}, bt: true },
+    ble: { scan: false, watch: [] },
   });
   assert.deepEqual(subscribeMessage({ barometer: false, gnss: false, attitude: false, environment: false, cellular: false, barometerSeconds: -1 }).sensors, ["battery"]);
   assert.equal(subscribeMessage({ barometerSeconds: "x" }).rateHz.baro, 0.1);

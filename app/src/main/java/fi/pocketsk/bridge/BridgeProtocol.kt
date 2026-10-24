@@ -9,11 +9,13 @@ import java.util.Base64
  *
  * App to plugin: `hello` once a connection is up, then `sensor` lines (a number, an object of
  * numbers, a short text or a yes or no; null when there is no reading now), `devices` whenever the
- * serial devices plugged into the phone change, `serial` lines with the bytes each one sent, and
- * `silence` when the owner silences an alarm on the phone.
- * Plugin to app: `subscribe`, which names the sensors it wants and how often, and whether and at
- * which baud rates to read the serial devices, `alarms`, the boat's alarms whenever they
- * change, and `stats`, the server's own delta rate, for the Dock. Pure, so it is unit-tested.
+ * serial devices plugged into the phone change, `serial` lines with the bytes each one sent,
+ * `adv` lines with each Bluetooth LE advertisement the phone heard, and `silence` when the owner
+ * silences an alarm on the phone.
+ * Plugin to app: `subscribe`, which names the sensors it wants and how often, whether and at
+ * which baud rates to read the serial devices, and whether to scan for Bluetooth LE devices and
+ * which to keep hearing, `alarms`, the boat's alarms whenever they change, and `stats`, the
+ * server's own delta rate, for the Dock. Pure, so it is unit-tested.
  */
 internal object BridgeProtocol {
     const val VERSION = 1
@@ -128,10 +130,30 @@ internal object BridgeProtocol {
         }
     }
 
+    /** Most addresses a subscribe may ask to keep hearing: Android's hardware scan filters are few. */
+    const val MAX_WATCH = 32
+
+    /** Longest advertising data an adv line carries: an extended advertisement and its scan response. */
+    const val MAX_ADV_BYTES = 2 * 1650
+
+    /** A Bluetooth address as Android gives it and the plugin sends it, upper case. */
+    private val MAC = Regex("^[0-9A-F]{2}(:[0-9A-F]{2}){5}$")
+
+    /**
+     * Bluetooth LE: whether to [scan] for devices at all, and the addresses to [watch], which a
+     * Bluetooth LE plugin was set up for and the app keeps hearing with the screen off, where
+     * Android stops a scan that names no device.
+     */
+    data class Ble(val scan: Boolean = false, val watch: List<String> = emptyList()) {
+        companion object {
+            val NONE = Ble()
+        }
+    }
+
     /**
      * What the plugin wants: the sensors it named that the app knows, at clamped rates, the bow
-     * offset of the phone's mounting ([Attitude.mount]), in degrees, + to starboard, and the
-     * serial devices to read.
+     * offset of the phone's mounting ([Attitude.mount]), in degrees, + to starboard, the serial
+     * devices to read, and the Bluetooth LE scan.
      */
     data class Subscription(
         val sensors: Set<String>,
@@ -142,6 +164,7 @@ internal object BridgeProtocol {
         val cellularHz: Double = CELLULAR_DEFAULT_HZ,
         val bowOffsetDeg: Double = 0.0,
         val serial: Serial = Serial.NONE,
+        val ble: Ble = Ble.NONE,
     ) {
         companion object {
             val NONE = Subscription(emptySet())
@@ -252,6 +275,20 @@ internal object BridgeProtocol {
         return """{"t":"serial","id":${Json.quote(id)},"data":"$data"}"""
     }
 
+    /**
+     * A Bluetooth LE advertisement as the phone heard it: the device's [mac], the signal in dBm,
+     * the first [length] bytes of [data] (its advertising data and scan response, as Android's
+     * ScanRecord gives them, padding and all: the plugin parses them and stops at the padding),
+     * and, where Android tells them, whether it can be connected to and its address type.
+     */
+    fun adv(mac: String, rssi: Int, data: ByteArray, length: Int, connectable: Boolean?, addressType: String?, ts: Long): String {
+        require(length in 0..MAX_ADV_BYTES && length <= data.size) { "an advertisement of $length bytes" }
+        val bytes = Base64.getEncoder().encodeToString(if (length == data.size) data else data.copyOf(length))
+        val conn = connectable?.let { ",\"conn\":$it" } ?: ""
+        val at = addressType?.takeIf { it == "public" || it == "random" }?.let { ",\"at\":\"$it\"" } ?: ""
+        return """{"t":"adv","mac":${Json.quote(mac)},"rssi":${rssi.coerceIn(-127, 20)},"data":"$bytes"$conn$at,"ts":$ts}"""
+    }
+
     /** The owner silenced the alarm [id] on the phone: the plugin silences it on the server as it may. */
     fun silence(id: String): String = """{"t":"silence","id":${Json.quote(id)}}"""
 
@@ -290,6 +327,7 @@ internal object BridgeProtocol {
                 cellularHz = rate(rates, CELLULAR, CELLULAR_MIN_HZ, CELLULAR_MAX_HZ, CELLULAR_DEFAULT_HZ),
                 bowOffsetDeg = (msg["bowOffsetDeg"] as? Double)?.takeIf { it.isFinite() }?.coerceIn(-180.0, 180.0) ?: 0.0,
                 serial = serial(msg["serial"] as? Map<*, *>),
+                ble = ble(msg["ble"] as? Map<*, *>),
             ),
         )
     }
@@ -328,6 +366,17 @@ internal object BridgeProtocol {
             .take(MAX_DEVICE_RATES)
             .toMap()
         return Serial(usb = msg[USB] == true, baud = baud(msg["baud"]) ?: DEFAULT_BAUD, bauds = bauds, bluetooth = msg[BLUETOOTH] == true)
+    }
+
+    /**
+     * The Bluetooth LE part of a subscribe: `{"scan":true,"watch":["CB:B8:33:4C:88:4F"]}`. Missing
+     * or not an object: no scan. An address that is not one is left out, and past [MAX_WATCH] the
+     * rest are.
+     */
+    private fun ble(msg: Map<*, *>?): Ble {
+        if (msg == null) return Ble.NONE
+        val watch = (msg["watch"] as? List<*>).orEmpty().filterIsInstance<String>().filter { MAC.matches(it) }.distinct().take(MAX_WATCH)
+        return Ble(scan = msg["scan"] == true, watch = watch)
     }
 
     private fun baud(v: Any?): Int? = (v as? Double)?.takeIf { it % 1.0 == 0.0 }?.toInt()?.takeIf { it in BAUD_RATES }

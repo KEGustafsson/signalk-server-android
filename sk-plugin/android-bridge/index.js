@@ -19,12 +19,17 @@
  * The other way, the boat's alarms go to the phone (lib/alarms.js): the server's notifications at
  * or above a level, so the app can ring and wake the phone's screen, and its Silence comes back to
  * be done through the server's notification API.
+ *
+ * And the phone's Bluetooth LE scanner (lib/ble.js): the advertisements it hears go to the
+ * server's Bluetooth LE API and to plugins written for BlueZ, through the node-ble stand-in the
+ * app preloads, which also says when such a plugin wants a scan.
  */
 
 const { Link } = require("./lib/link");
 const { parseLine, toDelta, subscribeMessage, statsMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
 const { SerialInput, loadNmeaParser } = require("./lib/serial");
 const { Alarms, LEVELS } = require("./lib/alarms");
+const { Ble } = require("./lib/ble");
 const pkg = require("./package.json");
 
 const ENV = "POCKETSK_BRIDGE";
@@ -33,8 +38,9 @@ const STATS_MS = 5000;
 
 /**
  * @param {object} app the Signal K plugin API; `deps.env` lets tests name a socket,
- * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's, and `deps.statsMs`
- * how often the server's delta rate is sent
+ * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's, `deps.statsMs`
+ * how often the server's delta rate is sent, and `deps.bleHub` the node-ble stand-in's hub
+ * (null for none) in place of the one the app preloads
  */
 module.exports = function androidBridge(app, deps = {}) {
   const env = deps.env ?? process.env;
@@ -49,6 +55,7 @@ module.exports = function androidBridge(app, deps = {}) {
   let alarms = null;
   let unsubscribes = [];
   let statsTimer = null;
+  let ble = null;
 
   const plugin = {
     id: "pocketsk-android-bridge",
@@ -183,6 +190,12 @@ module.exports = function androidBridge(app, deps = {}) {
           default: "alarm",
           enum: [...LEVELS],
         },
+        ble: {
+          type: "boolean",
+          title: "Bluetooth LE devices",
+          description: "Scan for Bluetooth LE sensors and give what the phone hears to the server's Bluetooth LE API. Plugins written for a Raspberry Pi's Bluetooth, such as BT Sensors, start the scan themselves, so this can stay off for them. Needs the Nearby devices permission in the app. Off by default: a scan costs battery",
+          default: false,
+        },
         serialDevices: {
           type: "array",
           title: "Baud rate per device",
@@ -227,6 +240,16 @@ module.exports = function androidBridge(app, deps = {}) {
         level: options.alarmLevel,
         debug: (s) => app.debug(s),
       });
+      ble = new Ble({
+        app,
+        pluginId: plugin.id,
+        ...("bleHub" in deps ? { hub: deps.bleHub } : {}),
+        // A Bluetooth LE plugin started or stopped a scan, or was set up for other devices.
+        onDemand: () => {
+          if (link?.connected) link.send(subscribeMessage(options, ble?.demand()));
+        },
+        debug: (s) => app.debug(s),
+      });
       link = new Link(socketPath, { onLine, onState });
       link.start();
       // Read from the server's own last statistics, not a listener of ours: a listener a plugin
@@ -249,6 +272,8 @@ module.exports = function androidBridge(app, deps = {}) {
       link = null;
       input = null;
       alarms = null;
+      ble?.stop();
+      ble = null;
     },
 
     /** For tests and the status line. */
@@ -259,6 +284,7 @@ module.exports = function androidBridge(app, deps = {}) {
       devices,
       serial: input?.stats() ?? {},
       alarms: alarms?.list() ?? [],
+      ble: ble?.stats() ?? null,
     }),
   };
 
@@ -307,7 +333,7 @@ module.exports = function androidBridge(app, deps = {}) {
   function onState(up, detail) {
     connected = up;
     if (up) {
-      link.send(subscribeMessage(options));
+      link.send(subscribeMessage(options, ble?.demand()));
       alarms?.resend();
       sendStats();
     }
@@ -361,6 +387,10 @@ module.exports = function androidBridge(app, deps = {}) {
     }
     if (msg.t === "serial") {
       input?.data(msg.id, msg.data);
+      return;
+    }
+    if (msg.t === "adv") {
+      ble?.advertisement(msg);
       return;
     }
     if (msg.t === "silence") {

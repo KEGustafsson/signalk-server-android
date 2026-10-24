@@ -36,6 +36,15 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getBoolean(BLUETOOTH_ASKED, false)
         set(value) = prefs.edit { putBoolean(BLUETOOTH_ASKED, value) }
 
+    /**
+     * Bluetooth LE scanning (BLUETOOTH_SCAN) has been asked for once, apart from [bluetoothAsked]:
+     * a phone set up before the app scanned has asked for BLUETOOTH_CONNECT alone, and must get
+     * the dialog for this one rather than the settings page.
+     */
+    var bluetoothScanAsked: Boolean
+        get() = prefs.getBoolean(BLUETOOTH_SCAN_ASKED, false)
+        set(value) = prefs.edit { putBoolean(BLUETOOTH_SCAN_ASKED, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -72,6 +81,7 @@ internal class ServerPrefs(context: Context) {
         const val SETUP_DONE = "setup_done"
         const val LOCATION_ASKED = "location_asked"
         const val BLUETOOTH_ASKED = "bluetooth_asked"
+        const val BLUETOOTH_SCAN_ASKED = "bluetooth_scan_asked"
         const val GATE_VERSION = "gate_version"
     }
 }

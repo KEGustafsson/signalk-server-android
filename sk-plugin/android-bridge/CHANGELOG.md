@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0
+
+- Bluetooth LE: the app's `adv` lines (each advertisement the phone's scanner heard, as raw
+  advertising data) are parsed and given to the server's Bluetooth LE API, with this plugin
+  registered as a provider (`app.registerBLEProvider`), and to the node-ble stand-in the app
+  preloads, through its hub, so plugins written for BlueZ (`bt-sensors-plugin-sk`) run unchanged.
+  The subscribe's new `ble` part asks the app to scan when the new **Bluetooth LE devices** setting
+  is on (off by default) or such a plugin started discovery, and names the addresses it was set up
+  for, which the app keeps hearing with the screen off. No connections (GATT).
+
 ## 0.8.0
 
 - The server's delta rate for the app's Dock: every 5 s the plugin passes on what the server's own

@@ -73,12 +73,16 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
     rateHz: { baro: 0.2, gnss: 1, attitude: 1, environment: 0.1, cellular: 1 / 30 },
     bowOffsetDeg: 0,
     serial: { usb: true, baud: 4800, devices: {}, bt: true },
+    ble: { scan: false, watch: [] },
   });
   assert.equal(app.deltas[0][0], "pocketsk-android-bridge");
   assert.equal(app.deltas[0][1].updates[0].values[0].value, 101000);
   assert.ok(app.status.includes("Connected to the phone"));
   assert.ok(app.debugs.some((d) => d.includes("bridge version 9")));
-  assert.deepEqual(p.statusNow(), { connected: true, app: "1.200", sensors: 1, dropped: 1, devices: [], serial: {}, alarms: [] });
+  assert.deepEqual(p.statusNow(), {
+    connected: true, app: "1.200", sensors: 1, dropped: 1, devices: [], serial: {}, alarms: [],
+    ble: { heard: 0, devices: 0, provider: false, standIn: false },
+  });
   conn.destroy();
   await until(() => app.status.at(-1).startsWith("Waiting for the phone"));
 });
@@ -292,4 +296,48 @@ test("the server's delta rate goes to the phone, from the server's own last stat
   const sent = stats().length;
   await new Promise((r) => setTimeout(r, 60));
   assert.equal(stats().length, sent, "nothing more once stopped");
+});
+
+test("an adv line reaches the stand-in's hub, and its wishes send the app a new subscription", async (t) => {
+  const sock = socketPath();
+  let received = "";
+  let conn = null;
+  const server = await listen(sock, (c) => {
+    conn = c;
+    c.setEncoding("utf8");
+    c.on("data", (d) => (received += d));
+  });
+  const listeners = new Set();
+  const hub = {
+    published: [],
+    wish: { scan: false, watch: [] },
+    publish(adv) { this.published.push(adv); },
+    demand() { return this.wish; },
+    onDemand(cb) {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+  };
+  const app = fakeApp();
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, bleHub: hub });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  p.start({});
+  const subscriptions = () => received.split("\n").slice(0, -1).map((l) => JSON.parse(l)).filter((m) => m.t === "subscribe");
+  await until(() => subscriptions().length === 1);
+  assert.deepEqual(subscriptions()[0].ble, { scan: false, watch: [] });
+  // Four bytes of manufacturer data under Ruuvi's company id.
+  conn.write(`${JSON.stringify({ t: "adv", mac: "CB:B8:33:4C:88:4F", rssi: -60, data: Buffer.from([4, 0xff, 0x99, 0x04, 0x05]).toString("base64"), ts: 1 })}\n`);
+  conn.write('{"t":"adv","mac":"nope","rssi":-60,"data":""}\n');
+  await until(() => hub.published.length === 1 && p.statusNow().dropped === 1);
+  assert.deepEqual(hub.published[0].manufacturerData, { 1177: Buffer.from([5]) });
+  assert.equal(p.statusNow().ble.heard, 1);
+  hub.wish = { scan: true, watch: ["CB:B8:33:4C:88:4F"] };
+  for (const cb of listeners) cb(hub.wish);
+  await until(() => subscriptions().length === 2);
+  assert.deepEqual(subscriptions()[1].ble, { scan: true, watch: ["CB:B8:33:4C:88:4F"] });
+  p.stop();
+  assert.equal(listeners.size, 0, "stop leaves no listener on the hub");
 });

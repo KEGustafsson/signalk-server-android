@@ -65,22 +65,26 @@ app/                 the Android app
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),
                      SensorPrefs (the level),
                      UsbSerial (USB serial adapters, their bytes to the plugin), BluetoothSerial
-                     (the paired SPP devices chosen in the Dock, SerialPrefs), PhoneAlarm (the
+                     (the paired SPP devices chosen in the Dock, SerialPrefs), BleScanner (the
+                     Bluetooth LE advertisements heard, to the plugin), PhoneAlarm (the
                      boat's alarms: notification, full-screen intent, alarm sound, vibration),
                      BridgePlugin (puts the plugin in place before every start);
-                     BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList, AlarmBook
-                     (pure, tested)
+                     BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList, AlarmBook,
+                     BleRules (ScanBudget, Repeats) (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm and the
                      preload as assets
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
                      process group), Tar (unpacks npm)
-runtime-tools/preload/ mdns-lookup.js: every node loads it (NODE_OPTIONS --require, written to
-                     files/runtime); `.local` names over mDNS, which Android gives native code no
-                     resolver for. Plain CommonJS, no dependencies; `node --test test/*.test.js` in
-                     runtime-tools (CI runs it). Nothing else goes in preload/: the directory is an
-                     asset source as it stands
+runtime-tools/preload/ every node loads these (NODE_OPTIONS --require, written to files/runtime,
+                     NodeRuntime.PRELOAD_ASSETS): mdns-lookup.js, `.local` names over mDNS, which
+                     Android gives native code no resolver for; node-ble.js, a stand-in for
+                     @naugehyde/node-ble fed by the phone's Bluetooth LE scanner, so BlueZ plugins
+                     (bt-sensors-plugin-sk) run unchanged, sharing a hub with the bridge plugin on
+                     Symbol.for('pocketsk.ble'). Plain CommonJS, no dependencies; `node --test
+                     test/*.test.js` in runtime-tools (CI runs it). Nothing else goes in preload/:
+                     the directory is an asset source as it stands
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
                      (leads a process group when NodeRuntime asks), and `npm` when started
                      as files/bin/npm, for Signal K's App Store;
@@ -90,7 +94,9 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      lib/protocol.js mirrors BridgeProtocol: change both together; lib/serial.js
                      parses serial devices' NMEA 0183 with the server's own parser (found through
                      require.main, the signalk-server script); lib/alarms.js sends the server's
-                     notifications to the phone and silences them through app.notifications
+                     notifications to the phone and silences them through app.notifications;
+                     lib/ble.js parses the app's Bluetooth LE advertisements for the server's BLE
+                     API (as a provider) and node-ble.js's hub
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
 Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap, `prebuilds/`.

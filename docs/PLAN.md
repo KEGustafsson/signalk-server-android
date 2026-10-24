@@ -62,7 +62,7 @@ signalk-server-android/
 │   ├── launcher/                    # C++: main() -> node::Start()
 │   └── CMakeLists.txt
 ├── runtime-tools/
-│   ├── preload/                     # mdns-lookup.js, loaded by every node (§4.3)  (present)
+│   ├── preload/                     # mdns-lookup.js, node-ble.js: loaded by every node (§4.3, §16 9.5.8)  (present)
 │   ├── gyp-shim/                    # replaces node-gyp on device
 │   └── bootstrap/                   # first-run install scripts (JS)
 ├── sk-plugin/
@@ -128,7 +128,7 @@ files/
 │   ├── node -> <nativeLibraryDir>/libnodeexec.so   # symlink, for PATH; re-pointed on every start
 │   ├── npm  -> <nativeLibraryDir>/libnodeexec.so   # the same executable; runs npm-cli.js when started as npm
 │   └── node-gyp             # the shim (§9.2)
-├── runtime/mdns-lookup.js   # the preload every node loads (§4.3), written from the APK's assets
+├── runtime/                 # mdns-lookup.js, node-ble.js: the preloads every node loads (§4.3), from the APK's assets
 └── prebuilds/               # downloaded native addon cache
 cache/tmp/                   # $TMPDIR
 no_backup/groups/            # one record per spawned node: its process group's id (§4.1)
@@ -166,7 +166,7 @@ TMPDIR=<cache>/tmp
 PATH=<files>/bin:/system/bin
 LD_LIBRARY_PATH=<nativeLibraryDir>
 SIGNALK_NODE_CONFIG_DIR=<files>/home/.signalk
-NODE_OPTIONS=--max-old-space-size=<RAM-aware> --require="<files>/runtime/mdns-lookup.js"
+NODE_OPTIONS=--max-old-space-size=<RAM-aware> --require="<files>/runtime/mdns-lookup.js" --require="<files>/runtime/node-ble.js"
 npm_config_cache=<files>/home/.npm
 ```
 
@@ -267,18 +267,20 @@ Message types (bridge → plugin):
 {"t":"sensor","path":"navigation.attitude","value":{"roll":0.02,"pitch":-0.01,"yaw":null},"src":"android.imu"}
 {"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro"}
 {"t":"silence","id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f"}
+{"t":"adv","mac":"CB:B8:33:4C:88:4F","rssi":-67,"data":"AgEGG/+ZBAUS/FOUw3wABP/8BAysNkIAzcu4M0yITw==","conn":true,"ts":1760000000000}
 ```
 
 Plugin → bridge:
 
 ```json
 {"t":"alarms","list":[{"id":"0c1f3f5e-6f43-4d8e-9a8b-6a3b1c2d4e5f","path":"notifications.navigation.anchor","state":"alarm","message":"Anchor dragging","sound":true,"action":"silence"}]}
-{"t":"subscribe","sensors":["gnss","imu","baro"],"rateHz":{"imu":5},"serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400}}}
+{"t":"subscribe","sensors":["gnss","imu","baro"],"rateHz":{"imu":5},"serial":{"usb":true,"baud":4800,"devices":{"usb-0403-6001-a10k1b2c":38400}},"ble":{"scan":true,"watch":["CB:B8:33:4C:88:4F"]}}
 {"t":"stats","deltaRate":12.4}
 ```
 
 - **USB serial**: `usb-serial-for-android` (MIT). Each attached device's bytes go to the plugin raw, base64 in `serial` lines over the bridge socket, not to a localhost TCP port (§16 9.5.4 says why). Handles `USB_DEVICE_ATTACHED` intent with a device filter so the app launches on plug-in.
 - **Bluetooth SPP**: same, for cheap BT NMEA 0183 senders and AIS receivers. Lift Crew Radio's `BluetoothTransport` dial/listen/redial loops (`dialLoop`, `redial`, `reconcile`, `closeQuietly`) and `Backoff`; drop its `StreamLink` framing, because NMEA is a plain byte stream.
+- **Bluetooth LE**: the phone's scanner, for the server's Bluetooth LE API and for BlueZ plugins through a node-ble stand-in (**done**, §16 9.5.8); no connections (GATT).
 - **Threading**: reuse `transport/Threads.kt` (`transportThread`, `sleepQuietly`, `reporting`, `Waiter`) for every bridge loop and the supervisor.
 - **Sensors**: fused GNSS (`FusedLocationProvider` or raw `LocationManager`), rotation vector → roll/pitch (device mounting calibration stored in prefs), barometer, battery as `electrical.batteries.phone.*`, cellular signal as `communication.cellular.*` (**done**, §16 9.5.7).
 - **Alarms in**: Signal K notifications with `emergency`/`alarm` state → full-screen intent notification with alarm-channel sound, vibration pattern, and a "silence" action that writes back to Signal K. This gives an anchor alarm that wakes a sleeping phone, something no webapp can do. **Done** (§16 9.5.6): the plugin sends the whole list (`alarms`) whenever it changes, and the app's `silence` goes back by id.
@@ -453,6 +455,16 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
            - **No permission is asked for.** The network's generation (LTE, 5G: `getDataNetworkType`) needs READ_PHONE_STATE, the phone permission, which a Signal K server has no other use for, so it is left out. The strength, the operator and roaming need none.
            - **Read, not listened to.** The modem's last report is read once a period. A listener below Android 12 is `PhoneStateListener`, a deprecated API, and a reading every 30 s is all a boat needs to know whether it has a signal.
            - **The paths are the plan's own.** Signal K's specification has no cellular group. The power is in dBm, as every phone and modem gives it, rather than in an SI unit nobody reads.
+      8. ~~Bluetooth LE sensors~~ **Done** (`BleScanner`, `BleRules`; the plugin's `lib/ble.js`; `runtime-tools/preload/node-ble.js`). Asked for by the owner (2026-10-24), after `bt-sensors-plugin-sk` (Ruuvi, Victron, Govee, Inkbird, Xiaomi, BTHome and some sixty others) failed on the phone with `connect ENOENT /var/run/dbus/system_bus_socket`: it talks to BlueZ over D-Bus through `@naugehyde/node-ble`, which Android has neither of. Its 1.3.7 does not use the server's own Bluetooth LE API, and the owner wants it working with no change to it.
+         - **The app scans.** `BleScanner` runs an open scan, which finds devices, and a watch scan filtered on the addresses a Bluetooth LE plugin was set up for, since Android stops a scan that names no device while the screen is off. The SDK's address filter takes no address type, so on some stacks a sensor with a random static address passes it by and is heard by the open scan alone, with the screen on. Each advertisement goes to the plugin as it came, an `adv` line with the raw advertising data and scan response. A packet both scans hear goes once (`Repeats`, 500 ms). Restarts keep within Android's five starts in 30 s, past which a scan silently hears nothing (`ScanBudget`, four). Scanning needs Nearby devices (BLUETOOTH_SCAN, asked for with BLUETOOTH_CONNECT in the Dock, one dialog); below Android 12 it needs precise location. The manifest keeps `neverForLocation`, which also leaves out the few beacons Android counts as location.
+         - **The plugin parses** the AD structures (`parseAd`: manufacturer data by company id, service data and UUIDs as BlueZ's 128-bit strings, the name, TX power). It gives each advertisement to the server's Bluetooth LE API, registered as a provider ("Android phone", no GATT), so the admin UI lists the phone's devices. It also gives each one to the stand-in's hub. The subscribe's `ble` part asks for a scan when the plugin's **Bluetooth LE devices** setting is on (off by default: a scan costs battery) or a BlueZ plugin started discovery, and names the addresses to watch, at most 32.
+         - **The stand-in.** `node-ble.js`, a second preload beside `mdns-lookup.js`, answers `require('@naugehyde/node-ble')` and `require('node-ble')` with objects that behave as node-ble's do where bt-sensors looks, including its reach past the public API: adapter `hci0`, always powered; values wrapped in dbus-next-style `Variant`s, inner `Variant('ay', Buffer)` entries in the data dicts included; a fresh Device per `getDevice`; `helper._prepare()` subscribing and `helper.removeListeners()` unsubscribing; each advertisement as `PropertiesChanged` with what it carried; `devices()` listing what was heard in the last 120 s. It shares a hub with the bridge plugin on a global symbol (`Symbol.for('pocketsk.ble')`). Connecting (GATT) rejects with a plain message, so a sensor that needs a connection (most battery monitors: JBD, Jikong, Renogy and the like) reports "GATT services unavailable" rather than waiting.
+         - **Checked off the phone.** On signalk-server 2.33 with unmodified `bt-sensors-plugin-sk` 1.3.7, the real bridge plugin and a fake app on the socket sending a RuuviTag RAWv2 advertisement as `adv` lines: bt-sensors identified a RuuviTag and published `environment.cabin.temperature` 297.45 K, `.relativeHumidity` 0.53 and `.pressure` 100044 Pa, Ruuvi's own example values. The server's BLE API listed the tag, seen by `pocketsk-android-bridge`. There was no D-Bus error.
+         - **Decisions (not made by the plan).**
+           - **A stand-in for node-ble, not a fake BlueZ.** dbus-next could be pointed at another socket and a D-Bus service written to imitate BlueZ, but that is the wire protocol and BlueZ's object model, a far larger thing to get right. node-ble's JavaScript surface, as bt-sensors uses it, is small and was read from both packages' sources.
+           - **The raw advertising data crosses the socket, and the plugin parses it.** That keeps one parser, in tested JavaScript, for both consumers, and gives them every AD structure, not only the fields Android's `ScanRecord` picks out.
+           - **No GATT yet.** It needs connections from the app, a queue for them and a protocol of its own; it is its own step if the owner wants battery monitors.
+         - **To check on a device:** a RuuviTag, Victron or other advertising sensor is found by BT Sensors on the phone and its readings arrive; the screen off for ten minutes, a watched sensor keeps arriving; the Dock asks for Nearby devices once and the scan starts after it is granted.
 
 10. M5 UI (§13: §8.1–8.3), in parts, one each, after the bridge (9.5).
     1. ~~The Status card's uptime, CPU and memory~~ **Done** (`ProcStat`, pure and tested; `ServerUsage`; `ServerState.Running.startedAt`, `.group`):

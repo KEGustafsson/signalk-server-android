@@ -69,7 +69,10 @@ internal data class PermissionsView(
     val notifications: Boolean? = null,
     val localNetwork: Boolean? = null,
     val location: Boolean = false,
-    /** Talking to paired Bluetooth devices (BLUETOOTH_CONNECT, Android 12+), for the serial devices. */
+    /**
+     * Nearby devices on Android 12+: talking to paired Bluetooth devices (BLUETOOTH_CONNECT), for
+     * the serial devices, and scanning for Bluetooth LE ones (BLUETOOTH_SCAN).
+     */
     val bluetooth: Boolean = true,
     /** The alarm's full-screen intent ([fi.pocketsk.bridge.PhoneAlarm]), which wakes a locked phone. */
     val fullScreen: Boolean? = null,
