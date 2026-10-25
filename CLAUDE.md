@@ -59,10 +59,12 @@ app/                 the Android app
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
                      health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver,
                      ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc),
-                     DataVolumes (the cards the data may go to, the USB inbox);
+                     DataVolumes (the cards the data may go to, the USB inbox), DiagnosticsBundle
+                     (the Logs card's zip, shared by the FileProvider from cache/diagnostics);
                      RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint, ProcStat,
                      DataStore (the data folders on a card, linked from .signalk), Inbox (files a
-                     computer copied over USB, into the data folders) (pure, tested)
+                     computer copied over USB, into the data folders), LogFilter, Diagnostics (the
+                     bundle's contents, never anything under .signalk) (pure, tested)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),

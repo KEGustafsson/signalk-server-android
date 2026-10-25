@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the app's FileProvider may hand to another app: the diagnostics bundle in the cache
+  (DiagnosticsBundle), shared from the Dock's Logs card through the share sheet, and nothing else.
+-->
+<paths>
+    <cache-path name="diagnostics" path="diagnostics/" />
+</paths>

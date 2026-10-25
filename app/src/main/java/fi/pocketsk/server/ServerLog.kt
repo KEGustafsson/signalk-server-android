@@ -36,6 +36,9 @@ internal class ServerLog(dir: File) {
     /** The last [count] lines, oldest first, one string. */
     fun tail(count: Int): String = ring.tail(count).joinToString("\n")
 
+    /** The last [count] lines, oldest first, for a filter to choose from ([LogFilter]). */
+    fun lines(count: Int): List<String> = ring.tail(count)
+
     private fun add(text: String) {
         synchronized(this) {
             val line = "${stamp.format(Date())}  $text"
