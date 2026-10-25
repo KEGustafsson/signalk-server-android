@@ -17,6 +17,7 @@ import fi.pocketsk.server.ServerEndpoint
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.SignalKService
+import fi.pocketsk.signalk.Webapps
 
 /** What the Dock, the setup wizard and the runtime checks do to the server, written once. */
 internal object ServerActions {
@@ -65,8 +66,12 @@ internal object ServerActions {
      * The admin UI in the phone's browser, the way it is used on any Signal K server: the app has
      * no viewer of its own for it (docs/PLAN.md §8.2).
      */
-    fun openAdmin(activity: Activity) {
-        val url = "${localUrl(port())}/admin/"
+    fun openAdmin(activity: Activity) = browse(activity, "${localUrl(port())}/admin/")
+
+    /** The installed webapp [name] in the phone's browser, where the server serves it (docs/PLAN.md §8.3). */
+    fun openWebapp(activity: Activity, name: String) = browse(activity, Webapps.url(localUrl(port()), name))
+
+    private fun browse(activity: Activity, url: String) {
         try {
             activity.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
         } catch (_: ActivityNotFoundException) {

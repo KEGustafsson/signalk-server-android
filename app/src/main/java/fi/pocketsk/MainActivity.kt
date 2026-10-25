@@ -52,6 +52,7 @@ import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
 import fi.pocketsk.server.SignalKService
+import fi.pocketsk.signalk.Webapps
 import fi.pocketsk.ui.AppActions
 import fi.pocketsk.ui.AppModel
 import fi.pocketsk.ui.Available
@@ -92,11 +93,18 @@ class MainActivity : ComponentActivity() {
     /** Null until the first read of the prefs and the slots says which screen comes first. */
     private var setupDone by mutableStateOf<Boolean?>(null)
 
+    /**
+     * A webapp asked for by a shortcut, a deep link or the Webapps card, opened in the browser
+     * once the server answers. Main thread only; kept across a rotation.
+     */
+    private var pendingWebapp: String? = null
+
     private val serverObserver = ServerStatus.Observer { state ->
         val before = model.server
         val wasActive = before.isActive
         model.server = state
         refreshLog()
+        openPendingWebapp()
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
         model.locationHeld = ServerStatus.locationHeld
@@ -105,6 +113,8 @@ class MainActivity : ComponentActivity() {
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
+        // A run starts with what the App Store installed before it.
+        if (state is ServerState.Starting && before !is ServerState.Starting) refreshWebapps()
         // A move under way or just done changes what is free where. Not on every publish of the same
         // state: a starting server's every log line comes here.
         if (state is ServerState.Storage || state::class != before::class || state.isActive != wasActive) refreshStorage()
@@ -165,12 +175,22 @@ class MainActivity : ComponentActivity() {
         }
         // A phone where a server was installed before the wizard existed (the runtime checks'
         // installer) has nothing to set up.
-        transportThread("dock-first-read", onError = { runOnUiThread { setupDone = prefs.setupDone } }) {
+        transportThread("dock-first-read", onError = {
+            runOnUiThread {
+                setupDone = prefs.setupDone
+                serveWebapp()
+            }
+        }) {
             val done = prefs.setupDone || installs.liveSlot() != null
-            runOnUiThread { setupDone = done }
+            runOnUiThread {
+                setupDone = done
+                serveWebapp()
+            }
         }
-        // Before the observer, which may finish it at once: a restart asked for before a rotation.
+        // Before the observer, which may finish them at once: a restart or a webapp asked for
+        // before a rotation.
         restartPending = savedInstanceState?.getBoolean(STATE_RESTART_PENDING) == true
+        pendingWebapp = savedInstanceState?.getString(STATE_PENDING_WEBAPP)
         ServerStatus.observe(serverObserver)
         // Not from onResume, which runs before the lifecycle says RESUMED: AndroidX moves it there
         // only once onResume has returned, so the check in finishRestart would always fail.
@@ -205,6 +225,8 @@ class MainActivity : ComponentActivity() {
         refreshAddress()
         // A card put in or taken out while the app was in the background.
         refreshStorage()
+        // A webapp installed from the admin UI's App Store while the browser was in front.
+        refreshWebapps()
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
@@ -213,6 +235,7 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_RESTART_PENDING, restartPending)
+        outState.putString(STATE_PENDING_WEBAPP, pendingWebapp)
     }
 
     /**
@@ -240,7 +263,60 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
-        if (intent?.action == ACTION_START) startServer()
+        when {
+            intent?.action == ACTION_START -> startServer()
+            intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == Webapps.SCHEME -> {
+                val name = Webapps.nameOf(intent.data?.host, intent.data?.path) ?: return
+                pendingWebapp = name
+                serveWebapp()
+            }
+        }
+    }
+
+    /**
+     * [pendingWebapp], once it is known whether a server is installed: with none (the wizard
+     * not finished) there is nothing to open and the link is dropped; with one, a stopped server
+     * is started first, the way the tile starts it, and the webapp opens when it answers.
+     */
+    private fun serveWebapp() {
+        if (pendingWebapp == null) return
+        when (setupDone) {
+            null -> return
+            false -> pendingWebapp = null
+            true -> {
+                if (!model.server.isActive) startServer()
+                openPendingWebapp()
+            }
+        }
+    }
+
+    /** The webapps found on disk at the last look, by name, for their icons when one is pinned. Main thread. */
+    private var webappFiles: Map<String, WebappShortcuts.Found> = emptyMap()
+
+    /** The installed webapps, read from their packages on a worker thread. */
+    private fun refreshWebapps() {
+        model.canPin = WebappShortcuts.pinSupported(this)
+        transportThread("dock-webapps", onError = {}) {
+            val found = WebappShortcuts.list(runtime)
+            runOnUiThread {
+                webappFiles = found.associateBy { it.webapp.name }
+                model.webapps = found.map { it.webapp }
+            }
+        }
+    }
+
+    private fun pinWebapp(name: String) {
+        val found = webappFiles[name] ?: return
+        if (!WebappShortcuts.pin(this, found)) Toast.makeText(this, R.string.dock_webapps_pin_none, Toast.LENGTH_LONG).show()
+    }
+
+    /** Opens [pendingWebapp] in the browser if the server answers now; otherwise a later state will. */
+    private fun openPendingWebapp() {
+        val name = pendingWebapp ?: return
+        val running = model.server as? ServerState.Running ?: return
+        if (!running.answering) return
+        pendingWebapp = null
+        ServerActions.openWebapp(this, name)
     }
 
     // ---- what the screens ask for ----------------------------------------------------------------
@@ -295,6 +371,13 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun shareDiagnostics() = this@MainActivity.shareDiagnostics()
+
+        override fun openWebapp(name: String) {
+            pendingWebapp = name
+            serveWebapp()
+        }
+
+        override fun pinWebapp(name: String) = this@MainActivity.pinWebapp(name)
     }
 
     private fun startServer() {
@@ -706,6 +789,9 @@ class MainActivity : ComponentActivity() {
 
         /** Saved across a rotation: a restartWithLocation whose start is still to come. */
         private const val STATE_RESTART_PENDING = "restart_pending"
+
+        /** Saved across a rotation: a webapp to open once the server answers. */
+        private const val STATE_PENDING_WEBAPP = "pending_webapp"
 
         /** Under the cache: the sideloaded tarballs, a directory per pick. */
         private const val SIDELOAD_DIR = "sideload"

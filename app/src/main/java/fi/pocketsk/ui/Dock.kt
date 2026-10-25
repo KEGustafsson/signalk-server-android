@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, the boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial devices, where the
+ * rollback, the webapps installed, the boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial devices, where the
  * data is and its log with the diagnostics bundle. The Power and Backup cards come with their own steps.
  */
 @Composable
@@ -73,6 +73,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
             Section(stringResource(R.string.dock_alarms_title)) { AlarmRows(model.alarms, actions::silenceAlarm) }
         }
         StatusCard(model, actions)
+        WebappsCard(model, actions)
         UpdatesCard(model, actions)
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
         SensorsCard(model, actions)
@@ -83,6 +84,35 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
             stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/**
+ * The webapps installed (docs/PLAN.md §8.3): each opens in the browser, and with a launcher that
+ * takes them each can be pinned to the home screen, where one tap starts a stopped server and
+ * opens the webapp once it answers ([fi.pocketsk.WebappShortcuts]).
+ */
+@Composable
+private fun WebappsCard(model: AppModel, actions: AppActions) {
+    val webapps = model.webapps ?: return
+    Section(stringResource(R.string.dock_webapps_title)) {
+        if (webapps.isEmpty()) {
+            Text(stringResource(R.string.dock_webapps_none), style = MaterialTheme.typography.bodySmall)
+            return@Section
+        }
+        Text(
+            stringResource(if (model.canPin) R.string.dock_webapps_why_pin else R.string.dock_webapps_why),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        for (w in webapps) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(w.title, modifier = Modifier.weight(1f))
+                TextButton(onClick = { actions.openWebapp(w.name) }) { Text(stringResource(R.string.dock_webapps_open)) }
+                if (model.canPin) {
+                    TextButton(onClick = { actions.pinWebapp(w.name) }) { Text(stringResource(R.string.dock_webapps_pin)) }
+                }
+            }
+        }
     }
 }
 
