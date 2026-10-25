@@ -37,12 +37,15 @@ internal class ReleaseNotesSource(
         }
     }
 
-    /** The cached answer, dropped when it cannot be read so the next look asks GitHub. */
+    /** The cached answer, dropped when it cannot be read or parsed so the next look asks GitHub. */
     private fun cached(): List<ReleaseNotes.Release> = try {
         ReleaseNotes.parse(cache.readText())
     } catch (e: Json.ParseException) {
         cache.delete()
         throw unreadable(e)
+    } catch (e: IOException) {
+        cache.delete()
+        throw e
     }
 
     private fun unreadable(e: Json.ParseException) = IOException("GitHub's answer could not be read: ${e.message}")
