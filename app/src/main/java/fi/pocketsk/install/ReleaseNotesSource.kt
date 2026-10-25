@@ -23,11 +23,15 @@ internal class ReleaseNotesSource(
      * The releases, fetched again when [cache] is older than [maxAgeMs]. Only an answer that reads
      * as releases is kept, so a proxy's page or a cut answer never replaces a good cache, which
      * then stands in. Throws when neither GitHub nor the cache has them.
+     *
+     * One look at a time across instances: a rotation makes a new activity whose open notes load
+     * while the old one's worker still runs, and two writers of the one temporary file could
+     * publish a mix of both answers. The second look then finds the first one's fresh cache.
      */
     @Throws(IOException::class)
-    fun releases(maxAgeMs: Long): List<ReleaseNotes.Release> {
+    fun releases(maxAgeMs: Long): List<ReleaseNotes.Release> = synchronized(LOCK) {
         if (cache.isFile && now() - cache.lastModified() < maxAgeMs) return cached()
-        return try {
+        try {
             val text = fetch()
             ReleaseNotes.parse(text).also { keep(text) }
         } catch (e: IOException) {
@@ -72,6 +76,7 @@ internal class ReleaseNotesSource(
         private const val TIMEOUT_MS = 15_000
         private const val MAX_BYTES = 4 * 1024 * 1024
         private const val BUFFER = 64 * 1024
+        private val LOCK = Any()
 
         /** GitHub's answer, blocking. */
         private fun download(): String {
