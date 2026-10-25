@@ -81,9 +81,12 @@ internal object ReleaseNotes {
         .replace(SPACES, " ")
         .trim()
 
+    /** A publication time, or none when it is not a time or lies past what epoch milliseconds hold. */
     private fun instant(text: String): Long? = try {
         Instant.parse(text).toEpochMilli()
     } catch (_: DateTimeParseException) {
+        null
+    } catch (_: ArithmeticException) {
         null
     }
 

@@ -84,11 +84,14 @@ class ReleaseNotesTest {
                 release("v2.13.0"),
                 release("server-admin-ui-1.2"),
                 release("2.13.1-beta.1", published = null),
+                release("v2.11.0", published = "+1000000000-01-01T00:00:00Z"),
             ),
         )
-        assertEquals(listOf("2.13.1-beta.1", "v2.13.0", "v2.12.0"), releases.map { it.version.text })
+        assertEquals(listOf("2.13.1-beta.1", "v2.13.0", "v2.12.0", "v2.11.0"), releases.map { it.version.text })
         assertEquals(1_790_856_000_000L, releases[1].published)
         assertNull(releases[0].published)
+        // A year Instant reads but epoch milliseconds cannot hold: no date, not an error.
+        assertNull(releases[3].published)
         assertEquals(3, releases[2].lines.size)
     }
 
