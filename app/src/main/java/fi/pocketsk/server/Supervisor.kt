@@ -89,8 +89,17 @@ internal class Supervisor(
     /** When the data's card was last ejected ([storageEjected]), until it is seen gone. */
     private var ejectedAt: Long? = null
 
-    /** The folder a computer sees ([DataStore]'s root), as [placeData] last found it; null before. */
-    @Volatile private var shown: File? = null
+    /**
+     * The card [ejectedAt] belongs to: a card chosen in the Dock after another was ejected is
+     * not the one being taken out, and a card already in sends no mount to clear it.
+     */
+    private var ejectedVolume: String? = null
+
+    /**
+     * The folder a computer sees ([DataStore]'s root), as [placeData] last found it; null before.
+     * Read and written under DataStore.LOCK, so a sync never goes to a root the data just left.
+     */
+    private var shown: File? = null
 
     // Of [mirror], on the supervisor's threads one at a time (under DataStore.LOCK): what was
     // last said, so a sync every 30 s says a thing once.
@@ -487,8 +496,11 @@ internal class Supervisor(
                 val volume = DataVolumes.mounted(app, uuid)
                 val ejecting = synchronized(this) {
                     val at = ejectedAt
-                    // Ejected and gone again: from here on it is a card coming back.
-                    if (at != null && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) ejectedAt = null
+                    // Ejected and gone again: from here on it is a card coming back. Another card's
+                    // eject says nothing about this one.
+                    if (at != null && (ejectedVolume != uuid || volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) {
+                        ejectedAt = null
+                    }
                     ejectedAt != null
                 }
                 if (volume != null && !ejecting) {
@@ -500,11 +512,15 @@ internal class Supervisor(
             }
             if (told != null) log.note("${to ?: "the phone's shared storage"} is there")
             try {
-                DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
-                    log.note("moving $rel to ${to ?: "the phone"}")
-                    publish(ServerState.Storage(waiting = false, volume = to))
+                // Moved and recorded in one hold of the lock: a sync from the last run's health
+                // thread that reads [shown] in between would put the copies where the data was.
+                synchronized(DataStore.LOCK) {
+                    DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
+                        log.note("moving $rel to ${to ?: "the phone"}")
+                        publish(ServerState.Storage(waiting = false, volume = to))
+                    }
+                    shown = root
                 }
-                shown = root
                 // The computer's changes to the settings files' copies, while nothing reads them.
                 mirror(running = false)
                 // What a computer left in the USB inbox, now the folders are where they belong; a
@@ -532,8 +548,8 @@ internal class Supervisor(
      * the copies, never the run: the server's own files are untouched by it.
      */
     private fun mirror(running: Boolean) {
-        val root = shown ?: return
         synchronized(DataStore.LOCK) {
+            val root = shown ?: return
             try {
                 val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme)) { if (mirrorNoted.add(it)) log.note(it) }
                     .sync(running)
@@ -561,7 +577,10 @@ internal class Supervisor(
     fun storageEjected(path: String?, ejecting: Boolean) {
         val uuid = prefs.dataVolume ?: return
         if (!DataVolumes.isVolume(path, uuid)) return
-        if (ejecting) ejectedAt = SystemClock.elapsedRealtime()
+        if (ejecting) {
+            ejectedAt = SystemClock.elapsedRealtime()
+            ejectedVolume = uuid
+        }
         if (node != null) {
             log.note("${prefs.dataVolumeName ?: uuid} is being taken out: stopping the server until it is back")
             end(Ask.RESTART)
@@ -575,7 +594,7 @@ internal class Supervisor(
     /** Whether the card the data is on was ejected or is not mounted, after [placeData] found it. */
     private fun dataCardGone(): Boolean {
         val uuid = prefs.dataVolume ?: return false
-        if (synchronized(this) { ejectedAt != null }) return true
+        if (synchronized(this) { ejectedAt != null && ejectedVolume == uuid }) return true
         return DataVolumes.mounted(app, uuid) == null
     }
 
