@@ -58,4 +58,13 @@ class WebappsTest {
         assertNull(Webapps.nameOf("webapp", null))
         assertEquals("http://127.0.0.1:3000/@mxtommy/kip/", Webapps.url("http://127.0.0.1:3000", "@mxtommy/kip"))
     }
+
+    @Test
+    fun aHugeIconIsDecodedSmallButNotBelowALaunchersSize() {
+        assertEquals(1, Webapps.sampleSize(72, 72, 192))
+        assertEquals(1, Webapps.sampleSize(383, 200, 192))
+        assertEquals(2, Webapps.sampleSize(384, 384, 192))
+        assertEquals(64, Webapps.sampleSize(20_000, 12_000, 192))
+        assertTrue(20_000 / Webapps.sampleSize(20_000, 12_000, 192) >= 192)
+    }
 }

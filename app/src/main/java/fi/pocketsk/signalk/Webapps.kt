@@ -63,6 +63,19 @@ internal object Webapps {
     /** Where the server serves [name] (`/<name>/`), on its plain HTTP [base] (`http://127.0.0.1:3000`). */
     fun url(base: String, name: String): String = "$base/$name/"
 
+    /**
+     * The power of two an icon of [width] by [height] is decoded at (BitmapFactory's
+     * `inSampleSize`): the largest that still leaves its longest side at [target] or more, so
+     * the decoder never holds much more than a launcher icon's pixels and the last step down is a
+     * scale of a bitmap already small.
+     */
+    fun sampleSize(width: Int, height: Int, target: Int): Int {
+        val longest = maxOf(width, height)
+        var size = 1
+        while (longest / (size * 2) >= target) size *= 2
+        return size
+    }
+
     /** [path] with a leading `./` taken off, or null when it is absolute or climbs out with `..`. */
     private fun insidePath(path: String): String? {
         val p = path.trim().removePrefix("./")

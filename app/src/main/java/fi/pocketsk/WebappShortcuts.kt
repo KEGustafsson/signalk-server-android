@@ -61,9 +61,21 @@ internal object WebappShortcuts {
 
     /** The webapp's own icon when it is a bitmap Android can read, scaled for a launcher; else the app's. */
     private fun icon(context: Context, file: File?): IconCompat {
-        val bitmap = file?.takeIf { it.isFile && it.length() <= MAX_ICON_BYTES }?.let { BitmapFactory.decodeFile(it.path) }
+        val bitmap = file?.takeIf { it.isFile && it.length() <= MAX_ICON_BYTES }?.let(::decode)
             ?: return IconCompat.createWithResource(context, R.mipmap.ic_launcher)
         return IconCompat.createWithBitmap(fit(bitmap))
+    }
+
+    /**
+     * [file] decoded at a fraction of its size when it is large: its bounds are read first, so a
+     * small, well-compressed file of huge dimensions cannot make the decoder allocate them all.
+     */
+    private fun decode(file: File): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val options = BitmapFactory.Options().apply { inSampleSize = Webapps.sampleSize(bounds.outWidth, bounds.outHeight, ICON_PX) }
+        return BitmapFactory.decodeFile(file.path, options)
     }
 
     private fun fit(b: Bitmap): Bitmap {
