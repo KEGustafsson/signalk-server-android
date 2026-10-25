@@ -89,6 +89,14 @@ server's data on an SD card, the files go to the card. The page lists each folde
 uploads not yet finished, with the room left, and deletes them. Only an admin may use it while the
 server's security is on. It works on any server, phone or not.
 
+What the charts plugin serves from `charts` is what a chart plotter shows. Freeboard-SK, for
+example, draws an S-57 chart and OpenStreetMap with a depth layer like this:
+
+<p>
+  <img src="https://raw.githubusercontent.com/KEGustafsson/signalk-server-android/main/docs/images/freeboard-s57-chart.png" alt="An S-57 chart of Government Cut, Miami, drawn by Freeboard-SK" width="49%">
+  <img src="https://raw.githubusercontent.com/KEGustafsson/signalk-server-android/main/docs/images/freeboard-osm-depth.webp" alt="Freeboard-SK with OpenStreetMap, a depth layer and the boat's heading" width="49%">
+</p>
+
 From a laptop over USB without the network: copy the files into the phone's
 `Android/data/fi.pocketsk/files/inbox/charts` (or `inbox/<folder>`) and the app takes them into
 that folder when the server starts or with **Take them in** in its Storage card. With USB tethering
