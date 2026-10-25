@@ -115,6 +115,10 @@ class MainActivity : ComponentActivity() {
         if (startWhenStopped && state !is ServerState.Stopping) {
             startWhenStopped = false
             serveWebapp()
+        } else if (state is ServerState.Failed && before !is ServerState.Failed) {
+            // The server gave up (the Dock and the notification say why): the webapp asked for is
+            // dropped, or it would open by surprise whenever the server is next started by hand.
+            pendingWebapp = null
         } else {
             openPendingWebapp()
         }
