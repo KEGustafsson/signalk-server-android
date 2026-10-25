@@ -84,6 +84,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- pocketsk://webapp/<package>: a home-screen shortcut or another app opens that
+                 webapp in the browser, the server started first when it is stopped (PLAN §8.3).
+                 Not BROWSABLE, so a web page cannot start the server by a link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="pocketsk" android:host="webapp" />
+            </intent-filter>
             <!-- A USB serial adapter plugged in: Android offers the app, and allowing it allows
                  the bridge the device (UsbSerial). The Dock's coming to the front looks again. -->
             <intent-filter>

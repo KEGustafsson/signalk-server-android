@@ -15,6 +15,7 @@ import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
+import fi.pocketsk.signalk.Webapps
 import java.io.File
 
 /**
@@ -51,6 +52,11 @@ internal class AppModel {
 
     /** Where the server's data is and where it could go; null until first read, off the main thread. */
     var storage by mutableStateOf<StorageView?>(null)
+
+    /** The webapps installed, by title; null until first read, off the main thread. */
+    var webapps by mutableStateOf<List<Webapps.Webapp>?>(null)
+    /** The home screen takes pinned shortcuts. */
+    var canPin by mutableStateOf(false)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -160,4 +166,10 @@ internal interface AppActions {
 
     /** Writes a diagnostics bundle and offers it to the share sheet. */
     fun shareDiagnostics()
+
+    /** The webapp [name] in the browser, the server started first when it is stopped. */
+    fun openWebapp(name: String)
+
+    /** Asks the home screen to pin a shortcut that opens the webapp [name]. */
+    fun pinWebapp(name: String)
 }

@@ -153,6 +153,13 @@
     <string name="dock_inbox_take">Take them in</string>
     <string name="dock_storage_move">Move</string>
     <string name="dock_storage_cancel">Cancel</string>
+    <string name="dock_webapps_title">Webapps</string>
+    <string name="dock_webapps_none">No webapps installed. Freeboard-SK, KIP and others are in the admin UI\'s App Store.</string>
+    <string name="dock_webapps_why">Each opens in the browser; a stopped server is started first.</string>
+    <string name="dock_webapps_why_pin">Each opens in the browser; a stopped server is started first. On the home screen, one tap opens it from there.</string>
+    <string name="dock_webapps_open">Open</string>
+    <string name="dock_webapps_pin">Home screen</string>
+    <string name="dock_webapps_pin_none">This home screen does not take shortcuts</string>
     <string name="dock_log_title">Log</string>
     <string name="dock_log_empty">Nothing logged yet</string>
     <string name="dock_log_all">All</string>

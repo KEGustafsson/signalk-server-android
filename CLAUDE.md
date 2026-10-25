@@ -47,8 +47,9 @@ pipeline and several files were lifted (PLAN §17).
 ## Layout
 ```
 app/                 the Android app
-  fi.pocketsk        MainActivity (the Dock and the setup wizard, Compose), AlarmActivity (the
-                     boat's alarm over the lock screen), ServerActions,
+  fi.pocketsk        MainActivity (the Dock and the setup wizard, Compose; pocketsk://webapp/ links),
+                     AlarmActivity (the boat's alarm over the lock screen), ServerActions,
+                     WebappShortcuts (the installed webapps, pinned to the home screen),
                      SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3), App,
                      LocalNetwork, WifiLockModes, LegacyPlatform
   fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Common (sections, permission rows),
@@ -77,7 +78,8 @@ app/                 the Android app
                      BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList, AlarmBook,
                      BleRules (ScanBudget, Repeats) (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
-  fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only)
+  fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only),
+                     Webapps (a package.json as a webapp, the deep link) (pure, tested)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm and the
                      preload as assets
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
