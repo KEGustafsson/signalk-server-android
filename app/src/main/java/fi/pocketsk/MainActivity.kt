@@ -2,6 +2,7 @@ package fi.pocketsk
 
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -41,8 +43,10 @@ import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.DataStore
 import fi.pocketsk.server.DataVolumes
+import fi.pocketsk.server.DiagnosticsBundle
 import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LanAddress
+import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
@@ -92,7 +96,7 @@ class MainActivity : ComponentActivity() {
         val before = model.server
         val wasActive = before.isActive
         model.server = state
-        model.log = ServerStatus.log(this).tail(LOG_LINES)
+        refreshLog()
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
         model.locationHeld = ServerStatus.locationHeld
@@ -283,6 +287,14 @@ class MainActivity : ComponentActivity() {
         override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
 
         override fun takeInbox() = this@MainActivity.takeInbox()
+
+        override fun filterLog(kind: LogFilter.Kind, query: String) {
+            model.logKind = kind
+            model.logQuery = query
+            refreshLog()
+        }
+
+        override fun shareDiagnostics() = this@MainActivity.shareDiagnostics()
     }
 
     private fun startServer() {
@@ -523,6 +535,66 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The Logs card's lines: the newest [LOG_LINES] of the [LOG_SCAN] latest that the filter keeps.
+     * On the main thread, at most every half second ([ServerStatus]): a few thousand short
+     * matches, no file.
+     */
+    private fun refreshLog() {
+        val filtered = model.logKind != LogFilter.Kind.ALL || model.logQuery.isNotBlank()
+        val lines = ServerStatus.log(this).lines(if (filtered) LOG_SCAN else LOG_LINES)
+        model.log = LogFilter.select(lines, model.logKind, model.logQuery, LOG_LINES).joinToString("\n")
+    }
+
+    /** Writes a diagnostics bundle on a worker thread, then offers it to the share sheet. */
+    private fun shareDiagnostics() {
+        if (model.sharing) return
+        model.sharing = true
+        val summary = diagnosticsSummary()
+        val app = applicationContext
+        transportThread("dock-diagnostics", onError = { e ->
+            runOnUiThread {
+                model.sharing = false
+                Toast.makeText(this, getString(R.string.dock_log_share_failed, "$e"), Toast.LENGTH_LONG).show()
+            }
+        }) {
+            val file = DiagnosticsBundle.write(app, runtime, summary)
+            runOnUiThread {
+                model.sharing = false
+                share(file)
+            }
+        }
+    }
+
+    /** The server as the Dock sees it, for the bundle's device.txt. */
+    private fun diagnosticsSummary(): String = buildString {
+        appendLine("server: ${model.server}")
+        model.slots?.let { appendLine("slots: live ${it.live ?: "none"} ${it.liveVersion ?: ""}, other ${it.other} ${it.otherVersion ?: ""}") }
+        appendLine("data: ${prefs.dataVolumeName ?: prefs.dataVolume ?: "on the phone"}")
+        appendLine("permissions: ${model.permissions}")
+        appendLine("devices: ${model.devices.size}, delta rate: ${model.deltaRate ?: "unknown"}")
+    }
+
+    /**
+     * Hands [file] to the share sheet, readable by the app chosen for this one share. The grant
+     * goes in the clip data as well as the flag, which is how Android 10 and later pass it on
+     * through the chooser.
+     */
+    private fun share(file: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("application/zip")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_SUBJECT, getString(R.string.dock_log_share_subject, BuildConfig.VERSION_NAME))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        send.clipData = ClipData.newRawUri(file.name, uri)
+        try {
+            startActivity(Intent.createChooser(send, getString(R.string.dock_log_share)))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.dock_log_share_none, Toast.LENGTH_LONG).show()
+        }
+    }
+
     /** The cards and their room: Android makes its folders on them as it lists them, so off the main thread. */
     private fun refreshStorage() {
         transportThread("dock-storage", onError = {}) {
@@ -628,6 +700,9 @@ class MainActivity : ComponentActivity() {
         const val ACTION_START = "fi.pocketsk.action.OPEN_AND_START"
 
         private const val LOG_LINES = 60
+
+        /** How far back a filter looks: the latest lines of the log's two megabytes in memory. */
+        private const val LOG_SCAN = 5000
 
         /** Saved across a rotation: a restartWithLocation whose start is still to come. */
         private const val STATE_RESTART_PENDING = "restart_pending"

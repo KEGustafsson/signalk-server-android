@@ -11,6 +11,7 @@ import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
+import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
@@ -23,7 +24,12 @@ import java.io.File
  */
 internal class AppModel {
     var server by mutableStateOf(ServerStatus.state)
+    /** The Logs card's lines, the newest of those [logKind] and [logQuery] choose. */
     var log by mutableStateOf("")
+    var logKind by mutableStateOf(LogFilter.Kind.ALL)
+    var logQuery by mutableStateOf("")
+    /** A diagnostics bundle is being written. */
+    var sharing by mutableStateOf(false)
     var install by mutableStateOf<InstallManager.State?>(null)
     var installing by mutableStateOf(false)
 
@@ -148,4 +154,10 @@ internal interface AppActions {
 
     /** Takes what waits in the USB inbox into the server's data folders now. */
     fun takeInbox()
+
+    /** Shows the log's lines of [kind] that hold every word of [query]. */
+    fun filterLog(kind: LogFilter.Kind, query: String)
+
+    /** Writes a diagnostics bundle and offers it to the share sheet. */
+    fun shareDiagnostics()
 }

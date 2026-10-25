@@ -21,9 +21,9 @@ internal class LogRing(private val maxChars: Int = MAX_CHARS) {
         while (chars > maxChars) chars -= lines.removeFirst().length + 1
     }
 
-    /** The last [count] lines, oldest first. */
+    /** The last [count] lines, oldest first; only those are copied, not the whole ring. */
     @Synchronized
-    fun tail(count: Int): List<String> = lines.toList().takeLast(count)
+    fun tail(count: Int): List<String> = lines.subList(maxOf(0, lines.size - count), lines.size).toList()
 
     /** Characters held, newlines included. */
     val size: Int @Synchronized get() = chars

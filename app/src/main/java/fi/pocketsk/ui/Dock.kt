@@ -8,14 +8,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -43,6 +46,7 @@ import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.server.DataVolumes
+import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerUsage
 import java.text.DateFormat
@@ -52,8 +56,8 @@ import kotlin.math.roundToInt
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, the boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial devices and the newest of
- * its log. The Power card, the diagnostics bundle and backup come with their own steps.
+ * rollback, the boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial devices, where the
+ * data is and its log with the diagnostics bundle. The Power and Backup cards come with their own steps.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier = Modifier) {
@@ -74,14 +78,55 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         SensorsCard(model, actions)
         DevicesCard(model, actions)
         StorageCard(model, actions)
-        Section(stringResource(R.string.dock_log_title)) {
-            LogText(model.log.ifEmpty { stringResource(R.string.dock_log_empty) })
-        }
+        LogsCard(model, actions)
         Text(
             stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+/**
+ * The server's log (docs/PLAN.md §8.1, Logs): its newest lines as they come, narrowed to the
+ * problems or to the app's own lines and to the words typed ([LogFilter]), and the diagnostics
+ * bundle, shared through the share sheet ([fi.pocketsk.server.DiagnosticsBundle]) after saying
+ * what is in it and what is not.
+ */
+@Composable
+private fun LogsCard(model: AppModel, actions: AppActions) {
+    Section(stringResource(R.string.dock_log_title)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (kind in LogFilter.Kind.entries) {
+                FilterChip(
+                    selected = model.logKind == kind,
+                    onClick = { actions.filterLog(kind, model.logQuery) },
+                    label = { Text(stringResource(logKindLabel(kind))) },
+                )
+            }
+        }
+        OutlinedTextField(
+            value = model.logQuery,
+            onValueChange = { actions.filterLog(model.logKind, it) },
+            label = { Text(stringResource(R.string.dock_log_filter)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        val filtered = model.logKind != LogFilter.Kind.ALL || model.logQuery.isNotBlank()
+        LogText(model.log.ifEmpty { stringResource(if (filtered) R.string.dock_log_none_match else R.string.dock_log_empty) })
+        Text(stringResource(R.string.dock_log_share_why), style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = actions::shareDiagnostics, enabled = !model.sharing) {
+                Text(stringResource(R.string.dock_log_share))
+            }
+            if (model.sharing) CircularProgressIndicator(modifier = Modifier.size(24.dp))
+        }
+    }
+}
+
+private fun logKindLabel(kind: LogFilter.Kind): Int = when (kind) {
+    LogFilter.Kind.ALL -> R.string.dock_log_all
+    LogFilter.Kind.PROBLEMS -> R.string.dock_log_problems
+    LogFilter.Kind.APP -> R.string.dock_log_app
 }
 
 /**
