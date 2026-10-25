@@ -106,7 +106,19 @@ internal object WebappShortcuts {
         }
         if (!Webapps.mayBeWebapp(text)) return null
         val webapp = Webapps.parse(text) ?: return null
-        return Found(webapp, webapp.icon?.let { File(dir, it) })
+        return Found(webapp, webapp.icon?.let { inside(dir, it) })
+    }
+
+    /**
+     * [path] under [dir], or null when it leaves it: [Webapps.parse] keeps `..` out of the
+     * name, and this keeps out a link inside the package that points elsewhere, so a shortcut's
+     * icon is only ever read from the package itself.
+     */
+    private fun inside(dir: File, path: String): File? = try {
+        val root = dir.canonicalFile
+        File(dir, path).canonicalFile.takeIf { it.toPath().startsWith(root.toPath()) && it != root }
+    } catch (_: java.io.IOException) {
+        null
     }
 
     /** A package.json bigger than this is not read: Signal K's own are a few kilobytes. */
