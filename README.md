@@ -10,6 +10,16 @@ The APK ships only a Node.js runtime and a bootstrap installer. On first run the
 - the phone's own GNSS, attitude, barometer and battery as Signal K data
 - Signal K alarms as real Android alarms that wake a locked phone
 - a helm kiosk mode: any webapp as its own launcher icon, red night overlay, widgets
+- the server's offline charts and other mass data on the phone or on an SD card, chosen in the app,
+  and filled from a browser on the boat's network or from a laptop over USB
+
+<p>
+  <img src="docs/images/freeboard-s57-chart.png" alt="An S-57 chart of Government Cut, Miami, drawn by Freeboard-SK" width="49%">
+  <img src="docs/images/freeboard-osm-depth.webp" alt="Freeboard-SK with OpenStreetMap, a depth layer and the boat's heading" width="49%">
+</p>
+
+*Charts as Freeboard-SK draws them from a Signal K server: an S-57 chart (left) and OpenStreetMap
+with a depth layer (right).*
 
 Sibling project: [Crew Radio](https://github.com/KEGustafsson/crew-radio), whose service, networking and Signal K client code this app reuses.
 
