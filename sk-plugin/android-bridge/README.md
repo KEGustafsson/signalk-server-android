@@ -77,8 +77,25 @@ silenced, is acknowledged instead. Where the server does not manage notification
 `manageNotifications` setting is off), Silence quiets the phone alone. **Alarms on the phone** turns
 it all off.
 
+## Files
+
+The plugin's web page, **Pocket SK files** among the server's webapps, uploads files into the
+server's data folders: offline charts (MBTiles and the like) into `charts`, where the charts plugin
+finds them as they arrive, or any other data folder of the server's configuration. Drop the files
+on the page or choose them. They go in pieces of 16 MB, so a chart of several gigabytes survives a
+dropped Wi-Fi: choose the same file again and the upload carries on where it stopped. A file is in
+the folder only once it is whole, and replaces one of the same name. On a phone that keeps the
+server's data on an SD card, the files go to the card. The page lists each folder's files and the
+uploads not yet finished, with the room left, and deletes them. Only an admin may use it while the
+server's security is on. It works on any server, phone or not.
+
+From a laptop over USB without the network: copy the files into the phone's
+`Android/data/fi.pocketsk/files/inbox/charts` (or `inbox/<folder>`) and the app takes them into
+that folder when the server starts or with **Take them in** in its Storage card. With USB tethering
+on, the laptop can also open this page at the phone's address.
+
 On a server that is not running on Pocket SK the plugin finds no socket, says so in its status and
-does nothing.
+otherwise does nothing; the file page works there too.
 
 ## Development
 

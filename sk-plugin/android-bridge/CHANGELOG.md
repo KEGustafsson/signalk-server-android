@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0
+
+- Files: a web page (`public/index.html`, a Signal K webapp) and routes under
+  `/plugins/pocketsk-android-bridge/files` that upload files into the server's data folders,
+  charts above all: in pieces of at most 64 MB, each saying where it starts, resumed after a
+  dropped connection, staged beside the folder on its volume and renamed in whole. Lists, room left
+  and deletes. Admins only while security is on (the server's rule for plugin routes).
+
 ## 0.9.0
 
 - Bluetooth LE: the app's `adv` lines (each advertisement the phone's scanner heard, as raw

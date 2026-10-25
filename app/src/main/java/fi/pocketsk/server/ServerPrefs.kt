@@ -45,6 +45,19 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getBoolean(BLUETOOTH_SCAN_ASKED, false)
         set(value) = prefs.edit { putBoolean(BLUETOOTH_SCAN_ASKED, value) }
 
+    /**
+     * The card the server's data folders live on ([DataStore], [DataVolumes]), by its UUID; null
+     * for the phone. [dataVolumeName] is its name as the Dock last showed it, for the messages
+     * about a card that is not there.
+     */
+    var dataVolume: String?
+        get() = prefs.getString(DATA_VOLUME, null)
+        set(value) = prefs.edit { if (value == null) remove(DATA_VOLUME) else putString(DATA_VOLUME, value) }
+
+    var dataVolumeName: String?
+        get() = prefs.getString(DATA_VOLUME_NAME, null)
+        set(value) = prefs.edit { if (value == null) remove(DATA_VOLUME_NAME) else putString(DATA_VOLUME_NAME, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -83,5 +96,7 @@ internal class ServerPrefs(context: Context) {
         const val BLUETOOTH_ASKED = "bluetooth_asked"
         const val BLUETOOTH_SCAN_ASKED = "bluetooth_scan_asked"
         const val GATE_VERSION = "gate_version"
+        const val DATA_VOLUME = "data_volume"
+        const val DATA_VOLUME_NAME = "data_volume_name"
     }
 }

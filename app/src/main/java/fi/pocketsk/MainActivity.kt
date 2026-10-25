@@ -37,6 +37,9 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.DataStore
+import fi.pocketsk.server.DataVolumes
+import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LanAddress
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
@@ -51,6 +54,7 @@ import fi.pocketsk.ui.PermissionsView
 import fi.pocketsk.ui.PocketTheme
 import fi.pocketsk.ui.SetupScreen
 import fi.pocketsk.ui.SlotsView
+import fi.pocketsk.ui.StorageView
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -82,7 +86,8 @@ class MainActivity : ComponentActivity() {
     private var setupDone by mutableStateOf<Boolean?>(null)
 
     private val serverObserver = ServerStatus.Observer { state ->
-        val wasActive = model.server.isActive
+        val before = model.server
+        val wasActive = before.isActive
         model.server = state
         model.log = ServerStatus.log(this).tail(LOG_LINES)
         model.devices = ServerStatus.devices
@@ -93,6 +98,9 @@ class MainActivity : ComponentActivity() {
         // A start, a rollback or an end changes what is live or where it is reached.
         if (state is ServerState.Starting || state.isActive != wasActive) refreshSlots()
         if (state is ServerState.Running) refreshAddress()
+        // A move under way or just done changes what is free where. Not on every publish of the same
+        // state: a starting server's every log line comes here.
+        if (state is ServerState.Storage || state::class != before::class || state.isActive != wasActive) refreshStorage()
     }
 
     private val installObserver = InstallJob.Observer { state, running ->
@@ -174,6 +182,7 @@ class MainActivity : ComponentActivity() {
         )
         InstallJob.observe(installObserver)
         refreshSlots()
+        refreshStorage()
         if (savedInstanceState == null) handle(intent)
     }
 
@@ -187,6 +196,8 @@ class MainActivity : ComponentActivity() {
         // Settings opened from here (battery, an app permission) may have changed something.
         refreshPermissions()
         refreshAddress()
+        // A card put in or taken out while the app was in the background.
+        refreshStorage()
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
@@ -263,6 +274,10 @@ class MainActivity : ComponentActivity() {
             restartPending = true
             stopServer()
         }
+
+        override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
+
+        override fun takeInbox() = this@MainActivity.takeInbox()
     }
 
     private fun startServer() {
@@ -271,6 +286,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopServer() = SignalKService.stop(this)
+
+    /**
+     * The data's new place, which the supervisor moves it to before the next run: a running
+     * server restarts for it now, a stopped one moves it when it is started.
+     */
+    private fun chooseStorage(volume: DataVolumes.Volume?) {
+        prefs.dataVolume = volume?.uuid
+        prefs.dataVolumeName = volume?.name
+        SignalKService.restart(this)
+        refreshStorage()
+    }
 
     private fun restartServer() = SignalKService.restart(this)
 
@@ -424,6 +450,46 @@ class MainActivity : ComponentActivity() {
                 history = installs.history(),
             )
             runOnUiThread { model.slots = view }
+        }
+    }
+
+    private fun inbox(card: File? = null): Inbox? =
+        DataVolumes.inbox(this)?.let { Inbox(it, runtime.configDir, ServerStatus.log(this)::note, DataVolumes::free, card = card) }
+
+    /** The USB inbox into the data folders, on a worker thread; what came is in the server's log. */
+    private fun takeInbox() {
+        transportThread("dock-inbox", onError = {}) {
+            // A new folder goes where the data is, read under the lock a move holds, so a choice
+            // made meanwhile is the one used; with the chosen card not in, the files wait for it.
+            val log = ServerStatus.log(this)
+            val taken = synchronized(DataStore.LOCK) {
+                val uuid = prefs.dataVolume
+                val card = uuid?.let { DataVolumes.mounted(this, it) }?.root
+                if (uuid != null && card == null) {
+                    log.note("the USB inbox waits for ${prefs.dataVolumeName ?: uuid}, the card the server's data is on")
+                    emptyList()
+                } else {
+                    inbox(card)?.take().orEmpty()
+                }
+            }
+            if (taken.isNotEmpty()) log.note("taken in from the USB inbox: ${taken.joinToString()}")
+            refreshStorage()
+        }
+    }
+
+    /** The cards and their room: Android makes its folders on them as it lists them, so off the main thread. */
+    private fun refreshStorage() {
+        transportThread("dock-storage", onError = {}) {
+            val files = filesDir
+            val view = StorageView(
+                chosen = prefs.dataVolume,
+                chosenName = prefs.dataVolumeName,
+                phoneFree = DataVolumes.free(files),
+                phoneTotal = DataVolumes.total(files),
+                volumes = DataVolumes.list(this),
+                inbox = inbox()?.let { if (it.prepare()) it.waiting() else null },
+            )
+            runOnUiThread { model.storage = view }
         }
     }
 

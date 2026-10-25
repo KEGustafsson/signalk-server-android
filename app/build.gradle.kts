@@ -153,7 +153,7 @@ java {
 // place for the server before every start with no npm and no network.
 val bridgePluginTar = tasks.register<Tar>("bridgePluginTar") {
     from(rootProject.file("sk-plugin/android-bridge")) {
-        include("package.json", "index.js", "lib/**", "README.md", "CHANGELOG.md", "LICENSE")
+        include("package.json", "index.js", "lib/**", "public/**", "README.md", "CHANGELOG.md", "LICENSE")
     }
     archiveFileName.set("android-bridge.tar")
     destinationDirectory.set(layout.buildDirectory.dir("intermediates/bridge-plugin"))

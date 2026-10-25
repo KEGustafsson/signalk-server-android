@@ -8,6 +8,8 @@ import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ServerVersion
+import fi.pocketsk.server.DataVolumes
+import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
@@ -38,6 +40,9 @@ internal class AppModel {
     /** [ServerStatus.deltaRate]: what the server takes in, deltas a second; null without the bridge's plugin. */
     var deltaRate by mutableStateOf<Double?>(null)
 
+    /** Where the server's data is and where it could go; null until first read, off the main thread. */
+    var storage by mutableStateOf<StorageView?>(null)
+
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
     var tarballName by mutableStateOf<String?>(null)
@@ -50,6 +55,20 @@ internal data class SlotsView(
     val other: String,
     val otherVersion: String?,
     val history: InstallHistory,
+)
+
+/**
+ * The Storage card: the card the data is on ([chosen], its UUID, and [chosenName]; both null for
+ * the phone), the phone's free and total bytes, and the cards in the phone now.
+ */
+internal data class StorageView(
+    val chosen: String?,
+    val chosenName: String?,
+    val phoneFree: Long,
+    val phoneTotal: Long,
+    val volumes: List<DataVolumes.Volume>,
+    /** The files waiting in the USB inbox, and their bytes; null when the phone's shared storage is not there. */
+    val inbox: Inbox.Waiting?,
 )
 
 /** signalk-server's published versions, as far as asked. */
@@ -109,4 +128,9 @@ internal interface AppActions {
     fun openFullScreenSettings()
     /** Stops the server and starts it again from this screen, so its service may take location. */
     fun restartWithLocation()
+    /** Moves the server's data to [volume], or to the phone when null; the server restarts to do it. */
+    fun chooseStorage(volume: DataVolumes.Volume?)
+
+    /** Takes what waits in the USB inbox into the server's data folders now. */
+    fun takeInbox()
 }

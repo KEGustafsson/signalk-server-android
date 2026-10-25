@@ -17,6 +17,7 @@ import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.SignalKService
+import fi.pocketsk.server.storageText
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -108,6 +109,7 @@ class SpikeActivity : AppCompatActivity() {
                 }
             }
             is ServerState.Waiting -> getString(R.string.server_waiting, state.reason, state.delayMs / 1000)
+            is ServerState.Storage -> storageText(this, state)
             ServerState.Stopping -> getString(R.string.server_stopping)
             is ServerState.Failed -> getString(R.string.spike_service_failed, state.reason)
         }

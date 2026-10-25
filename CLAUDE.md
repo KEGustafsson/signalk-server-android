@@ -57,9 +57,11 @@ app/                 the Android app
                      Slots, ServerVersion, InstallHistory, HealthGate, UpdateOffer (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
                      health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver,
-                     ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc);
-                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint, ProcStat
-                     (pure, tested)
+                     ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc),
+                     DataVolumes (the cards the data may go to, the USB inbox);
+                     RestartPolicy, LogRing, LogFiles, LanAddress, ServerEndpoint, ProcStat,
+                     DataStore (the data folders on a card, linked from .signalk), Inbox (files a
+                     computer copied over USB, into the data folders) (pure, tested)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),
@@ -96,7 +98,8 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      require.main, the signalk-server script); lib/alarms.js sends the server's
                      notifications to the phone and silences them through app.notifications;
                      lib/ble.js parses the app's Bluetooth LE advertisements for the server's BLE
-                     API (as a provider) and node-ble.js's hub
+                     API (as a provider) and node-ble.js's hub; lib/files.js and public/index.html
+                     (a webapp) upload files, charts above all, into the server's data folders
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
 Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap, `prebuilds/`.
@@ -111,7 +114,9 @@ Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap, `p
   carries a comment saying why.
 - Secrets (the admin token, anything under `files/home/.signalk`) never enter backups, logs or
   the diagnostics bundle. `data_extraction_rules.xml` excludes them; keep it in step with the
-  layout in `NodeRuntime`. `files/npm`, `files/bin`, `files/prebuilds`, `files/plugins` (the
+  layout in `NodeRuntime`. When the owner moves the server's data to a card, `DataStore` moves
+  data folders only: the files directly in `.signalk`, `node_modules` and the plugins' settings
+  files stay on the phone. `files/npm`, `files/bin`, `files/prebuilds`, `files/plugins` (the
   bridge's plugin) and `files/runtime` (the preload) are excluded too, with `files/bridge.sock`: the APK makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
   server's output, which may carry whatever a plugin printed.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of
