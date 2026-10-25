@@ -84,5 +84,6 @@ internal object Webapps {
     }
 
     private const val WEBAPP = "signalk-webapp"
-    private val NAME = Regex("^(?:@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$")
+    // Each hyphen last in its class, so no engine can read it as a range (`9-~` would take in A-Z).
+    private val NAME = Regex("^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$")
 }

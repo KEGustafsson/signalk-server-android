@@ -99,12 +99,24 @@ class MainActivity : ComponentActivity() {
      */
     private var pendingWebapp: String? = null
 
+    /**
+     * True when [pendingWebapp] came while the server was stopping: it is started once the stop
+     * is over. Only then, so a stop asked for after the link (from the tile, say) is not undone.
+     * Main thread; not kept across a rotation, since [serveWebapp] sets it again there.
+     */
+    private var startWhenStopped = false
+
     private val serverObserver = ServerStatus.Observer { state ->
         val before = model.server
         val wasActive = before.isActive
         model.server = state
         refreshLog()
-        openPendingWebapp()
+        if (startWhenStopped && state !is ServerState.Stopping) {
+            startWhenStopped = false
+            serveWebapp()
+        } else {
+            openPendingWebapp()
+        }
         model.devices = ServerStatus.devices
         model.alarms = ServerStatus.alarms
         model.locationHeld = ServerStatus.locationHeld
@@ -276,7 +288,8 @@ class MainActivity : ComponentActivity() {
     /**
      * [pendingWebapp], once it is known whether a server is installed: with none (the wizard
      * not finished) there is nothing to open and the link is dropped; with one, a stopped server
-     * is started first, the way the tile starts it, and the webapp opens when it answers.
+     * is started first, the way the tile starts it (a stopping one once it has stopped), and the
+     * webapp opens when it answers.
      */
     private fun serveWebapp() {
         if (pendingWebapp == null) return
@@ -284,7 +297,10 @@ class MainActivity : ComponentActivity() {
             null -> return
             false -> pendingWebapp = null
             true -> {
-                if (!model.server.isActive) startServer()
+                when {
+                    model.server is ServerState.Stopping -> startWhenStopped = true
+                    !model.server.isActive -> startServer()
+                }
                 openPendingWebapp()
             }
         }
