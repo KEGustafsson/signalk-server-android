@@ -161,7 +161,7 @@
     <string name="dock_log_filter">Lines with these words</string>
     <string name="dock_log_none_match">No recent line matches</string>
     <string name="dock_log_share">Share diagnostics</string>
-    <string name="dock_log_share_why">A zip of the server\'s log, the app\'s own settings and the phone\'s model, for whoever helps you. Nothing from the server\'s settings, security or plugins goes in. The log is what the server and its plugins printed: read it before posting it in public.</string>
+    <string name="dock_log_share_why">A zip of the server\'s log, the app\'s own settings and the phone\'s model, for whoever helps you. The server\'s settings, security and the plugins\' settings files stay out. The log holds whatever the server and its plugins printed: read it before posting it in public.</string>
     <string name="dock_log_share_subject">Pocket SK %1$s diagnostics</string>
     <string name="dock_log_share_failed">Could not write the diagnostics: %1$s</string>
     <string name="dock_log_share_none">No app to share the diagnostics with</string>

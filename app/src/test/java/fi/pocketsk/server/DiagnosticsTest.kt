@@ -70,6 +70,20 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun aLongCopyIsMaskedInPiecesWithAddressesAcrossTheirEdges() {
+        // Addresses at every offset against a small buffer, so some fall across two reads.
+        val text = buildString {
+            for (i in 0 until 40) append("x".repeat(i % 7)).append(" 00:1B:DC:0A:1B:${"%02X".format(i)} ")
+            append("end 0a:0b:0c:0d:0e:0f")
+        }
+        val log = tmp.newFile("server.log").apply { writeText(text) }
+        val out = ByteArrayOutputStream()
+        Diagnostics.write(out, emptyList(), listOf(Diagnostics.Copy("server.log", log)), File(tmp.root, "home/.signalk"), buffer = 5)
+        assertEquals(Diagnostics.maskAddresses(text), unzip(out.toByteArray())["server.log"])
+        assertFalse(unzip(out.toByteArray())["server.log"]!!.contains("DC:0A"))
+    }
+
+    @Test
     fun nothingUnderTheServersConfigurationIsEverWritten() {
         val secret = tmp.newFolder("home", ".signalk")
         val security = File(secret, "security.json").apply { writeText("""{"secretKey":"x"}""") }

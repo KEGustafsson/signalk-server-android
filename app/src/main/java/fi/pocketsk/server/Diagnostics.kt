@@ -56,7 +56,7 @@ internal object Diagnostics {
      * caller that asks for one is wrong and must not get away with it.
      */
     @Throws(IOException::class)
-    fun write(out: OutputStream, texts: List<Text>, copies: List<Copy>, secretDir: File) {
+    fun write(out: OutputStream, texts: List<Text>, copies: List<Copy>, secretDir: File, buffer: Int = BUFFER) {
         val secret = secretDir.canonicalFile
         for (c in copies) {
             require(!isUnder(c.file, secret)) { "${c.file} is under ${secretDir.name} and never leaves the phone" }
@@ -70,11 +70,55 @@ internal object Diagnostics {
             for (c in copies) {
                 if (!c.file.isFile) continue
                 zip.putNextEntry(ZipEntry(c.name))
-                // Read whole: a log file is at most about a megabyte (LogFiles.MAX_BYTES).
-                zip.write(maskAddresses(c.file.readText()).toByteArray(Charsets.UTF_8))
+                copyMasked(c.file, zip, buffer)
                 zip.closeEntry()
             }
         }
+    }
+
+    /**
+     * Copies [file] to [out] with its addresses masked, [buffer] characters at a time rather than
+     * whole: a log file is about a megabyte, but [LogFiles] takes a line of any length, and one
+     * plugin printing a huge one must not make the share run out of memory. Each round writes up
+     * to a cut that no address can straddle and keeps the rest for the next round, so an address
+     * split between two reads is still found.
+     */
+    private fun copyMasked(file: File, out: OutputStream, buffer: Int) {
+        val w = out.writer(Charsets.UTF_8)
+        file.reader(Charsets.UTF_8).use { r ->
+            val chars = CharArray(buffer)
+            val pending = StringBuilder()
+            while (true) {
+                val n = r.read(chars)
+                if (n < 0) break
+                pending.append(chars, 0, n)
+                if (pending.length >= buffer + CARRY) pending.delete(0, emitMasked(pending, w, last = false))
+            }
+            emitMasked(pending, w, last = true)
+        }
+        // Flushed, not closed: closing would close the zip under it.
+        w.flush()
+    }
+
+    /**
+     * Writes [s] up to a cut, its addresses masked, and returns the cut: all of it when [last],
+     * otherwise [CARRY] characters short of the end, or earlier where an address crosses that
+     * point, since what follows may finish an address or decide its boundary.
+     */
+    private fun emitMasked(s: CharSequence, w: java.io.Writer, last: Boolean): Int {
+        var cut = if (last) s.length else s.length - CARRY
+        var at = 0
+        for (m in MAC.findAll(s)) {
+            if (m.range.first >= cut) break
+            if (m.range.last >= cut) {
+                cut = m.range.first
+                break
+            }
+            w.append(s, at, m.range.first).append("XX:XX:XX:XX:").append(m.groupValues[1])
+            at = m.range.last + 1
+        }
+        w.append(s, at, cut)
+        return cut
     }
 
     private fun isUnder(file: File, dir: File): Boolean {
@@ -92,6 +136,12 @@ internal object Diagnostics {
     }
 
     private const val LEFT_OUT = "(left out)"
+
+    /** Characters read at a time from a copied file. */
+    private const val BUFFER = 64 * 1024
+
+    /** Kept back for the next round: an address is 17 characters, and the one after decides its end. */
+    private const val CARRY = 18
 
     /** A key that names a secret, in any case: token, password, secret, key, auth, cookie, credential. */
     private val SECRET = Regex("(?i)(token|passw|secret|key|auth|cookie|credential)")

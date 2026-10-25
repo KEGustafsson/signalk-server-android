@@ -13,8 +13,10 @@ import java.util.TimeZone
 /**
  * Gathers the diagnostics bundle on the phone and writes it with [Diagnostics], as a zip in the
  * app's cache (`cache/diagnostics/`, shared from there by the manifest's FileProvider and by
- * nothing else). One at a time: the bundle before it is deleted first, so the cache holds no
- * pile of old logs. Blocking: a worker thread only.
+ * nothing else). Each bundle has a name of its own, and the ones before it stay for [KEEP_MS]
+ * (at most [KEEP_COUNT] of them): the app that took one may still be reading it when the owner
+ * shares again, and a share that pointed at a deleted file would fail there, not here. Older
+ * ones are deleted, so the cache holds no pile of old logs. Blocking: a worker thread only.
  *
  * What goes in: a README saying what is there and what is not; `device.txt`, the app's version,
  * the server's state as the Dock sees it and [NodeRuntime.describe] (the phone, its ABIs and RAM,
@@ -34,14 +36,20 @@ internal object DiagnosticsBundle {
 
     private const val DIR = "diagnostics"
 
+    /** How long a bundle is kept after it was made, for the app it was shared with to read. */
+    private const val KEEP_MS = 60 * 60 * 1000L
+
+    /** At most this many earlier bundles are kept, however recent. */
+    private const val KEEP_COUNT = 3
+
     /** Writes a new bundle, with [summary] (the Dock's view of the server) in `device.txt`, and returns it. */
     @Throws(IOException::class)
     fun write(context: Context, runtime: NodeRuntime, summary: String): File {
         val dir = File(context.cacheDir, DIR)
-        dir.listFiles()?.forEach { it.delete() }
-        if (!dir.isDirectory && !dir.mkdirs()) throw IOException("could not make $dir")
         val now = Date()
-        val file = File(dir, "pocketsk-diagnostics-${SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(now)}.zip")
+        prune(dir, now.time)
+        if (!dir.isDirectory && !dir.mkdirs()) throw IOException("could not make $dir")
+        val file = File(dir, "pocketsk-diagnostics-${SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.ROOT).format(now)}.zip")
         val files = context.filesDir
         val logs = File(files, "logs")
         val prefs = PREFS.associateWith { context.getSharedPreferences(it, Context.MODE_PRIVATE).all }
@@ -62,6 +70,12 @@ internal object DiagnosticsBundle {
             throw e
         }
         return file
+    }
+
+    /** Deletes the bundles older than [KEEP_MS], and all but the newest [KEEP_COUNT] of the rest. */
+    private fun prune(dir: File, now: Long) {
+        val old = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return
+        old.forEachIndexed { i, f -> if (i >= KEEP_COUNT || now - f.lastModified() > KEEP_MS) f.delete() }
     }
 
     private fun device(now: Date, runtime: NodeRuntime, summary: String): String = buildString {
