@@ -44,6 +44,15 @@ internal object Webapps {
     }
 
     /**
+     * Whether a `package.json`'s [text] can be a webapp's, without parsing it: true when it names
+     * the keyword or holds a `\u` escape, which could spell the keyword (the server parses the
+     * file, so `signalk\u002dwebapp` is a webapp to it). A package tree holds hundreds of
+     * packages and a handful of webapps, so only those few, and the rare file with an escape, are
+     * parsed on every look.
+     */
+    fun mayBeWebapp(text: String): Boolean = text.contains(WEBAPP) || text.contains("\\u")
+
+    /**
      * True for an npm package name, scoped or not, in the lower case npm has required since
      * 2017: the only names a shortcut or a deep link may carry, since the name becomes the URL's
      * path and nothing else may ride in with it.

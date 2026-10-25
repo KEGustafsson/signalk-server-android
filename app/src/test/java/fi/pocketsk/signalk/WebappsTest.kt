@@ -42,6 +42,15 @@ class WebappsTest {
     }
 
     @Test
+    fun aKeywordSpelledWithAnEscapeIsStillFound() {
+        val escaped = """{"name":"kip","keywords":["signalk\u002dwebapp"]}"""
+        assertTrue(Webapps.mayBeWebapp(escaped))
+        assertEquals(Webapp("kip", "kip", null), Webapps.parse(escaped))
+        assertTrue(Webapps.mayBeWebapp("""{"name":"kip","keywords":["signalk-webapp"]}"""))
+        assertFalse(Webapps.mayBeWebapp("""{"name":"lodash","keywords":["util"]}"""))
+    }
+
+    @Test
     fun onlyPackageNamesRideInALink() {
         assertTrue(Webapps.validName("@mxtommy/kip"))
         assertTrue(Webapps.validName("signalk-instrumentpanel"))

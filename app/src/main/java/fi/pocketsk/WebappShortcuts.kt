@@ -95,7 +95,7 @@ internal object WebappShortcuts {
         }
     }
 
-    /** [dir]'s webapp: its `package.json` read only when it is small and names the keyword. */
+    /** [dir]'s webapp: its `package.json` parsed only when it is small and may be one ([Webapps.mayBeWebapp]). */
     private fun read(dir: File): Found? {
         val pkg = File(dir, "package.json")
         if (!pkg.isFile || pkg.length() > MAX_PACKAGE_BYTES) return null
@@ -104,7 +104,7 @@ internal object WebappShortcuts {
         } catch (_: java.io.IOException) {
             return null
         }
-        if (!text.contains("signalk-webapp")) return null
+        if (!Webapps.mayBeWebapp(text)) return null
         val webapp = Webapps.parse(text) ?: return null
         return Found(webapp, webapp.icon?.let { File(dir, it) })
     }
