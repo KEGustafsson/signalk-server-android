@@ -315,12 +315,20 @@ class MainActivity : ComponentActivity() {
     /** The webapps found on disk at the last look, by name, for their icons when one is pinned. Main thread. */
     private var webappFiles: Map<String, WebappShortcuts.Found> = emptyMap()
 
+    /**
+     * The number of the latest [refreshWebapps], main thread: two scans can overlap (a resume and
+     * a start), and the one that finishes last need not be the one that read the disk last.
+     */
+    private var webappScan = 0
+
     /** The installed webapps, read from their packages on a worker thread. */
     private fun refreshWebapps() {
         model.canPin = WebappShortcuts.pinSupported(this)
+        val scan = ++webappScan
         transportThread("dock-webapps", onError = {}) {
             val found = WebappShortcuts.list(runtime)
             runOnUiThread {
+                if (scan != webappScan) return@runOnUiThread
                 webappFiles = found.associateBy { it.webapp.name }
                 model.webapps = found.map { it.webapp }
             }
