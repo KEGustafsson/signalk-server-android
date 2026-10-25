@@ -7,6 +7,7 @@ import fi.pocketsk.bridge.AlarmBook
 import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
@@ -29,6 +30,8 @@ internal class AppModel {
     /** Null until first read: the slots, their versions and the history, read off the main thread. */
     var slots by mutableStateOf<SlotsView?>(null)
     var available by mutableStateOf<Available>(Available.Unknown)
+    /** signalk-server's release notes, read from GitHub when the Updates card opens them. */
+    var notes by mutableStateOf<Notes>(Notes.Unknown)
     var lanAddress by mutableStateOf<String?>(null)
     var permissions by mutableStateOf(PermissionsView())
     var devices by mutableStateOf<List<BridgeProtocol.Device>>(emptyList())
@@ -79,6 +82,14 @@ internal sealed interface Available {
     data class Failed(val reason: String) : Available
 }
 
+/** signalk-server's release notes, as far as asked. */
+internal sealed interface Notes {
+    data object Unknown : Notes
+    data object Loading : Notes
+    data class Loaded(val releases: List<ReleaseNotes.Release>) : Notes
+    data class Failed(val reason: String) : Notes
+}
+
 /**
  * What is granted. Null where it does not apply on this phone: notifications below Android 13,
  * local network access below Android 17, full-screen alarms below Android 14. [location] is precise location, for the bridge's GNSS:
@@ -106,6 +117,10 @@ internal interface AppActions {
     fun restartServer()
     fun openAdmin()
     fun loadVersions(refresh: Boolean)
+    /** signalk-server's release notes for the Updates card, from GitHub or the day's copy. */
+    fun loadNotes()
+    /** signalk-server's releases on GitHub, in the browser. */
+    fun openReleases()
     fun install(source: InstallManager.Source)
     fun pickTarball()
     fun rollBack()

@@ -92,6 +92,21 @@
     <string name="dock_up_to_date">Up to date</string>
     <string name="dock_install">Install %1$s</string>
     <string name="dock_rollback">Roll back to %1$s</string>
+    <string name="dock_notes_show">What\'s new in %1$s</string>
+    <string name="dock_notes_hide">Hide what\'s new</string>
+    <string name="dock_notes_failed">The release notes could not be read: %1$s</string>
+    <string name="dock_notes_none">GitHub has no release notes for these versions.</string>
+    <string name="dock_notes_empty">No notes for this release.</string>
+    <string name="dock_notes_release">%1$s · %2$s</string>
+    <plurals name="dock_notes_more">
+        <item quantity="one">and %d more</item>
+        <item quantity="other">and %d more</item>
+    </plurals>
+    <plurals name="dock_notes_older">
+        <item quantity="one">and %d older release</item>
+        <item quantity="other">and %d older releases</item>
+    </plurals>
+    <string name="dock_notes_github">All release notes on GitHub</string>
     <string name="dock_rollback_reason">by hand, from the Dock</string>
     <string name="dock_history">History</string>
     <string name="dock_history_line">%1$s  %2$s  %3$s  slot %4$s</string>

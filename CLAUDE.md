@@ -54,7 +54,8 @@ app/                 the Android app
   fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Common (sections, permission rows),
                      AppModel, Theme
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
-                     Slots, ServerVersion, InstallHistory, HealthGate, UpdateOffer (pure, tested)
+                     ReleaseNotesSource (GitHub's release notes, a day's cache); Slots, ServerVersion,
+                     InstallHistory, HealthGate, UpdateOffer, ReleaseNotes (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
                      health watch, health gate), ServerStatus, ServerLog, ServerPrefs, BootReceiver,
                      ServerTile (Quick Settings), ServerUsage (the Dock's CPU and memory, from /proc),
