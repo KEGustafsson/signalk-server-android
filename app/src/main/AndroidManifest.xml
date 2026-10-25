@@ -66,10 +66,11 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true">
-        <!-- usesCleartextTraffic: the admin UI and webapps are plain http on 127.0.0.1 and the
-             LAN, as on every Signal K install. The Node runtime's libraries are extracted at
+        <!-- networkSecurityConfig: cleartext for the admin UI and webapps, plain http on
+             127.0.0.1 and the LAN as on every Signal K install, and api.github.com pinned for the
+             release notes; the file says why. The Node runtime's libraries are extracted at
              install time so lib/<abi>/libnodeexec.so can be exec'd from nativeLibraryDir
              (docs/PLAN.md §4.1, spike R1); jniLibs.useLegacyPackaging in app/build.gradle.kts
              sets that, because AGP no longer takes it from the manifest. -->

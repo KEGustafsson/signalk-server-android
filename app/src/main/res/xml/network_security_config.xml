@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app's own Java/Kotlin HTTP (the Node runtime and npm use their own TLS and are not
+  affected by this file).
+
+  base-config: cleartext stays allowed, as android:usesCleartextTraffic allowed it before this
+  file existed (a network security config replaces that attribute). The admin UI, the webapps
+  and SignalKClient talk plain http to 127.0.0.1 and to Signal K servers on the boat's LAN, at
+  addresses no domain-config can list; a boat server has no certificate to offer.
+
+  api.github.com (ReleaseNotesSource, the Updates card's changelog) is pinned to the root CAs
+  GitHub's chains have used: Sectigo's USERTrust roots and their successors, and DigiCert's.
+  Android checks the pins against every key in the validated chain, the root included, so a
+  change of leaf or intermediate certificate does not break the notes; only a move to another
+  CA does. The pins lapse on the expiration date, after which the notes fall back to plain
+  system trust rather than stop working: renew the pins and the date before then (docs/PLAN.md,
+  step 10.3). A pin failure shows the Updates card's "notes could not be read" line and nothing
+  else; the install goes through npm and does not use this connection.
+
+  Pins are base64 SHA-256 of each root's SubjectPublicKeyInfo:
+    openssl x509 -in <root>.pem -pubkey -noout | openssl pkey -pubin -outform der \
+      | openssl dgst -sha256 -binary | base64
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <!-- InsecureBaseConfiguration: cleartext is the point here, for 127.0.0.1 and the LAN (above). -->
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">api.github.com</domain>
+        <pin-set expiration="2027-10-01">
+            <!-- USERTrust ECC Certification Authority (Sectigo) -->
+            <pin digest="SHA-256">ICGRfpgmOUXIWcQ/HXPLQTkFPEFPoDyjvH7ohhQpjzs=</pin>
+            <!-- USERTrust RSA Certification Authority (Sectigo) -->
+            <pin digest="SHA-256">x4QzPSC810K5/cMjb05Qm4k3Bw5zBn4lTdO/nEW/Td4=</pin>
+            <!-- Sectigo Public Server Authentication Root E46 -->
+            <pin digest="SHA-256">sLVjNUaFYfW7n6EtgBeEpjOlcnBdNPMrZDRF36iwBdE=</pin>
+            <!-- Sectigo Public Server Authentication Root R46 -->
+            <pin digest="SHA-256">Douxi77vs4G+Ib/BogbTFymEYq0QSFXwSgVCaZcI09Q=</pin>
+            <!-- DigiCert Global Root G2 -->
+            <pin digest="SHA-256">i7WTqTvh0OioIruIfFR4kMPnBqrS2rdiVPl/s2uC/CY=</pin>
+            <!-- DigiCert Global Root G3 -->
+            <pin digest="SHA-256">uUwZgwDOxcBXrQcntwu+kYFpkiVkOaezL0WYEZ3anJc=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>
