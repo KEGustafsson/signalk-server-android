@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import fi.pocketsk.bridge.BleScanner
@@ -34,6 +35,7 @@ import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.ReleaseNotesSource
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
@@ -50,6 +52,7 @@ import fi.pocketsk.ui.AppActions
 import fi.pocketsk.ui.AppModel
 import fi.pocketsk.ui.Available
 import fi.pocketsk.ui.DockScreen
+import fi.pocketsk.ui.Notes
 import fi.pocketsk.ui.PermissionsView
 import fi.pocketsk.ui.PocketTheme
 import fi.pocketsk.ui.SetupScreen
@@ -245,6 +248,8 @@ class MainActivity : ComponentActivity() {
         override fun restartServer() = this@MainActivity.restartServer()
         override fun openAdmin() = this@MainActivity.openAdmin()
         override fun loadVersions(refresh: Boolean) = this@MainActivity.loadVersions(refresh)
+        override fun loadNotes() = this@MainActivity.loadNotes()
+        override fun openReleases() = this@MainActivity.openReleases()
         override fun install(source: InstallManager.Source) = this@MainActivity.install(source)
         override fun pickTarball() = this@MainActivity.pickTarball()
         override fun rollBack() = this@MainActivity.rollBack()
@@ -307,6 +312,11 @@ class MainActivity : ComponentActivity() {
         if (model.available == Available.Loading) return
         if (!refresh && model.available is Available.Loaded) return
         model.available = Available.Loading
+        if (refresh) {
+            // Asked again: the notes too, for a release published since they were read.
+            notesRefresh = true
+            if (model.notes !is Notes.Loading) model.notes = Notes.Unknown
+        }
         transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed("$e") } }) {
             val result = try {
                 Available.Loaded(installs.listAvailable(maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
@@ -314,6 +324,34 @@ class MainActivity : ComponentActivity() {
                 Available.Failed(e.message ?: "$e")
             }
             runOnUiThread { model.available = result }
+        }
+    }
+
+    /** Set by "Check for updates", so the next look at the notes asks GitHub rather than the day's copy. */
+    private var notesRefresh = false
+
+    /** The release notes, read once a screen asks for them; GitHub's answer is kept a day. */
+    private fun loadNotes() {
+        if (model.notes == Notes.Loading || model.notes is Notes.Loaded) return
+        model.notes = Notes.Loading
+        val maxAge = if (notesRefresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS
+        notesRefresh = false
+        val source = ReleaseNotesSource(File(cacheDir, RELEASE_NOTES))
+        transportThread("dock-notes", onError = { e -> runOnUiThread { model.notes = Notes.Failed("$e") } }) {
+            val result = try {
+                Notes.Loaded(source.releases(maxAge))
+            } catch (e: IOException) {
+                Notes.Failed(e.message ?: "$e")
+            }
+            runOnUiThread { model.notes = result }
+        }
+    }
+
+    private fun openReleases() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, ReleaseNotesSource.URL_PAGE.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.no_browser, ReleaseNotesSource.URL_PAGE), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -591,6 +629,9 @@ class MainActivity : ComponentActivity() {
 
         /** A pick's file while it is being copied. */
         private const val PARTIAL = "copying.part"
+
+        /** GitHub's answer for the release notes, in the cache Android may clear: it is fetched again. */
+        private const val RELEASE_NOTES = "release-notes.json"
 
         /** What a picked file's name may not carry into a path or an npm argument. */
         private val UNSAFE_NAME = Regex("[^A-Za-z0-9._-]")

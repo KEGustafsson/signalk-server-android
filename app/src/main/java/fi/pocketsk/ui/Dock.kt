@@ -21,9 +21,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +39,8 @@ import fi.pocketsk.R
 import fi.pocketsk.ServerActions
 import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.ReleaseNotes
+import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.ServerState
@@ -305,9 +309,10 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
             }
             installTail(model.install).takeIf { it.isNotEmpty() }?.let { LogText(it.lines().takeLast(INSTALL_LINES).joinToString("\n")) }
         }
+        val offer = (model.available as? Available.Loaded)?.let { UpdateOffer.pick(it.versions, slots.liveVersion, slots.history) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            when (val available = model.available) {
-                is Available.Loaded -> UpdateOffer.pick(available.versions, slots.liveVersion, slots.history)?.let { v ->
+            when (model.available) {
+                is Available.Loaded -> offer?.let { v ->
                     Button(onClick = { actions.install(InstallManager.Source.Registry(v.text)) }, enabled = !model.installing) {
                         Text(stringResource(R.string.dock_install, v.text))
                     }
@@ -327,6 +332,7 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
         (model.available as? Available.Failed)?.let {
             Text(stringResource(R.string.setup_version_failed, it.reason), color = MaterialTheme.colorScheme.error)
         }
+        offer?.let { WhatsNew(model.notes, slots.liveVersion, it, actions) }
         val recent = slots.history.newestFirst.take(HISTORY_LINES)
         if (recent.isNotEmpty()) {
             Text(stringResource(R.string.dock_history), style = MaterialTheme.typography.labelLarge)
@@ -339,6 +345,47 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
             }
         }
     }
+}
+
+/**
+ * "What's new in 2.14.0": signalk-server's release notes from the live version up to the one on
+ * offer, read from GitHub the first time they are opened, each release cut to its first lines.
+ */
+@Composable
+private fun WhatsNew(notes: Notes, live: String?, offer: ServerVersion, actions: AppActions) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    // Open with nothing read: on the first open, after "Check for updates" dropped them, after a
+    // rotation; a failure is tried again when the notes are opened again, not in a loop.
+    val unknown = notes == Notes.Unknown
+    LaunchedEffect(open, unknown) {
+        if (open && (unknown || notes is Notes.Failed)) actions.loadNotes()
+    }
+    TextButton(onClick = { open = !open }) {
+        Text(if (open) stringResource(R.string.dock_notes_hide) else stringResource(R.string.dock_notes_show, offer.text))
+    }
+    if (!open) return
+    when (notes) {
+        Notes.Unknown, Notes.Loading -> CircularProgressIndicator()
+        is Notes.Failed -> Text(stringResource(R.string.dock_notes_failed, notes.reason), color = MaterialTheme.colorScheme.error)
+        is Notes.Loaded -> {
+            val releases = ReleaseNotes.between(notes.releases, live, offer)
+            if (releases.isEmpty()) Text(stringResource(R.string.dock_notes_none))
+            val format = DateFormat.getDateInstance(DateFormat.MEDIUM)
+            for (r in releases.take(NOTE_RELEASES)) {
+                Text(
+                    r.published?.let { stringResource(R.string.dock_notes_release, r.version.text, format.format(Date(it))) } ?: r.version.text,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (r.lines.isEmpty()) Text(stringResource(R.string.dock_notes_empty), style = MaterialTheme.typography.bodySmall)
+                else Text(r.lines.take(NOTE_LINES).joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                val more = r.lines.size - NOTE_LINES
+                if (more > 0) Text(pluralStringResource(R.plurals.dock_notes_more, more, more), style = MaterialTheme.typography.bodySmall)
+            }
+            val older = releases.size - NOTE_RELEASES
+            if (older > 0) Text(pluralStringResource(R.plurals.dock_notes_older, older, older), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    TextButton(onClick = actions::openReleases) { Text(stringResource(R.string.dock_notes_github)) }
 }
 
 /** "Up 3:12:05 · CPU 4 % of one core · memory 182 MB", as much of it as is known. */
@@ -360,3 +407,9 @@ private fun deltaRateText(rate: Double): String =
 
 private const val INSTALL_LINES = 15
 private const val HISTORY_LINES = 5
+
+/** The releases the notes show at most, newest first; the rest are a line and a link to GitHub. */
+private const val NOTE_RELEASES = 10
+
+/** A release's lines shown: the head of a long list of changes, the rest counted. */
+private const val NOTE_LINES = 12
