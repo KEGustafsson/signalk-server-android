@@ -102,7 +102,8 @@ class MainActivity : ComponentActivity() {
     /**
      * True when [pendingWebapp] came while the server was stopping: it is started once the stop
      * is over. Only then, so a stop asked for after the link (from the tile, say) is not undone.
-     * Main thread; not kept across a rotation, since [serveWebapp] sets it again there.
+     * Set when the request comes ([requestWebapp]), never inferred later, and kept across a
+     * rotation: after one, a server found stopping may be stopping for the owner. Main thread.
      */
     private var startWhenStopped = false
 
@@ -203,6 +204,7 @@ class MainActivity : ComponentActivity() {
         // before a rotation.
         restartPending = savedInstanceState?.getBoolean(STATE_RESTART_PENDING) == true
         pendingWebapp = savedInstanceState?.getString(STATE_PENDING_WEBAPP)
+        startWhenStopped = savedInstanceState?.getBoolean(STATE_START_WHEN_STOPPED) == true
         ServerStatus.observe(serverObserver)
         // Not from onResume, which runs before the lifecycle says RESUMED: AndroidX moves it there
         // only once onResume has returned, so the check in finishRestart would always fail.
@@ -248,6 +250,7 @@ class MainActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_RESTART_PENDING, restartPending)
         outState.putString(STATE_PENDING_WEBAPP, pendingWebapp)
+        outState.putBoolean(STATE_START_WHEN_STOPPED, startWhenStopped)
     }
 
     /**
@@ -279,10 +282,16 @@ class MainActivity : ComponentActivity() {
             intent?.action == ACTION_START -> startServer()
             intent?.action == Intent.ACTION_VIEW && intent.data?.scheme == Webapps.SCHEME -> {
                 val name = Webapps.nameOf(intent.data?.host, intent.data?.path) ?: return
-                pendingWebapp = name
-                serveWebapp()
+                requestWebapp(name)
             }
         }
+    }
+
+    /** A webapp asked for by a shortcut, a deep link or the Webapps card: opened once the server answers. */
+    private fun requestWebapp(name: String) {
+        pendingWebapp = name
+        startWhenStopped = model.server is ServerState.Stopping
+        serveWebapp()
     }
 
     /**
@@ -297,10 +306,7 @@ class MainActivity : ComponentActivity() {
             null -> return
             false -> pendingWebapp = null
             true -> {
-                when {
-                    model.server is ServerState.Stopping -> startWhenStopped = true
-                    !model.server.isActive -> startServer()
-                }
+                if (!model.server.isActive) startServer()
                 openPendingWebapp()
             }
         }
@@ -388,10 +394,7 @@ class MainActivity : ComponentActivity() {
 
         override fun shareDiagnostics() = this@MainActivity.shareDiagnostics()
 
-        override fun openWebapp(name: String) {
-            pendingWebapp = name
-            serveWebapp()
-        }
+        override fun openWebapp(name: String) = requestWebapp(name)
 
         override fun pinWebapp(name: String) = this@MainActivity.pinWebapp(name)
     }
@@ -808,6 +811,9 @@ class MainActivity : ComponentActivity() {
 
         /** Saved across a rotation: a webapp to open once the server answers. */
         private const val STATE_PENDING_WEBAPP = "pending_webapp"
+
+        /** Saved across a rotation: whether that webapp came while the server was stopping. */
+        private const val STATE_START_WHEN_STOPPED = "start_when_stopped"
 
         /** Under the cache: the sideloaded tarballs, a directory per pick. */
         private const val SIDELOAD_DIR = "sideload"
