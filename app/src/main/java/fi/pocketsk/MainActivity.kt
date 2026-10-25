@@ -112,11 +112,15 @@ class MainActivity : ComponentActivity() {
         val wasActive = before.isActive
         model.server = state
         refreshLog()
-        if (state is ServerState.Failed && before !is ServerState.Failed) {
+        val gaveUp = state is ServerState.Failed && before !is ServerState.Failed
+        val stopped = state is ServerState.Stopped && before !is ServerState.Stopped && !startWhenStopped
+        if (gaveUp || stopped) {
             // The server gave up (the Dock and the notification say why), a restart or rollback
-            // that was stopping it included: the webapp asked for is dropped, or it would open by
+            // that was stopping it included, or was stopped before it answered (from the Dock, the
+            // tile or the notification): the webapp asked for is dropped, or it would open by
             // surprise whenever the server is next started by hand. One asked for while it is
-            // Failed still starts it.
+            // stopping still starts it once it has stopped; one asked for while it is Stopped or
+            // Failed starts it.
             pendingWebapp = null
             startWhenStopped = false
         } else if (startWhenStopped && state !is ServerState.Stopping) {
