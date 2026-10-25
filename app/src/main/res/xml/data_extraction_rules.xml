@@ -10,8 +10,9 @@
   (the preload every node loads) hold nothing of the boat's: the APK unpacks or fetches them again, and files/bin/node points into the old install's nativeLibraryDir, which a new
   phone does not have. files/logs is the server's output, this phone's story, and may carry
   whatever a plugin printed.
-  The data folders the owner may move to an SD card or USB drive (DataStore) are in the app's
-  folder on that card, which neither backup nor device transfer takes. The USB inbox (Inbox) is in
+  The data folders (DataStore) and the copies of .signalk's files (ConfigMirror) are in the app's
+  folder on the phone's shared storage, the external domain excluded below, or on a card, which
+  neither backup nor device transfer takes: they hold security.json's copy. The USB inbox (Inbox) is in
   the app's folder on the phone's shared storage, the external domain: files on their way in, which
   stay on this phone.
 -->

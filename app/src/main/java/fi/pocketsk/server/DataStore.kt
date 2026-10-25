@@ -11,9 +11,10 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 
 /**
- * Where the server's data lives (docs/PLAN.md §16 9.5.9): in `.signalk` on the phone, as Signal K
- * keeps it, or on a card the owner chose in the Dock, in the app's own folder there, which Android
- * gives without a permission and removes with the app.
+ * Where the server's data lives (docs/PLAN.md §16 9.5.9, 9.5.11): in the app's own folder on the
+ * phone's shared storage or on a card the owner chose in the Dock, which Android gives without a
+ * permission, a computer sees over USB, and Android removes with the app; or, given no [place]
+ * root, in `.signalk` itself, as Signal K keeps it.
  *
  * `.signalk` itself stays on the phone, and with it every file directly in it (`settings.json`,
  * `security.json`, the SSL key, `package.json`), `node_modules` and the plugins' settings files in

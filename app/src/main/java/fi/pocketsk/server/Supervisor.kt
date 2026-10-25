@@ -2,6 +2,7 @@ package fi.pocketsk.server
 
 import android.content.Context
 import android.os.SystemClock
+import fi.pocketsk.R
 import fi.pocketsk.bridge.Bridge
 import fi.pocketsk.bridge.BridgePlugin
 import fi.pocketsk.install.HealthGate
@@ -46,8 +47,11 @@ import kotlin.concurrent.thread
  * version bad, and the server starts again from there. That call waits for an install in
  * progress to finish, since both rewrite `current`.
  *
- * Before every run the data folders are put where the owner chose ([placeData], [DataStore]): on
- * the phone or on a card, which is waited for while it is out ([ServerState.Storage]).
+ * Before every run the data folders are put where the owner chose ([placeData], [DataStore]): in
+ * the app's folder on the phone's shared storage or on a card, which a computer sees over USB, and
+ * which is waited for while it is out ([ServerState.Storage]). The files that stay in `.signalk`
+ * are copied there too ([ConfigMirror]): every 30 s while the server runs, and once more when it
+ * has ended; the computer's changes to those copies go into `.signalk` before the next start.
  *
  * Everything reported goes through [onState]; [onAlert] is for what the user should hear about
  * even with no screen open: a rollback, or giving up (with the [ServerState.Failed] it ends in).
@@ -84,6 +88,14 @@ internal class Supervisor(
 
     /** When the data's card was last ejected ([storageEjected]), until it is seen gone. */
     private var ejectedAt: Long? = null
+
+    /** The folder a computer sees ([DataStore]'s root), as [placeData] last found it; null before. */
+    @Volatile private var shown: File? = null
+
+    // Of [mirror], on the supervisor's threads one at a time (under DataStore.LOCK): what was
+    // last said, so a sync every 30 s says a thing once.
+    private var mirrorWaiting = emptyList<String>()
+    private var mirrorError: String? = null
 
     @Volatile var state: ServerState = ServerState.Stopped
         private set
@@ -269,6 +281,8 @@ internal class Supervisor(
             val code = n.process.waitFor()
             val whole = n.reap()
             health.interrupt()
+            // What the server saved last, before anyone opens the folder to look.
+            mirror(running = true)
             reader.join(DRAIN_MS)
             val now = SystemClock.elapsedRealtime()
             val why = synchronized(this) {
@@ -357,6 +371,8 @@ internal class Supervisor(
                     trial = onTrial
                 }
             }
+            // With the health poll's cadence once the server answers: a settings file is small.
+            if (answering != null) mirror(running = true)
             try {
                 Thread.sleep(if (answering != null) HEALTH_POLL_MS else FIRST_POLL_MS)
             } catch (_: InterruptedException) {
@@ -422,8 +438,8 @@ internal class Supervisor(
 
     /**
      * Puts the data folders where the owner chose ([DataStore]) before a run, and takes in what
-     * waits in the USB inbox ([Inbox]); null when the run
-     * may go on, else the state to end in. A chosen card that is not in the phone, or that was
+     * waits in the USB inbox ([Inbox]) and the computer's changes to the settings files' copies
+     * ([mirror]); null when the run may go on, else the state to end in. A chosen card that is not in the phone, or that was
      * just taken out ([storageEjected]), is waited for, checked every [CARD_POLL_MS] and at once
      * when it is put in ([storageMounted]), rather than given up on: the server without its
      * data would start as a new one, and so is one taken out in the middle of a move. A folder
@@ -433,11 +449,39 @@ internal class Supervisor(
     private fun placeData(): ServerState? {
         while (true) {
             var told: String? = null
-            var root: File? = null
+            var root: File
             var to: String? = null
+
+            // One look's wait for [name], where the data is: the state to end in when the run is
+            // no longer wanted, else null for the next look.
+            fun waitFor(name: String): ServerState? {
+                if (told != name) log.note("waiting for $name, where the server's data is")
+                told = name
+                publish(ServerState.Storage(waiting = true, volume = name))
+                waiter.await(CARD_POLL_MS)
+                synchronized(this) {
+                    if (!wanted) return ServerState.Stopped
+                    // A restart asked for while waiting (a new choice in the Dock) is this look.
+                    if (ask == Ask.RESTART) ask = Ask.NONE
+                }
+                return null
+            }
+
             while (true) {
                 // Read again on every look: the owner may choose the phone while the card is away.
-                val uuid = prefs.dataVolume ?: break
+                val uuid = prefs.dataVolume
+                if (uuid == null) {
+                    // The phone's shared storage, there whenever the phone is unlocked; waited for
+                    // like a card if not, since the server without its data would start as a new one.
+                    val phone = DataVolumes.phone(app)
+                    if (phone != null) {
+                        root = phone
+                        to = null
+                        break
+                    }
+                    waitFor(app.getString(R.string.server_storage_phone))?.let { return it }
+                    continue
+                }
                 val name = prefs.dataVolumeName ?: uuid
                 val volume = DataVolumes.mounted(app, uuid)
                 val ejecting = synchronized(this) {
@@ -451,22 +495,17 @@ internal class Supervisor(
                     to = name
                     break
                 }
-                if (told != name) log.note("waiting for $name, the card the server's data is on")
-                told = name
-                publish(ServerState.Storage(waiting = true, volume = name))
-                waiter.await(CARD_POLL_MS)
-                synchronized(this) {
-                    if (!wanted) return ServerState.Stopped
-                    // A restart asked for while waiting (a new choice in the Dock) is this look.
-                    if (ask == Ask.RESTART) ask = Ask.NONE
-                }
+                waitFor(name)?.let { return it }
             }
-            if (told != null && to != null) log.note("$to is in")
+            if (told != null) log.note("${to ?: "the phone's shared storage"} is there")
             try {
                 DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
                     log.note("moving $rel to ${to ?: "the phone"}")
                     publish(ServerState.Storage(waiting = false, volume = to))
                 }
+                shown = root
+                // The computer's changes to the settings files' copies, while nothing reads them.
+                mirror(running = false)
                 // What a computer left in the USB inbox, now the folders are where they belong; a
                 // folder new to the server is made where they are.
                 DataVolumes.inbox(app)?.let { dir ->
@@ -482,6 +521,30 @@ internal class Supervisor(
                     continue
                 }
                 return failed("the server's data could not be moved: ${e.message ?: e}")
+            }
+        }
+    }
+
+    /**
+     * Brings the copies of `.signalk`'s files in the folder a computer sees in line ([ConfigMirror]),
+     * the computer's changes taken in only when not [running]. A failure is said once and costs
+     * the copies, never the run: the server's own files are untouched by it.
+     */
+    private fun mirror(running: Boolean) {
+        val root = shown ?: return
+        synchronized(DataStore.LOCK) {
+            try {
+                val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme), log::note).sync(running)
+                if (r.taken.isNotEmpty()) log.note("taken in from ${root.path}: ${r.taken.joinToString()}")
+                if (r.waiting.isNotEmpty() && r.waiting != mirrorWaiting) {
+                    log.note("changed in ${root.path}, taken in at the next start: ${r.waiting.joinToString()}")
+                }
+                mirrorWaiting = r.waiting
+                mirrorError = null
+            } catch (e: IOException) {
+                val why = e.message ?: e.toString()
+                if (why != mirrorError) log.note("the settings files could not be copied to ${root.path}: $why")
+                mirrorError = why
             }
         }
     }
