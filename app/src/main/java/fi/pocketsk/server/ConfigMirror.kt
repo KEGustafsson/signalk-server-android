@@ -71,6 +71,12 @@ internal class ConfigMirror(
             val there = File(root, rel)
             // A folder or a link on either side is not a settings file: DataStore's, or the owner's.
             if (other(here) || other(there)) continue
+            // One that grew past the limit since it was last copied is left as it is on both
+            // sides, and its manifest line kept, so it is neither copied nor read as deleted.
+            if (tooBig(here) || tooBig(there)) {
+                known[rel]?.let { next[rel] = it }
+                continue
+            }
             val mine = digest(here)
             val theirs = digest(there)
             val last = known[rel]
@@ -117,7 +123,7 @@ internal class ConfigMirror(
             for (f in d.listFiles().orEmpty()) {
                 val name = f.name
                 if (!Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS) || !mirrored(name, phone)) continue
-                if (f.length() > MAX_BYTES) {
+                if (tooBig(f)) {
                     note("${prefix + name} is over ${MAX_BYTES / MB} MB and is not copied to the USB folder")
                     continue
                 }
@@ -161,6 +167,22 @@ internal class ConfigMirror(
         for (f in dir.listFiles().orEmpty()) if (f.name.endsWith(PART) && f.isFile) Files.delete(f.toPath())
     }
 
+    private fun tooBig(f: File): Boolean = f.isFile && f.length() > MAX_BYTES
+
+    /**
+     * Whether [rel], a path read from the manifest, is one this class could have written there: a
+     * file directly in `.signalk` or in its `plugin-config-data`, with a name [mirrored] accepts.
+     * The manifest is in the folder a computer writes, so a line naming `../` must not take the
+     * copy, or the deletion, anywhere else in the app's storage.
+     */
+    private fun safe(rel: String): Boolean {
+        val parts = rel.split('/')
+        val placed = parts.size == 1 || (parts.size == 2 && parts[0] == DataStore.PLUGIN_DATA)
+        val name = parts.last()
+        return placed && name.isNotEmpty() && name != "." && name != ".." && '\\' !in name &&
+            '\u0000' !in name && mirrored(name, phone = false)
+    }
+
     private fun other(f: File): Boolean =
         Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)
 
@@ -185,7 +207,9 @@ internal class ConfigMirror(
         if (!f.isFile) return emptyMap()
         return f.readLines().mapNotNull { line ->
             val tab = line.indexOf('\t')
-            if (tab <= 0) null else line.substring(tab + 1) to line.substring(0, tab)
+            if (tab <= 0) return@mapNotNull null
+            val rel = line.substring(tab + 1)
+            if (safe(rel)) rel to line.substring(0, tab) else null
         }.toMap()
     }
 

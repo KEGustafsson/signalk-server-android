@@ -146,4 +146,27 @@ class ConfigMirrorTest {
         assertFalse(File(config, "settings.json.pocketsk-part").exists())
         assertEquals("whole", File(shown, "settings.json").readText())
     }
+
+    @Test
+    fun aManifestLineThatLeavesSignalkIsIgnored() {
+        val outside = File(tmp.root, "home/files-secret.txt").apply { writeText("kept") }
+        val sum = "0".repeat(64)
+        write(File(shown, ConfigMirror.MANIFEST), "$sum\t../files-secret.txt\n$sum\t../../home/files-secret.txt\n$sum\tplugin-config-data/../../x\n")
+        write(File(shown, "../files-secret.txt"), "the computer's")
+        assertEquals(ConfigMirror.Result(emptyList(), emptyList()), mirror().sync(running = false))
+        assertEquals("kept", outside.readText())
+        assertFalse(File(shown, ConfigMirror.MANIFEST).readText().contains(".."))
+    }
+
+    @Test
+    fun aFileThatGrewPastTheLimitIsLeftAloneAndNotedOnce() {
+        write(File(config, "settings.json"), "small")
+        mirror().sync(running = true)
+        File(config, "settings.json").writeBytes(ByteArray(16 * 1024 * 1024 + 1))
+        mirror().sync(running = true)
+        mirror().sync(running = false)
+        assertEquals("small", File(shown, "settings.json").readText())
+        assertEquals(16L * 1024 * 1024 + 1, File(config, "settings.json").length())
+        assertTrue(File(shown, ConfigMirror.MANIFEST).readText().contains("settings.json"))
+    }
 }

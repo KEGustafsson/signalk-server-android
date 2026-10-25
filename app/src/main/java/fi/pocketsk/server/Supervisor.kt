@@ -95,6 +95,7 @@ internal class Supervisor(
     // Of [mirror], on the supervisor's threads one at a time (under DataStore.LOCK): what was
     // last said, so a sync every 30 s says a thing once.
     private var mirrorWaiting = emptyList<String>()
+    private val mirrorNoted = mutableSetOf<String>()
     private var mirrorError: String? = null
 
     @Volatile var state: ServerState = ServerState.Stopped
@@ -534,7 +535,8 @@ internal class Supervisor(
         val root = shown ?: return
         synchronized(DataStore.LOCK) {
             try {
-                val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme), log::note).sync(running)
+                val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme)) { if (mirrorNoted.add(it)) log.note(it) }
+                    .sync(running)
                 if (r.taken.isNotEmpty()) log.note("taken in from ${root.path}: ${r.taken.joinToString()}")
                 if (r.waiting.isNotEmpty() && r.waiting != mirrorWaiting) {
                     log.note("changed in ${root.path}, taken in at the next start: ${r.waiting.joinToString()}")
