@@ -337,14 +337,22 @@ class MainActivity : ComponentActivity() {
         val maxAge = if (notesRefresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS
         notesRefresh = false
         val source = ReleaseNotesSource(File(cacheDir, RELEASE_NOTES))
-        transportThread("dock-notes", onError = { e -> runOnUiThread { model.notes = Notes.Failed("$e") } }) {
+        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed("$e")) } }) {
             val result = try {
                 Notes.Loaded(source.releases(maxAge))
             } catch (e: IOException) {
                 Notes.Failed(e.message ?: "$e")
             }
-            runOnUiThread { model.notes = result }
+            runOnUiThread { notesRead(result) }
         }
+    }
+
+    /**
+     * A load's result, unless "Check for updates" was pressed while it ran: that answer may be
+     * the day's copy, so the notes go back to unknown and an open section reads them again.
+     */
+    private fun notesRead(result: Notes) {
+        model.notes = if (notesRefresh) Notes.Unknown else result
     }
 
     private fun openReleases() {

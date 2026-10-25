@@ -120,13 +120,41 @@ class ReleaseNotesTest {
     fun aFreshCacheIsUsedAndABrokenOneIsDropped() {
         val cache = File(tmp.root, "release-notes.json")
         cache.writeText(json(release("v2.13.0", generated)))
-        val source = ReleaseNotesSource(cache) { cache.lastModified() + 1000 }
+        val source = ReleaseNotesSource(cache, now = { cache.lastModified() + 1000 })
         assertEquals(listOf("v2.13.0"), source.releases(maxAgeMs = 60_000).map { it.version.text })
 
         cache.writeText("<html>not JSON</html>")
         try {
             source.releases(maxAgeMs = 60_000)
             throw AssertionError("a broken cache was read")
+        } catch (e: IOException) {
+            assertTrue(e.message!!.startsWith("GitHub's answer could not be read"))
+        }
+        assertTrue(!cache.exists())
+    }
+
+    @Test
+    fun anAnswerThatCannotBeReadNeverReplacesAGoodCache() {
+        val cache = File(tmp.root, "release-notes.json")
+        val good = json(release("v2.13.0", generated))
+        cache.writeText(good)
+        var answer = "<html>a captive portal</html>"
+        val source = ReleaseNotesSource(cache, now = { cache.lastModified() + 120_000 }, fetch = { answer })
+
+        // Stale, and GitHub's answer is not releases: the old cache stands in, untouched.
+        assertEquals(listOf("v2.13.0"), source.releases(maxAgeMs = 60_000).map { it.version.text })
+        assertEquals(good, cache.readText())
+
+        answer = json(release("v2.14.0"), release("v2.13.0", generated))
+        assertEquals(listOf("v2.14.0", "v2.13.0"), source.releases(maxAgeMs = 60_000).map { it.version.text })
+        assertEquals(answer, cache.readText())
+
+        // No cache at all: the answer's fault is the error.
+        cache.delete()
+        answer = "<html>a captive portal</html>"
+        try {
+            source.releases(maxAgeMs = 60_000)
+            throw AssertionError("an unreadable answer was taken")
         } catch (e: IOException) {
             assertTrue(e.message!!.startsWith("GitHub's answer could not be read"))
         }
