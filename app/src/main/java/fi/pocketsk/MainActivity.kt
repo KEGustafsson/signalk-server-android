@@ -43,6 +43,8 @@ import fi.pocketsk.net.transportThread
 import fi.pocketsk.night.NightFilter
 import fi.pocketsk.night.NightSettings
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.Backup
+import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataStore
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.DiagnosticsBundle
@@ -181,6 +183,28 @@ class MainActivity : ComponentActivity() {
         if (uri != null) copyTarball(uri)
     }
 
+    private val backupObserver = BackupJob.Observer { state ->
+        runOnUiThread {
+            model.backup = state
+            // The plugins npm put back may be webapps.
+            if (state is BackupJob.State.Restored) refreshWebapps()
+        }
+    }
+
+    /**
+     * The Backup card's passphrase, from its button to the file picker's answer and no longer. Not
+     * in the saved state: a screen recreated meanwhile asks for it again rather than keep it.
+     */
+    private var pendingPassphrase: CharArray? = null
+
+    private val createBackup = registerForActivityResult(ActivityResultContracts.CreateDocument(BACKUP_TYPE)) { uri ->
+        withPassphrase(uri) { u, p -> BackupJob.save(this, u, p) }
+    }
+
+    private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        withPassphrase(uri) { u, p -> BackupJob.restore(this, u, p) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -235,6 +259,7 @@ class MainActivity : ComponentActivity() {
             },
         )
         InstallJob.observe(installObserver)
+        BackupJob.observe(backupObserver)
         refreshSlots()
         refreshStorage()
         if (savedInstanceState == null) handle(intent)
@@ -287,6 +312,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         ServerStatus.detach(serverObserver)
         InstallJob.detach(installObserver)
+        BackupJob.detach(backupObserver)
         super.onDestroy()
     }
 
@@ -407,6 +433,16 @@ class MainActivity : ComponentActivity() {
 
         override fun takeInbox() = this@MainActivity.takeInbox()
 
+        override fun saveBackup(passphrase: CharArray) {
+            holdPassphrase(passphrase)
+            createBackup.launch(Backup.fileName(System.currentTimeMillis()))
+        }
+
+        override fun restoreBackup(passphrase: CharArray) {
+            holdPassphrase(passphrase)
+            openBackup.launch(BACKUP_TYPES)
+        }
+
         override fun filterLog(kind: LogFilter.Kind, query: String) {
             model.logKind = kind
             model.logQuery = query
@@ -425,6 +461,22 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun openOverlaySettings() = this@MainActivity.openOverlaySettings()
+    }
+
+    private fun holdPassphrase(passphrase: CharArray) {
+        pendingPassphrase?.fill(' ')
+        pendingPassphrase = passphrase
+    }
+
+    /** Hands the picked file and the passphrase held for it to [run]; a cancelled pick wipes the passphrase. */
+    private fun withPassphrase(uri: Uri?, run: (Uri, CharArray) -> Unit) {
+        val p = pendingPassphrase
+        pendingPassphrase = null
+        when {
+            uri == null -> p?.fill(' ')
+            p == null -> Toast.makeText(this, R.string.dock_backup_again_please, Toast.LENGTH_LONG).show()
+            else -> run(uri, p)
+        }
     }
 
     private fun startServer() {
@@ -878,6 +930,10 @@ class MainActivity : ComponentActivity() {
         private val UNSAFE_NAME = Regex("[^A-Za-z0-9._-]")
 
         /** What a `.tgz` from `npm pack` is called, depending on who serves it. */
+        /** A backup is a zip; Drive and some file managers call any file they do not know a stream of bytes. */
+        private const val BACKUP_TYPE = "application/zip"
+        private val BACKUP_TYPES = arrayOf(BACKUP_TYPE, "application/x-zip-compressed", "application/octet-stream")
+
         private val TARBALL_TYPES = arrayOf("application/gzip", "application/x-gzip", "application/x-tar", "application/octet-stream")
     }
 }

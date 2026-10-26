@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -41,6 +42,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
@@ -51,6 +54,8 @@ import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.night.NightSettings
+import fi.pocketsk.server.Backup
+import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
@@ -88,6 +93,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         SensorsCard(model, actions)
         DevicesCard(model, actions)
         StorageCard(model, actions)
+        BackupCard(model, actions)
         LogsCard(model, actions)
         Text(
             stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
@@ -347,6 +353,98 @@ private fun StorageCard(model: AppModel, actions: AppActions) {
             },
             dismissButton = { TextButton(onClick = { asked = null }) { Text(stringResource(R.string.dock_storage_cancel)) } },
         )
+    }
+}
+
+/**
+ * The Backup card (docs/PLAN.md §8.1, §16 10.8): the server's settings saved as an AES zip where the
+ * owner picks, and restored from one ([fi.pocketsk.server.BackupJob]). The passphrase is typed
+ * each time and kept nowhere but these fields; a new backup asks for it twice, since a mistyped
+ * one would lock the owner out of it for good. A restore asks first, and only with the server
+ * stopped.
+ */
+@Composable
+private fun BackupCard(model: AppModel, actions: AppActions) {
+    var passphrase by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    var asking by remember { mutableStateOf(false) }
+    val job = model.backup
+    val working = job is BackupJob.State.Working
+    val stopped = model.server is ServerState.Stopped || model.server is ServerState.Failed
+    val ok = Backup.passphraseOk(passphrase.toCharArray())
+    Section(stringResource(R.string.dock_backup_title)) {
+        Text(stringResource(R.string.dock_backup_body), style = MaterialTheme.typography.bodySmall)
+        PassphraseField(passphrase, stringResource(R.string.dock_backup_passphrase)) { passphrase = it }
+        Text(stringResource(R.string.dock_backup_rule), style = MaterialTheme.typography.bodySmall)
+        PassphraseField(again, stringResource(R.string.dock_backup_again)) { again = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { actions.saveBackup(passphrase.toCharArray()) }, enabled = ok && again == passphrase && !working) {
+                Text(stringResource(R.string.dock_backup_save))
+            }
+            OutlinedButton(onClick = { asking = true }, enabled = ok && stopped && !working) { Text(stringResource(R.string.dock_backup_restore)) }
+        }
+        if (!stopped) Text(stringResource(R.string.dock_backup_stop_first), style = MaterialTheme.typography.bodySmall)
+        job?.let { BackupOutcome(it) }
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text(stringResource(R.string.dock_backup_confirm_title)) },
+            text = { Text(stringResource(R.string.dock_backup_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    asking = false
+                    actions.restoreBackup(passphrase.toCharArray())
+                }) { Text(stringResource(R.string.dock_backup_confirm_go)) }
+            },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text(stringResource(R.string.dock_backup_cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun PassphraseField(value: String, label: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** What the last backup or restore came to, or how far the one running is. */
+@Composable
+private fun BackupOutcome(state: BackupJob.State) {
+    val text = when (state) {
+        is BackupJob.State.Working -> stringResource(
+            when {
+                !state.restore -> R.string.dock_backup_saving
+                state.installing -> R.string.dock_backup_installing
+                else -> R.string.dock_backup_restoring
+            },
+        )
+        is BackupJob.State.Saved -> pluralStringResource(R.plurals.dock_backup_saved, state.files, state.files)
+        is BackupJob.State.Restored ->
+            if (state.npmCode == 0) {
+                pluralStringResource(R.plurals.dock_backup_restored, state.files, state.files)
+            } else {
+                pluralStringResource(R.plurals.dock_backup_restored_no_plugins, state.files, state.files)
+            }
+        is BackupJob.State.Failed -> when (state.why) {
+            BackupJob.Why.WRONG_PASSPHRASE -> stringResource(R.string.dock_backup_wrong)
+            BackupJob.Why.NOT_A_BACKUP -> stringResource(R.string.dock_backup_not_ours, state.detail)
+            BackupJob.Why.SERVER_RUNNING -> stringResource(R.string.dock_backup_stop_first)
+            BackupJob.Why.NO_SERVER_YET -> stringResource(R.string.dock_backup_no_server)
+            BackupJob.Why.FAILED -> stringResource(if (state.restore) R.string.dock_backup_restore_failed else R.string.dock_backup_save_failed, state.detail)
+        }
+    }
+    val failed = state is BackupJob.State.Failed || (state is BackupJob.State.Restored && state.npmCode != 0)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state is BackupJob.State.Working) CircularProgressIndicator(modifier = Modifier.size(24.dp))
+        Text(text, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
 }
 

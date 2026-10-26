@@ -235,7 +235,7 @@ internal class ConfigMirror(
         /** What the folder is, for whoever opens it on a computer. */
         const val README = "README.txt"
 
-        private const val PART = ".pocketsk-part"
+        internal const val PART = ".pocketsk-part"
 
         /** What a computer's file manager leaves behind in a folder it showed. */
         private val LITTER = setOf(".DS_Store", "Thumbs.db", "desktop.ini")
@@ -245,7 +245,7 @@ internal class ConfigMirror(
         private const val MB = 1024L * 1024
 
         /** A file bigger than this directly in `.signalk` is no settings file, and is not copied every 30 s. */
-        private const val MAX_BYTES = 16 * MB
+        internal const val MAX_BYTES = 16 * MB
 
         private const val BUFFER = 64 * 1024
     }

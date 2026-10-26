@@ -298,7 +298,7 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 
 ### 8.1 Dock (native Compose, bottom nav tab 1)
 
-**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1), the delta rate (10.2), the Updates card's changelog (10.3), the Logs card's filter and diagnostics bundle (10.4), and the Webapps card with its home-screen shortcuts (10.5, §8.3). Not yet: the Power and Backup cards, which come with the steps that give them something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
+**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1), the delta rate (10.2), the Updates card's changelog (10.3), the Logs card's filter and diagnostics bundle (10.4), and the Webapps card with its home-screen shortcuts (10.5, §8.3). The Backup card is in (10.8). Not yet: the Power card, which comes with the step that gives it something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
 
 - **Status card**: running/stopped, version, uptime, URL(s), CPU/RAM of child process, delta rate.
 - **Updates**: current slot, available versions, "Install", "Rollback to <prev>", install history with pass/fail. Changelog pulled from GitHub releases.
@@ -306,7 +306,7 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 - **Sensors**: mounting calibration ("hold phone level, tap": **Level now**, §16 9.5.3); the toggles are the bridge plugin's settings in the admin UI.
 - **Power**: profiles *Harbor* (keep everything), *Passage* (dim screen, keep server), *Battery saver* (stop sensors except GNSS at 1 Hz).
 - **Logs**: live tail, filter, "Share diagnostics bundle" (logs + settings sans tokens + device info as zip via share sheet). **Done** (§16 10.4).
-- **Backup**: export/import `.signalk` as encrypted zip to SAF (works with Drive/Nextcloud).
+- **Backup**: export/import `.signalk` as encrypted zip to SAF (works with Drive/Nextcloud). **Done** (§16 10.8): the settings files only, in a WinZip AES-256 zip, as the owner chose (2026-10-26).
 
 ### 8.2 Server (in a browser)
 
@@ -374,6 +374,7 @@ Because N-API is ABI-stable, prebuilds survive Node runtime bumps.
 - Unix socket permissions: created in app-private dir, so only our UID.
 - No `INTERNET`-facing endpoints added by the app itself.
 - Diagnostics bundle redacts tokens, passwords, SSIDs.
+- The Dock's backup holds `security.json` and the server's secret key, so it is encrypted (AES-256, WinZip's format) with a passphrase typed each time and stored nowhere (§16 10.8).
 
 ## 12. Distribution and policy
 
@@ -557,6 +558,16 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **A dark red, not a bright one.** Over a chart's black at night a bright red would light the screen up; #700000 keeps the black nearly black and leaves what is lit only its red.
          - **One window for all three**, so the filter, the dimming and the screen kept on never fight over which is on top.
        - **To check on a device:** the filter tints Freeboard-SK or KIP in the browser and taps still reach it at full strength; dimming goes below the phone's lowest; the screen stays on with the app in the background; the tile turns the filter on and off and opens the Dock while the permission is missing; after the app is swiped away or the phone restarts, the filter is back once the app's process runs again (the server's autostart or opening the app).
+    8. ~~The Backup card~~ **Done** (`AesZip` and `Backup`, pure and tested; `BackupJob`; the Dock's Backup card). Chosen by the owner as the next part (2026-10-26), with the format and the contents.
+       - **What it does.** A **Backup** card under Storage: a passphrase, typed twice for a new backup, **Save a backup** and **Restore**. Save offers `pocketsk-backup-2026-10-26-1930.zip` to the system's file picker, so the file goes wherever the owner likes: the phone, a card, Drive or Nextcloud. Restore asks first, opens the file the owner picks, and only while the server is stopped.
+       - **What is in it.** What Signal K's own backup has, less the plugins: every file directly in `.signalk` (`settings.json`, `security.json` and the server's secret key, the SSL key, `package.json`, `baseDeltas.json`) and the plugins' settings files in `plugin-config-data`; not dot files, logs or half-written saves. Not `node_modules`, since the plugins are installed again from `package.json`, nor the data folders, charts above all, which may be gigabytes and are in the USB folder already. Those were the owner's choice of three.
+       - **The format, the owner's choice of two.** A zip whose every entry is encrypted the way WinZip does it (AE-2, AES-256, HMAC-SHA1, PBKDF2-HMAC-SHA1 with the format's 1000 rounds), written by the app with the platform's AES and HMAC: 7-Zip and WinZip open it on a computer with the passphrase. That key stretching is weak, so the passphrase is 12 to 64 printable ASCII characters (ASCII, so it is the same bytes on any phone and in 7-Zip). The app reads only zips encrypted that way and checks every entry's HMAC before it writes anything, so a damaged or altered file is refused whole; a zip made by pyzipper, another implementation, is a unit test.
+       - **A restore.** Every name in the backup must be one a backup holds, and none may land on a folder or a link (the data folders on a card are links in `.signalk`); the files go into `files/home/.pocketsk-restore` readable by the app's user alone, then into `.signalk` one by one, under `DataStore.LOCK`, so a start asked for meanwhile waits. A file the backup does not hold is left, as Signal K's restore leaves it. Then the bridge's plugin is put in place and `npm install --ignore-scripts` runs in `.signalk`, the App Store's flags, to install the plugins `package.json` lists; without the network the settings are restored and the card says the plugins are not, to be restored again or installed from the App Store. The next start copies the restored files to the USB folder, the computer's copies being older.
+       - **Decisions (not made by the plan).**
+         - **A passphrase typed each time, kept nowhere.** A backup the app could open on its own would be a copy of the boat's passwords that anyone with the phone could make.
+         - **Restore with the server stopped.** The server rewrites its settings while it runs; files changed under it would be overwritten by it, or read half old.
+         - **The app's own settings stay out.** The Bluetooth devices chosen, the data's card and the night filter belong to this phone, not to the server a backup moves to another.
+       - **To check on a device:** Save a backup writes the zip to Drive or a card; 7-Zip on a computer opens it with the passphrase and lists the settings files; Restore with a wrong passphrase says so and changes nothing; on a fresh install, Restore brings back the users, the connections and the plugins (npm installs them with the network on), and the admin UI logs in with the old password after a start.
 ## 17. Reuse from Crew Radio
 
 Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotlin on AndroidX with no third-party libraries) already solved most of the "keep a network thing alive on an Android phone" problems. Copy, don't depend: the two apps should not share a library yet. Keep the file-level doc comments; they are the reasoning.
