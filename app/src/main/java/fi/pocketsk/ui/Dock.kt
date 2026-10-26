@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,6 +38,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
@@ -197,22 +201,27 @@ private fun HelmCard(model: AppModel, actions: AppActions) {
     }
 }
 
+/** The whole row is the switch, so a screen reader reads the label with the state and a tap on the words works. */
 @Composable
 private fun HelmSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
-/** A percentage from [min] to 100, in whole steps. */
+/** A percentage from [min] to 100, in whole steps; the slider carries its label for a screen reader. */
 @Composable
 private fun HelmSlider(label: String, value: Int, min: Int, onChange: (Int) -> Unit) {
-    Text(label, style = MaterialTheme.typography.bodySmall)
+    Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.clearAndSetSemantics {})
     Slider(
         value = value.toFloat(),
         onValueChange = { onChange(it.roundToInt()) },
         valueRange = min.toFloat()..100f,
+        modifier = Modifier.semantics { contentDescription = label },
     )
 }
 
