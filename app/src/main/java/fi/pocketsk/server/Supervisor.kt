@@ -497,11 +497,12 @@ internal class Supervisor(
                 val ejecting = synchronized(this) {
                     val at = ejectedAt
                     // Ejected and gone again: from here on it is a card coming back. Another card's
-                    // eject says nothing about this one.
-                    if (at != null && (ejectedVolume != uuid || volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) {
+                    // eject says nothing about this one, and is kept: chosen again while still
+                    // going, that card must wait like any other ejected card.
+                    if (at != null && ejectedVolume == uuid && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) {
                         ejectedAt = null
                     }
-                    ejectedAt != null
+                    ejectedAt != null && ejectedVolume == uuid
                 }
                 if (volume != null && !ejecting) {
                     root = volume.root
