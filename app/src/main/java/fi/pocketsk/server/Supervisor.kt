@@ -592,9 +592,12 @@ internal class Supervisor(
         }
     }
 
-    /** Whether the card the data is on was ejected or is not mounted, after [placeData] found it. */
+    /**
+     * Whether the card the data is on was ejected or is not mounted, after [placeData] found it;
+     * with no card chosen, whether the phone's shared storage has gone (before the first unlock).
+     */
     private fun dataCardGone(): Boolean {
-        val uuid = prefs.dataVolume ?: return false
+        val uuid = prefs.dataVolume ?: return DataVolumes.phone(app) == null
         if (synchronized(this) { ejectedAt != null && ejectedVolume == uuid }) return true
         return DataVolumes.mounted(app, uuid) == null
     }
