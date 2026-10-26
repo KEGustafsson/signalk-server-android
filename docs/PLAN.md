@@ -318,7 +318,7 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 ### 8.3 Helm / Kiosk mode (the novel bit)
 
 - Any installed webapp (Freeboard-SK, KIP, Instrument Panel) can be pinned as a **launcher shortcut** (`ShortcutManager`) with its own icon pulled from the webapp's manifest, that opens the webapp in the browser (§8.2). A webapp with a web app manifest can also be installed from the browser as a full-screen app of its own. **Done** (§16 10.5), with the icon from the package's `signalk.appIcon`.
-- Screen kept on, brightness slider and **red night filter** as a system-level overlay (not just CSS: `TYPE_APPLICATION_OVERLAY`, so they work over the browser and the status bar is red too; the overlay window's keep-screen-on flag holds the screen).
+- Screen kept on, brightness slider and **red night filter** as a system-level overlay (not just CSS: `TYPE_APPLICATION_OVERLAY`, so they work over the browser; the overlay window's keep-screen-on flag holds the screen). **Done** (§16 10.7). The status bar is not tinted: Android draws an app's overlay under the status and navigation bars.
 - Holding a tablet at the helm on one webapp is Android's own app pinning of the browser (optional, unpinned with the PIN); the app does not pin another app's task itself.
 - Home-screen **widgets**: 2×1 "depth / SOG / wind" cards, refreshed every 2 s while visible. **Done** (§16 10.6), fed through the bridge rather than the WebSocket.
 
@@ -548,6 +548,15 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **Apparent wind, depth below the transducer first.** What a cockpit display shows by default.
          - **No time, no number.** A reading without the server's time is not shown, as with a stale one: a dead instrument keeps its last value in the server for ever.
        - **To check on a device:** the widget is in the launcher's widget list with its preview; placed, it shows the server's state while stopped and the numbers once running with an instrument or the simulator; with the screen off the plugin sends nothing (its debug log); removing the last widget stops the glances; a reading that stops shows a dash within about 12 s.
+    7. ~~The night filter~~ **Done** (`NightRules`, pure and tested; `NightFilter`; `NightTile`; the Dock's Helm screen card). Chosen by the owner as the next part (2026-10-26).
+       - **What it does.** A **Helm screen** card under Webapps: **Red night filter** with its strength, **Dim the screen** with a brightness of 1 to 100 %, below what the phone's own slider reaches, and **Keep the screen on**. Each change shows at once. A Quick Settings tile, **Night filter**, turns the filter on and off at the helm without opening the app.
+       - **How.** One overlay window over every app (`TYPE_APPLICATION_OVERLAY`, the app allowed to display over other apps, which the card asks for first): a dark red (#700000) at up to 80 % opacity for the filter, the window's own `screenBrightness` for the dimming, `FLAG_KEEP_SCREEN_ON` for the screen. It takes no touch and no focus, so the browser under it is used as if it were not there. With only dimming or the screen kept on, the window is clear. The settings are the phone's own (preferences file `night`), put back when the process starts again (`App`).
+       - **Decisions (not made by the plan).**
+         - **The status bar is not tinted.** Android draws every app's overlay under the status and navigation bars since Android 8; the plan's "the status bar is red too" cannot be had without being a system app.
+         - **At most 80 % opaque.** Android 12 and later pass a touch through another app's window only while it is at most that opaque (`getMaximumObscuringOpacityForTouch`); a stronger filter would leave the webapp under it deaf.
+         - **A dark red, not a bright one.** Over a chart's black at night a bright red would light the screen up; #700000 keeps the black nearly black and leaves what is lit only its red.
+         - **One window for all three**, so the filter, the dimming and the screen kept on never fight over which is on top.
+       - **To check on a device:** the filter tints Freeboard-SK or KIP in the browser and taps still reach it at full strength; dimming goes below the phone's lowest; the screen stays on with the app in the background; the tile turns the filter on and off and opens the Dock while the permission is missing; after the app is swiped away or the phone restarts, the filter is back once the app's process runs again (the server's autostart or opening the app).
 ## 17. Reuse from Crew Radio
 
 Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotlin on AndroidX with no third-party libraries) already solved most of the "keep a network thing alive on an Android phone" problems. Copy, don't depend: the two apps should not share a library yet. Keep the file-level doc comments; they are the reasoning.
