@@ -5,6 +5,8 @@ import fi.pocketsk.BuildConfig
 import fi.pocketsk.net.reporting
 import fi.pocketsk.server.ServerLog
 import fi.pocketsk.server.ServerStatus
+import fi.pocketsk.widget.BoatWidget
+import fi.pocketsk.widget.GlanceWatch
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -14,7 +16,8 @@ import java.util.concurrent.Executors
  * USB ones plugged into the phone ([UsbSerial]) and paired Bluetooth ones ([BluetoothSerial]),
  * listed together for the plugin and the Dock by a [DeviceList]; the Bluetooth LE devices the
  * phone hears ([BleScanner]); and the other way, the boat's alarms, which ring on the phone
- * ([PhoneAlarm]). Started with the server
+ * ([PhoneAlarm]); and the boat's readings for the home-screen widget, asked for while it can be seen
+ * ([GlanceWatch]) and drawn as they come ([BoatWidget]). Started with the server
  * and stopped with it by [fi.pocketsk.server.SignalKService]; the plugin itself is put in place by
  * [BridgePlugin] before every start and finds the socket through [ENV].
  *
@@ -22,12 +25,14 @@ import java.util.concurrent.Executors
  * is noted in the server log, a few times, then only counted, so a broken plugin cannot fill it.
  */
 internal class Bridge(context: Context, private val log: ServerLog) {
+    private val app = context.applicationContext
     private val sensors = PhoneSensors(context, ::sendToPeer, log::note)
     private val devices = DeviceList(::sendToPeer, ServerStatus::publishDevices)
     private val usb = UsbSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.USB, it) }, log::note)
     private val bluetooth = BluetoothSerial(context, ::sendToPeer, { devices.update(BridgeProtocol.BLUETOOTH, it) }, log::note)
     private val alarms = PhoneAlarm(context, ::sendToPeer, log::note)
     private val ble = BleScanner(context, ::sendToPeer, log::note)
+    private val glance = GlanceWatch(context, ::sendToPeer)
     private val server = BridgeServer(socketFile(context), ::connected, ::line, ::disconnected, log::note)
 
     @Volatile private var peer: BridgeServer.Peer? = null
@@ -45,6 +50,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         usb.start()
         bluetooth.start()
         ble.start()
+        reporting(::failed) { glance.start() }
     }
 
     fun stop() = control.execute {
@@ -54,7 +60,9 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         bluetooth.stop()
         ble.stop()
         alarms.stop()
+        glance.stop()
         ServerStatus.publishDeltaRate(null)
+        showGlance(null)
     }
 
     /**
@@ -90,6 +98,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             bluetooth.close()
             ble.close()
             alarms.close()
+            glance.stop()
         }
         control.shutdown()
     }
@@ -101,6 +110,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         p.send(BridgeProtocol.hello(BuildConfig.VERSION_NAME))
         // The device list is sent on change only; a new plugin has not heard it.
         devices.resend()
+        glance.connected()
         log.note("bridge: the server's plugin connected")
     }
 
@@ -114,6 +124,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             }
             is BridgeProtocol.Incoming.Alarms -> if (p === peer) alarms.update(msg.list)
             is BridgeProtocol.Incoming.Stats -> if (p === peer) ServerStatus.publishDeltaRate(msg.deltaRate)
+            is BridgeProtocol.Incoming.Glance -> if (p === peer) showGlance(msg.glance)
             is BridgeProtocol.Incoming.Dropped -> if (droppedNotes++ < MAX_DROPPED_NOTES) log.note("bridge: dropped a line from the plugin: ${msg.reason}")
         }
     }
@@ -128,7 +139,15 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         alarms.lost()
         // With the plugin gone, nobody counts: no rate is better than the last one shown as current.
         ServerStatus.publishDeltaRate(null)
+        glance.disconnected()
+        showGlance(null)
         if (p.dropped > 0) log.note("bridge: ${p.dropped} readings were dropped while the plugin was not reading")
+    }
+
+    /** The widget's readings, or none when the plugin has gone: drawn at once. */
+    private fun showGlance(g: BridgeProtocol.Glance?) {
+        ServerStatus.publishGlance(g)
+        reporting(::failed) { BoatWidget.render(app) }
     }
 
     private fun sendToPeer(line: String) {

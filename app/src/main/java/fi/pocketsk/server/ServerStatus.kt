@@ -48,6 +48,14 @@ internal object ServerStatus {
     @Volatile var deltaRate: Double? = null
         private set
 
+    /**
+     * The boat's readings for the home-screen widget, as the bridge's plugin last sent them; null
+     * while no plugin is connected. Not told to observers: it comes every 2 s and only the widget,
+     * which the bridge draws itself, shows it.
+     */
+    @Volatile var glance: BridgeProtocol.Glance? = null
+        private set
+
     private val observers = CopyOnWriteArraySet<Observer>()
     private var log: ServerLog? = null
     private val main = Handler(Looper.getMainLooper())
@@ -101,6 +109,11 @@ internal object ServerStatus {
     fun publishDeltaRate(rate: Double?) {
         deltaRate = rate
         main.post(::tell)
+    }
+
+    /** From the bridge's reader: the widget's readings, or null when the plugin has gone. */
+    fun publishGlance(g: BridgeProtocol.Glance?) {
+        glance = g
     }
 
     /** From the bridge's alarm thread: the boat's alarms, or how the phone rings for them, changed. */

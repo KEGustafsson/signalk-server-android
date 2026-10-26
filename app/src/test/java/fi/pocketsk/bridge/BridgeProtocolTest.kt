@@ -98,6 +98,41 @@ class BridgeProtocolTest {
     }
 
     @Test
+    fun theWidgetsGlanceIsAskedForAndRead() {
+        assertEquals("""{"t":"glance","on":true}""", BridgeProtocol.glance(true))
+        assertEquals("""{"t":"glance","on":false}""", BridgeProtocol.glance(false))
+        val line = """{"t":"glance","depth":{"v":3.2,"ts":1760000000000},"sog":{"v":2.57,"ts":null},"aws":null,"awa":{"v":-0.52,"ts":1760000000000}}"""
+        assertEquals(
+            Incoming.Glance(
+                BridgeProtocol.Glance(
+                    depth = BridgeProtocol.Reading(3.2, 1_760_000_000_000L),
+                    sog = BridgeProtocol.Reading(2.57, null),
+                    aws = null,
+                    awa = BridgeProtocol.Reading(-0.52, 1_760_000_000_000L),
+                ),
+            ),
+            BridgeProtocol.parse(line),
+        )
+        assertEquals(Incoming.Glance(BridgeProtocol.Glance.NONE), BridgeProtocol.parse("""{"t":"glance"}"""))
+    }
+
+    @Test
+    fun aGlanceReadingNoBoatCouldGiveIsLeftOut() {
+        fun depth(json: String) = (BridgeProtocol.parse("""{"t":"glance","depth":$json}""") as Incoming.Glance).glance.depth
+        for (bad in listOf("""{"v":-1,"ts":1}""", """{"v":20000,"ts":1}""", """{"v":"deep","ts":1}""", """{"ts":1}""", "3.2", "[3.2]")) {
+            assertEquals(bad, null, depth(bad))
+        }
+        // A time that is no time leaves the reading without one, which the widget does not show.
+        for (ts in listOf("1.5", "-1", "\"now\"", "1e300")) assertEquals(ts, BridgeProtocol.Reading(3.0, null), depth("""{"v":3,"ts":$ts}"""))
+        fun sog(v: String) = (BridgeProtocol.parse("""{"t":"glance","sog":{"v":$v,"ts":1}}""") as Incoming.Glance).glance.sog
+        assertEquals(null, sog("201"))
+        assertEquals(null, sog("-0.1"))
+        fun awa(v: String) = (BridgeProtocol.parse("""{"t":"glance","awa":{"v":$v,"ts":1}}""") as Incoming.Glance).glance.awa
+        assertEquals(BridgeProtocol.Reading(6.0, 1), awa("6"))
+        assertEquals(null, awa("7"))
+    }
+
+    @Test
     fun theBluetoothLeScanIsSubscribedWithTheAddressesToWatch() {
         val mac = "CB:B8:33:4C:88:4F"
         assertEquals(

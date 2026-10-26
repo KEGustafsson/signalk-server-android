@@ -3,7 +3,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, toDelta, subscribeMessage, statsMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
+const { parseLine, toDelta, subscribeMessage, statsMessage, glanceMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
 
 test("a sensor line becomes a message", () => {
   const r = parseLine('{"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}');
@@ -217,4 +217,46 @@ test("the delta rate for the phone comes from the server's last statistics, when
   for (const events of [undefined, null, {}, { SERVERSTATISTICS: {} }, { SERVERSTATISTICS: { data: { deltaRate: -1 } } }, { SERVERSTATISTICS: { data: { deltaRate: "fast" } } }, { SERVERSTATISTICS: { data: { deltaRate: Infinity } } }]) {
     assert.equal(statsMessage(events), null, JSON.stringify(events));
   }
+});
+
+test("the app turns the widget's glance on and off, and nothing else passes for it", () => {
+  assert.deepEqual(parseLine('{"t":"glance","on":true}'), { ok: true, msg: { t: "glance", on: true } });
+  assert.deepEqual(parseLine('{"t":"glance","on":false}'), { ok: true, msg: { t: "glance", on: false } });
+  for (const bad of ['{"t":"glance"}', '{"t":"glance","on":1}', '{"t":"glance","on":"true"}']) {
+    assert.deepEqual(parseLine(bad), { ok: false, reason: "glance without on" }, bad);
+  }
+});
+
+test("a glance takes the first path with a number, its time, and null for what the server lacks", () => {
+  const ts = "2026-10-26T12:00:00.000Z";
+  const leaves = {
+    "environment.depth.belowTransducer": { value: null, timestamp: ts },
+    "environment.depth.belowKeel": { value: 3.2, timestamp: ts },
+    "environment.depth.belowSurface": { value: 4.9, timestamp: ts },
+    "navigation.speedOverGround": { value: 2.57 },
+    "environment.wind.speedApparent": { value: Infinity, timestamp: ts },
+    "environment.wind.angleApparent": { value: -0.52, timestamp: "not a time" },
+  };
+  assert.deepEqual(glanceMessage((p) => leaves[p]), {
+    t: "glance",
+    depth: { v: 3.2, ts: Date.parse(ts) },
+    sog: { v: 2.57, ts: null },
+    aws: null,
+    awa: { v: -0.52, ts: null },
+  });
+  assert.deepEqual(glanceMessage(() => undefined), { t: "glance", depth: null, sog: null, aws: null, awa: null });
+  // A value no boat could give is a broken instrument: the next path is tried.
+  const broken = {
+    "environment.depth.belowTransducer": { value: -1, timestamp: ts },
+    "environment.depth.belowKeel": { value: 3.2, timestamp: ts },
+    "navigation.speedOverGround": { value: 250, timestamp: ts },
+    "environment.wind.angleApparent": { value: 7, timestamp: ts },
+  };
+  const g = glanceMessage((p) => broken[p]);
+  assert.deepEqual([g.depth, g.sog, g.awa], [{ v: 3.2, ts: Date.parse(ts) }, null, null]);
+  // A server that throws for a path it does not know costs that reading alone.
+  assert.deepEqual(glanceMessage((p) => {
+    if (p.startsWith("environment.depth")) throw new Error("no such path");
+    return { value: 1, timestamp: ts };
+  }).depth, null);
 });

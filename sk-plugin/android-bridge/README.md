@@ -24,7 +24,10 @@ sensors still run. The cellular reading needs no permission; a tablet without a 
 says so in the server log and sends none.
 
 The other way, besides the boat's alarms, the plugin tells the app the server's delta rate every
-5 s, as the server's own statistics count it, for the Status card of the app's Dock.
+5 s, as the server's own statistics count it, for the Status card of the app's Dock. While the
+app's home-screen widget is placed and the phone's screen is on, it also sends the boat's depth,
+speed over ground and apparent wind every 2 s, read from the server's own data, with the time the
+server got each one.
 
 The attitude is the boat's, not the phone's. With the phone in its holder and the boat lying level
 and still, tap **Level now** in the app's Sensors card: roll and pitch then read zero as the phone

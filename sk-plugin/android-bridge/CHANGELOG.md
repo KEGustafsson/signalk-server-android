@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0
+
+- Glance: for the app's home-screen widget, the boat's depth (below the transducer, else the keel,
+  else the surface), speed over ground and apparent wind speed and angle, read from the server's
+  own data (`app.getSelfPath`) and sent to the app every 2 s, only while the app asks (its widget
+  is placed and the phone's screen is on). Each value comes with the time the server got it, so
+  the app can blank one that went stale.
+
 ## 0.10.0
 
 - Files: a web page (`public/index.html`, a Signal K webapp) and routes under

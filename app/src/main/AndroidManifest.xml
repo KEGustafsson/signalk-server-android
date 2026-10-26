@@ -151,6 +151,21 @@
             </intent-filter>
         </receiver>
 
+        <!-- The boat widget (widget.BoatWidget): depth, speed over ground and the apparent wind on
+             the home screen. Not exported: the system delivers a widget's own broadcasts to it all
+             the same, and nothing else has reason to send them. -->
+        <receiver
+            android:name=".widget.BoatWidget"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_boat_info" />
+        </receiver>
+
         <!-- The diagnostics bundle, handed to the app the owner picks in the share sheet for that
              one share (res/xml/shared_files.xml); not exported, so nothing else can ask for it. -->
         <provider

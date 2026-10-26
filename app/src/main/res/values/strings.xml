@@ -183,6 +183,20 @@
     <string name="tile_stopped">Stopped</string>
     <string name="tile_failed">Stopped after errors</string>
 
+    <!-- The boat widget (BoatWidget). -->
+    <string name="widget_label">Boat at a glance</string>
+    <string name="widget_description">Depth, speed over ground and the apparent wind, from the server</string>
+    <!-- Each column's label carries its unit, so the values below can be bare numbers. -->
+    <string name="widget_depth">Depth m</string>
+    <string name="widget_sog">SOG kn</string>
+    <string name="widget_wind">Wind kn</string>
+    <!-- The apparent wind's angle off the bow, beside its speed: 35°P, 120°S, or 0° dead ahead. -->
+    <string name="widget_wind_angle">%1$s°%2$s</string>
+    <string name="widget_port">P</string>
+    <string name="widget_starboard">S</string>
+    <string name="widget_no_value">—</string>
+    <string name="widget_server">Signal K server: %1$s</string>
+
     <!-- SignalKService: the ongoing notification, its actions and the alerts -->
     <string name="server_channel">Server</string>
     <string name="server_alert_channel">Server problems</string>

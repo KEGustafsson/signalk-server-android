@@ -83,6 +83,9 @@ app/                 the Android app
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only),
                      Webapps (a package.json as a webapp, the deep link) (pure, tested)
+  fi.pocketsk.widget BoatWidget (the home-screen widget: depth, SOG, apparent wind), GlanceWatch
+                     (asks the plugin for them while a widget is placed and the screen is on);
+                     GlanceView (pure, tested)
 node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm and the
                      preload as assets
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
@@ -105,6 +108,7 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      parses serial devices' NMEA 0183 with the server's own parser (found through
                      require.main, the signalk-server script); lib/alarms.js sends the server's
                      notifications to the phone and silences them through app.notifications;
+                     lib/protocol.js's glanceMessage reads depth, SOG and wind for the widget;
                      lib/ble.js parses the app's Bluetooth LE advertisements for the server's BLE
                      API (as a provider) and node-ble.js's hub; lib/files.js and public/index.html
                      (a webapp) upload files, charts above all, into the server's data folders
