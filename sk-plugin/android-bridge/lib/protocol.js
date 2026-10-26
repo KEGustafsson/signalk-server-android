@@ -25,6 +25,8 @@
  *   {"t":"adv","mac":"CB:B8:33:4C:88:4F","rssi":-67,"data":"AgEGG/+ZBAUS/FOUw3wABP/8BAysNkIAzcu4M0yITw==","conn":true,"at":"random","ts":1760000000000}
  *     (a Bluetooth LE advertisement as the phone heard it: the raw advertising data and scan
  *     response, base64; conn and at where Android tells; lib/ble.js parses it)
+ *   {"t":"glance","on":true}
+ *     (the app's home-screen widget is on a screen that is on: send the glance every 2 s until off)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment","cellular"],
  *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1,"cellular":0.0333},"bowOffsetDeg":0,
@@ -38,6 +40,10 @@
  *     acknowledge or null, what the server allows done to it)
  *   {"t":"stats","deltaRate":12.4}
  *     (the deltas a second the server takes in, from its own statistics, for the app's Dock)
+ *   {"t":"glance","depth":{"v":3.2,"ts":1760000000000},"sog":{"v":2.57,"ts":1760000000000},
+ *    "aws":{"v":5.1,"ts":1760000000000},"awa":{"v":-0.52,"ts":1760000000000}}
+ *     (the boat at a glance for the widget, from the server's own data, in SI units: metres,
+ *     m/s, radians; null for one the server has no number for)
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -104,6 +110,9 @@ function parseLine(line) {
       return { ok: true, msg: { t: "silence", id: msg.id } };
     case "adv":
       return parseAdv(msg);
+    case "glance":
+      if (typeof msg.on !== "boolean") return { ok: false, reason: "glance without on" };
+      return { ok: true, msg: { t: "glance", on: msg.on } };
     default:
       return { ok: false, reason: `unknown type ${JSON.stringify(String(msg.t)).slice(0, 40)}` };
   }
@@ -285,6 +294,45 @@ function statsMessage(lastServerEvents) {
   return Number.isFinite(rate) && rate >= 0 ? { t: "stats", deltaRate: rate } : null;
 }
 
+/**
+ * The paths a glance reads, in the order tried: the first with a number wins. Depth below the
+ * transducer is what a depth sounder shows; below the keel and below the surface are what a boat
+ * may have set up instead.
+ */
+const GLANCE_PATHS = {
+  depth: ["environment.depth.belowTransducer", "environment.depth.belowKeel", "environment.depth.belowSurface"],
+  sog: ["navigation.speedOverGround"],
+  aws: ["environment.wind.speedApparent"],
+  awa: ["environment.wind.angleApparent"],
+};
+
+/**
+ * The boat at a glance for the app's widget, from `getSelfPath` (the server's `app.getSelfPath`):
+ * for each of depth, SOG and apparent wind speed and angle the first path with a finite number,
+ * as `{v, ts}` with the time the server got it (null when it gives none), else null. The app
+ * decides what is too old to show.
+ */
+function glanceMessage(getSelfPath) {
+  const msg = { t: "glance" };
+  for (const [key, paths] of Object.entries(GLANCE_PATHS)) {
+    msg[key] = null;
+    for (const path of paths) {
+      let leaf;
+      try {
+        leaf = getSelfPath(path);
+      } catch {
+        leaf = undefined;
+      }
+      const v = leaf?.value;
+      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      const ts = typeof leaf.timestamp === "string" ? Date.parse(leaf.timestamp) : NaN;
+      msg[key] = { v, ts: Number.isFinite(ts) ? ts : null };
+      break;
+    }
+  }
+  return msg;
+}
+
 module.exports = {
   VERSION,
   MAX_LINE,
@@ -299,5 +347,7 @@ module.exports = {
   toDelta,
   subscribeMessage,
   statsMessage,
+  glanceMessage,
+  GLANCE_PATHS,
   validValue,
 };

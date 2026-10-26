@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The boat widget (BoatWidget): depth, speed over ground and the apparent wind in three columns,
+     or the server's state in their place while it is not running. RemoteViews: plain views only. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="4dp">
+
+    <LinearLayout
+        android:id="@+id/widget_values"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:baselineAligned="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_depth_label"
+                style="@style/WidgetLabel"
+                android:text="@string/widget_depth" />
+
+            <TextView
+                android:id="@+id/widget_depth"
+                style="@style/WidgetValue"
+                android:text="@string/widget_no_value" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_sog_label"
+                style="@style/WidgetLabel"
+                android:text="@string/widget_sog" />
+
+            <TextView
+                android:id="@+id/widget_sog"
+                style="@style/WidgetValue"
+                android:text="@string/widget_no_value" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_wind_label"
+                style="@style/WidgetLabel"
+                android:text="@string/widget_wind" />
+
+            <TextView
+                android:id="@+id/widget_wind"
+                style="@style/WidgetValue"
+                android:text="@string/widget_no_value" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:maxLines="2"
+        android:textColor="@color/on_surface"
+        android:textSize="14sp"
+        android:visibility="gone" />
+</FrameLayout>

@@ -320,7 +320,7 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 - Any installed webapp (Freeboard-SK, KIP, Instrument Panel) can be pinned as a **launcher shortcut** (`ShortcutManager`) with its own icon pulled from the webapp's manifest, that opens the webapp in the browser (§8.2). A webapp with a web app manifest can also be installed from the browser as a full-screen app of its own. **Done** (§16 10.5), with the icon from the package's `signalk.appIcon`.
 - Screen kept on, brightness slider and **red night filter** as a system-level overlay (not just CSS: `TYPE_APPLICATION_OVERLAY`, so they work over the browser and the status bar is red too; the overlay window's keep-screen-on flag holds the screen).
 - Holding a tablet at the helm on one webapp is Android's own app pinning of the browser (optional, unpinned with the PIN); the app does not pin another app's task itself.
-- Home-screen **widgets**: 2×1 "depth / SOG / wind" cards fed by the local WebSocket, refresh every 2 s while visible.
+- Home-screen **widgets**: 2×1 "depth / SOG / wind" cards, refreshed every 2 s while visible. **Done** (§16 10.6), fed through the bridge rather than the WebSocket.
 
 ### 8.4 Satellite mode (later)
 
@@ -538,6 +538,16 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **From disk, not `/skServer/webapps`.** The card works while the server is stopped, and needs no login when security is on.
          - **Opened in the browser, as §8.2 decided.** The shortcut is the app's link, not the URL itself, so the port the admin UI may have changed and a stopped server are both handled.
        - **To check on a device:** the card lists Freeboard-SK or KIP once installed from the App Store; Home screen offers the launcher's dialog and the shortcut shows the webapp's icon; with the server stopped, the shortcut starts it and opens the webapp when it answers.
+    6. ~~The home-screen widget~~ **Done** (`GlanceView`, pure and tested; `BoatWidget`; `GlanceWatch`; the plugin's `glanceMessage`). Chosen by the owner as the next part (2026-10-26).
+       - **What it shows.** **Boat at a glance**, two cells by one and resizable: Depth, SOG and Wind in three columns, "3.2 m", "5.0 kn" and "10 kn" with the wind's angle off the bow in its label ("Wind 35° P"). A reading the server has no number for, or one older than 10 s, is a dash. While the server is not running the widget says its state instead ("Signal K server: Stopped"), as the Quick Settings tile does. A tap opens the Dock.
+       - **Where the numbers come from.** The server's own data, read by the bridge's plugin with `app.getSelfPath`: depth below the transducer, else below the keel, else below the surface; `navigation.speedOverGround`; `environment.wind.speedApparent` and `angleApparent`. The plugin sends them as `glance` lines (SI units, each with the time the server got it) every 2 s while the app has sent `glance` on, and stops at off or when the link drops. The app asks while a widget is placed and the screen is on.
+       - **How it is drawn.** Each glance is drawn as it comes (`AppWidgetManager.updateAppWidget`, from the bridge's reader); the server's state is drawn whenever it changes, by an observer the process (`App`) keeps; a screen coming on redraws first, so readings gone stale while it was off show as dashes before the next glance comes. The system's own update timer is off.
+       - **Decisions (not made by the plan).**
+         - **Through the bridge, not the WebSocket.** The plugin is inside the server, so the widget needs no login when security is on, and the app needs no WebSocket client: Android has none built in, and the app takes no library beyond AndroidX. A plugin the owner disabled is a widget of dashes.
+         - **"While visible" is a screen that is on.** Android does not tell an app whether its widget is in sight; with the screen off nothing is asked of the server, and a widget on another home-screen page costs a glance every 2 s.
+         - **Apparent wind, depth below the transducer first.** What a cockpit display shows by default.
+         - **No time, no number.** A reading without the server's time is not shown, as with a stale one: a dead instrument keeps its last value in the server for ever.
+       - **To check on a device:** the widget is in the launcher's widget list with its preview; placed, it shows the server's state while stopped and the numbers once running with an instrument or the simulator; with the screen off the plugin sends nothing (its debug log); removing the last widget stops the glances; a reading that stops shows a dash within about 12 s.
 ## 17. Reuse from Crew Radio
 
 Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotlin on AndroidX with no third-party libraries) already solved most of the "keep a network thing alive on an Android phone" problems. Copy, don't depend: the two apps should not share a library yet. Keep the file-level doc comments; they are the reasoning.

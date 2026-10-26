@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The boat widget (BoatWidget): two cells by one, resizable. It is updated by the app as the
+     readings come (every 2 s while the screen is on), never by the system's timer. Android 12 and
+     later also take the cell counts and a live preview: xml-v31. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/widget_boat"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

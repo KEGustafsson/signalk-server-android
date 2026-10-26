@@ -30,7 +30,7 @@
  */
 
 const { Link } = require("./lib/link");
-const { parseLine, toDelta, subscribeMessage, statsMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
+const { parseLine, toDelta, subscribeMessage, statsMessage, glanceMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
 const { SerialInput, loadNmeaParser } = require("./lib/serial");
 const { Alarms, LEVELS } = require("./lib/alarms");
 const { Ble } = require("./lib/ble");
@@ -40,12 +40,15 @@ const pkg = require("./package.json");
 const ENV = "POCKETSK_BRIDGE";
 /** How often the server's delta rate goes to the app: the server itself counts every 5 s. */
 const STATS_MS = 5000;
+/** How often the boat at a glance goes to the app while its widget is on a screen that is on. */
+const GLANCE_MS = 2000;
 
 /**
  * @param {object} app the Signal K plugin API; `deps.env` lets tests name a socket,
  * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's, `deps.statsMs`
- * how often the server's delta rate is sent, `deps.bleHub` the node-ble stand-in's hub
- * (null for none) in place of the one the app preloads, and `deps.configDir` the server's
+ * how often the server's delta rate is sent, `deps.glanceMs` how often the widget's glance is,
+ * `deps.bleHub` the node-ble stand-in's hub (null for none) in place of the one the app
+ * preloads, and `deps.configDir` the server's
  * `.signalk` for the file routes in place of the server's own
  */
 module.exports = function androidBridge(app, deps = {}) {
@@ -61,6 +64,7 @@ module.exports = function androidBridge(app, deps = {}) {
   let alarms = null;
   let unsubscribes = [];
   let statsTimer = null;
+  let glanceTimer = null;
   let ble = null;
 
   const plugin = {
@@ -269,6 +273,7 @@ module.exports = function androidBridge(app, deps = {}) {
     stop() {
       clearInterval(statsTimer);
       statsTimer = null;
+      glance(false);
       for (const u of unsubscribes) u();
       unsubscribes = [];
       // The link goes first, with no word of the alarms: a server restart stops the plugin, and an
@@ -376,6 +381,27 @@ module.exports = function androidBridge(app, deps = {}) {
     if (msg && link?.connected) link.send(msg);
   }
 
+  /**
+   * The glance for the app's widget: sent at once and every GLANCE_MS while [on], stopped when the
+   * app says off or the link drops, so a phone with its screen off asks the server for nothing.
+   */
+  function glance(on) {
+    if (!on) {
+      clearInterval(glanceTimer);
+      glanceTimer = null;
+      return;
+    }
+    sendGlance();
+    if (glanceTimer) return;
+    glanceTimer = setInterval(sendGlance, deps.glanceMs ?? GLANCE_MS);
+    glanceTimer.unref?.();
+  }
+
+  function sendGlance() {
+    if (!link?.connected || typeof app.getSelfPath !== "function") return;
+    link.send(glanceMessage((path) => app.getSelfPath(path)));
+  }
+
   /** The devices plugged in now, for the settings' description of the per-device rates. */
   function pluggedIn() {
     const usb = devices.filter((d) => d.kind === "usb");
@@ -391,6 +417,8 @@ module.exports = function androidBridge(app, deps = {}) {
 
   function onState(up, detail) {
     connected = up;
+    // A new link starts with the widget's glance off; the app asks again when it wants it.
+    glance(false);
     if (up) {
       link.send(subscribeMessage(options, ble?.demand()));
       alarms?.resend();
@@ -450,6 +478,10 @@ module.exports = function androidBridge(app, deps = {}) {
     }
     if (msg.t === "adv") {
       ble?.advertisement(msg);
+      return;
+    }
+    if (msg.t === "glance") {
+      glance(msg.on);
       return;
     }
     if (msg.t === "silence") {

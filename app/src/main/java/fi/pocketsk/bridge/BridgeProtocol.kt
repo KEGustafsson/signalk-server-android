@@ -10,12 +10,14 @@ import java.util.Base64
  * App to plugin: `hello` once a connection is up, then `sensor` lines (a number, an object of
  * numbers, a short text or a yes or no; null when there is no reading now), `devices` whenever the
  * serial devices plugged into the phone change, `serial` lines with the bytes each one sent,
- * `adv` lines with each Bluetooth LE advertisement the phone heard, and `silence` when the owner
- * silences an alarm on the phone.
+ * `adv` lines with each Bluetooth LE advertisement the phone heard, `silence` when the owner
+ * silences an alarm on the phone, and `glance` on or off, whether the home-screen widget wants the
+ * boat's readings.
  * Plugin to app: `subscribe`, which names the sensors it wants and how often, whether and at
  * which baud rates to read the serial devices, and whether to scan for Bluetooth LE devices and
- * which to keep hearing, `alarms`, the boat's alarms whenever they change, and `stats`, the
- * server's own delta rate, for the Dock. Pure, so it is unit-tested.
+ * which to keep hearing, `alarms`, the boat's alarms whenever they change, `stats`, the
+ * server's own delta rate, for the Dock, and `glance`, the boat's depth, speed and wind for the
+ * widget while it is asked for. Pure, so it is unit-tested.
  */
 internal object BridgeProtocol {
     const val VERSION = 1
@@ -221,8 +223,26 @@ internal object BridgeProtocol {
         data class Alarms(val list: List<Alarm>) : Incoming
         /** The deltas a second the server took in, as its own statistics count them. */
         data class Stats(val deltaRate: Double) : Incoming
+        data class Glance(val glance: BridgeProtocol.Glance) : Incoming
         data class Dropped(val reason: String) : Incoming
     }
+
+    /** One of the boat's readings in a glance: [value] in SI units, and when the server got it ([ts], ms), when it says. */
+    data class Reading(val value: Double, val ts: Long?)
+
+    /**
+     * The boat at a glance, for the home-screen widget: depth in metres, speed over ground and
+     * apparent wind speed in m/s, apparent wind angle in radians (+ to starboard), each null
+     * when the server has no number for it, or one no boat could give.
+     */
+    data class Glance(val depth: Reading?, val sog: Reading?, val aws: Reading?, val awa: Reading?) {
+        companion object {
+            val NONE = Glance(null, null, null, null)
+        }
+    }
+
+    /** Whether the plugin is to send [Glance]s, every 2 s, for a widget on a screen that is on. */
+    fun glance(on: Boolean): String = """{"t":"glance","on":$on}"""
 
     fun hello(appVersion: String): String = """{"t":"hello","v":$VERSION,"app":${Json.quote(appVersion)}}"""
 
@@ -309,6 +329,14 @@ internal object BridgeProtocol {
             "alarms" -> alarms(msg)
             "stats" -> (msg["deltaRate"] as? Double)?.takeIf { it.isFinite() && it in 0.0..MAX_DELTA_RATE }
                 ?.let { Incoming.Stats(it) } ?: Incoming.Dropped("stats without a delta rate")
+            "glance" -> Incoming.Glance(
+                Glance(
+                    depth = reading(msg["depth"], 0.0, MAX_DEPTH),
+                    sog = reading(msg["sog"], 0.0, MAX_SPEED),
+                    aws = reading(msg["aws"], 0.0, MAX_SPEED),
+                    awa = reading(msg["awa"], -2 * Math.PI, 2 * Math.PI),
+                ),
+            )
             else -> Incoming.Dropped("unknown type ${(t as? String)?.take(32) ?: t}")
         }
     }
@@ -377,6 +405,26 @@ internal object BridgeProtocol {
         if (msg == null) return Ble.NONE
         val watch = (msg["watch"] as? List<*>).orEmpty().filterIsInstance<String>().filter { MAC.matches(it) }.distinct().take(MAX_WATCH)
         return Ble(scan = msg["scan"] == true, watch = watch)
+    }
+
+    /** Deepest a depth may be, metres: the deepest sea is 11 km. */
+    private const val MAX_DEPTH = 12_000.0
+
+    /** Fastest a speed may be, m/s (about 390 knots): faster is a broken instrument, not a boat. */
+    private const val MAX_SPEED = 200.0
+
+    /** Latest time a reading may carry, ms: the year 3000. */
+    private const val MAX_TS = 32_503_680_000_000.0
+
+    /**
+     * A reading of a glance, `{"v":3.2,"ts":1760000000000}`: null when it is missing, not a
+     * number, or outside [min]..[max]; a time that is not a whole number of ms is no time.
+     */
+    private fun reading(v: Any?, min: Double, max: Double): Reading? {
+        val m = v as? Map<*, *> ?: return null
+        val value = (m["v"] as? Double)?.takeIf { it.isFinite() && it in min..max } ?: return null
+        val ts = (m["ts"] as? Double)?.takeIf { it.isFinite() && it % 1.0 == 0.0 && it in 0.0..MAX_TS }?.toLong()
+        return Reading(value, ts)
     }
 
     private fun baud(v: Any?): Int? = (v as? Double)?.takeIf { it % 1.0 == 0.0 }?.toInt()?.takeIf { it in BAUD_RATES }

@@ -6,4 +6,6 @@
     <color name="surface">#0E1218</color>
     <color name="on_surface">#E3E6EA</color>
     <color name="icon_background">#0E2A4A</color>
+    <!-- The surface, at 85 % over the wallpaper, for the boat widget. -->
+    <color name="widget_background">#D90E1218</color>
 </resources>

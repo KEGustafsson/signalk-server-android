@@ -298,6 +298,43 @@ test("the server's delta rate goes to the phone, from the server's own last stat
   assert.equal(stats().length, sent, "nothing more once stopped");
 });
 
+test("the widget's glance goes to the phone every few ms while asked, and stops when off or the link drops", async (t) => {
+  const sock = socketPath();
+  let got = "";
+  let conn = null;
+  const server = await listen(sock, (c) => {
+    conn = c;
+    c.setEncoding("utf8");
+    c.on("data", (d) => (got += d));
+  });
+  const app = fakeApp();
+  app.getSelfPath = (path) => (path === "navigation.speedOverGround" ? { value: 2.5, timestamp: "2026-10-26T12:00:00.000Z" } : undefined);
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, glanceMs: 20 });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  const glances = () => got.split("\n").slice(0, -1).filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.t === "glance");
+  p.start({});
+  await until(() => conn !== null && p.statusNow().connected);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(glances(), [], "nothing until the app asks");
+  conn.write('{"t":"glance","on":true}\n');
+  await until(() => glances().length >= 3);
+  assert.deepEqual(glances()[0], { t: "glance", depth: null, sog: { v: 2.5, ts: Date.parse("2026-10-26T12:00:00.000Z") }, aws: null, awa: null });
+  conn.write('{"t":"glance","on":false}\n');
+  await new Promise((r) => setTimeout(r, 40));
+  let sent = glances().length;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(glances().length, sent, "nothing more once off");
+  conn.write('{"t":"glance","on":true}\n');
+  await until(() => glances().length > sent);
+  p.stop();
+  sent = glances().length;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(glances().length, sent, "nothing more once stopped");
+});
+
 test("an adv line reaches the stand-in's hub, and its wishes send the app a new subscription", async (t) => {
   const sock = socketPath();
   let received = "";
