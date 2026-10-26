@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +38,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
@@ -45,6 +50,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
+import fi.pocketsk.night.NightSettings
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
@@ -56,8 +62,10 @@ import kotlin.math.roundToInt
 
 /**
  * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, the webapps installed, the boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial devices, where the
- * data is and its log with the diagnostics bundle. The Power and Backup cards come with their own steps.
+ * rollback, the webapps installed, the helm screen (night filter, dimming, the screen kept on), the
+ * boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial
+ * devices, where the data is and its log with the diagnostics bundle. The Power and Backup cards
+ * come with their own steps.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier = Modifier) {
@@ -74,6 +82,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         }
         StatusCard(model, actions)
         WebappsCard(model, actions)
+        HelmCard(model, actions)
         UpdatesCard(model, actions)
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
         SensorsCard(model, actions)
@@ -157,6 +166,63 @@ private fun logKindLabel(kind: LogFilter.Kind): Int = when (kind) {
     LogFilter.Kind.ALL -> R.string.dock_log_all
     LogFilter.Kind.PROBLEMS -> R.string.dock_log_problems
     LogFilter.Kind.APP -> R.string.dock_log_app
+}
+
+/**
+ * The helm screen (docs/PLAN.md §8.3): the red night filter and its strength, the screen dimmed
+ * below the phone's own lowest, and the screen kept on, over every app ([fi.pocketsk.night.NightFilter]).
+ * Each change shows at once, so the owner sets them looking at the screen; the Quick Settings tile
+ * turns the filter on and off at the helm. They need the app allowed to draw over other apps,
+ * which the card asks for first.
+ */
+@Composable
+private fun HelmCard(model: AppModel, actions: AppActions) {
+    val night = model.night
+    Section(stringResource(R.string.dock_helm_title)) {
+        Text(stringResource(R.string.dock_helm_body), style = MaterialTheme.typography.bodySmall)
+        if (!model.nightAllowed) {
+            Text(stringResource(R.string.dock_helm_overlay_why), color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = actions::openOverlaySettings) { Text(stringResource(R.string.dock_helm_overlay_allow)) }
+            return@Section
+        }
+        HelmSwitch(stringResource(R.string.dock_helm_filter), night.filter) { actions.setNight(night.copy(filter = it)) }
+        if (night.filter) {
+            HelmSlider(stringResource(R.string.dock_helm_strength, night.strength), night.strength, 0) {
+                actions.setNight(night.copy(strength = it))
+            }
+        }
+        HelmSwitch(stringResource(R.string.dock_helm_dim), night.dim) { actions.setNight(night.copy(dim = it)) }
+        if (night.dim) {
+            HelmSlider(stringResource(R.string.dock_helm_brightness, night.brightness), night.brightness, 1) {
+                actions.setNight(night.copy(brightness = it))
+            }
+        }
+        HelmSwitch(stringResource(R.string.dock_helm_keep_on), night.keepOn) { actions.setNight(night.copy(keepOn = it)) }
+    }
+}
+
+/** The whole row is the switch, so a screen reader reads the label with the state and a tap on the words works. */
+@Composable
+private fun HelmSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+/** A percentage from [min] to 100, in whole steps; the slider carries its label for a screen reader. */
+@Composable
+private fun HelmSlider(label: String, value: Int, min: Int, onChange: (Int) -> Unit) {
+    Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.clearAndSetSemantics {})
+    Slider(
+        value = value.toFloat(),
+        onValueChange = { onChange(it.roundToInt()) },
+        valueRange = min.toFloat()..100f,
+        modifier = Modifier.semantics { contentDescription = label },
+    )
 }
 
 /**

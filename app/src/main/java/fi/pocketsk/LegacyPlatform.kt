@@ -34,8 +34,8 @@ object LegacyPlatform {
     // startActivityAndCollapse(PendingIntent) replaces it from API 34, which refuses the Intent form.
 
     /** Opens [intent] from the tile and closes the panel. */
-    // Lint cannot see the caller's API check from here (ServerTile calls the PendingIntent form on
-    // API 34 and later); below 34 this Intent form is the only one there is.
+    // Lint cannot see the caller's API check from here (ServerTile and NightTile call the
+    // PendingIntent form on API 34 and later); below 34 this Intent form is the only one there is.
     @SuppressLint("StartActivityAndCollapseDeprecated")
     fun startActivityAndCollapse(tile: TileService, intent: Intent) {
         tile.startActivityAndCollapse(intent)

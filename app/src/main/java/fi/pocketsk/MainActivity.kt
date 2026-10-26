@@ -40,6 +40,8 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ReleaseNotesSource
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
+import fi.pocketsk.night.NightFilter
+import fi.pocketsk.night.NightSettings
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.DataStore
 import fi.pocketsk.server.DataVolumes
@@ -416,6 +418,13 @@ class MainActivity : ComponentActivity() {
         override fun openWebapp(name: String) = requestWebapp(name)
 
         override fun pinWebapp(name: String) = this@MainActivity.pinWebapp(name)
+
+        override fun setNight(settings: NightSettings) {
+            model.night = settings
+            NightFilter.of(this@MainActivity).save(settings)
+        }
+
+        override fun openOverlaySettings() = this@MainActivity.openOverlaySettings()
     }
 
     private fun startServer() {
@@ -739,6 +748,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The system's page that allows the app to draw over other apps, opened on this app; the
+     * list of all apps where the phone has no page of its own for one.
+     */
+    private fun openOverlaySettings() {
+        val one = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", packageName, null))
+        try {
+            startActivity(one)
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(this, R.string.dock_helm_overlay_none, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     private fun refreshPermissions() {
         fun granted(p: String) = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
         model.permissions = PermissionsView(
@@ -763,6 +789,11 @@ class MainActivity : ComponentActivity() {
             batteryUnrestricted = getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) == true,
             autostart = prefs.autostart,
         )
+        // Allowed to draw over other apps, or not, in the settings opened from here: the overlay follows.
+        val night = NightFilter.of(this)
+        model.night = night.settings()
+        model.nightAllowed = night.allowed()
+        night.apply()
     }
 
     /**

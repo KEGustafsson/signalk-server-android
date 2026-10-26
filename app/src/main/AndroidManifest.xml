@@ -53,6 +53,10 @@
          and calling apps only; anywhere else the owner allows it in the settings, from the Dock. -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- The helm screen's overlay (night.NightFilter): the red night filter, the dimmed screen
+         and the screen kept on, over the browser and its webapps. The owner allows it in the
+         system's settings, which the Dock's Helm screen card opens. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
@@ -131,6 +135,21 @@
             android:exported="true"
             android:icon="@drawable/ic_notification"
             android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
+        <!-- The night filter's Quick Settings tile (night.NightTile): bound by the system UI only. -->
+        <service
+            android:name=".night.NightTile"
+            android:exported="true"
+            android:icon="@drawable/ic_night"
+            android:label="@string/night_tile_label"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

@@ -83,6 +83,8 @@ app/                 the Android app
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only),
                      Webapps (a package.json as a webapp, the deep link) (pure, tested)
+  fi.pocketsk.night  NightFilter (the helm screen's overlay: red filter, dimming, screen kept on;
+                     App holds it), NightTile (Quick Settings); NightRules (pure, tested)
   fi.pocketsk.widget BoatWidget (the home-screen widget: depth, SOG, apparent wind), GlanceWatch
                      (asks the plugin for them while a widget is placed and the screen is on);
                      GlanceView (pure, tested)

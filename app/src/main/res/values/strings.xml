@@ -183,6 +183,19 @@
     <string name="tile_stopped">Stopped</string>
     <string name="tile_failed">Stopped after errors</string>
 
+    <!-- The helm screen (night.NightFilter): the Dock's card and the Quick Settings tile. -->
+    <string name="night_tile_label">Night filter</string>
+    <string name="dock_helm_title">Helm screen</string>
+    <string name="dock_helm_body">Over every app, the browser and its webapps too. The status bar and the navigation bar stay as the phone draws them. The Quick Settings tile Night filter turns the filter on and off without opening the app.</string>
+    <string name="dock_helm_overlay_why">The red filter, the dimming and the screen kept on need the app allowed to display over other apps.</string>
+    <string name="dock_helm_overlay_allow">Allow display over other apps</string>
+    <string name="dock_helm_overlay_none">This phone has no settings page for displaying over other apps</string>
+    <string name="dock_helm_filter">Red night filter</string>
+    <string name="dock_helm_strength">Filter strength: %1$d %%</string>
+    <string name="dock_helm_dim">Dim the screen</string>
+    <string name="dock_helm_brightness">Brightness: %1$d %%</string>
+    <string name="dock_helm_keep_on">Keep the screen on</string>
+
     <!-- The boat widget (BoatWidget). -->
     <string name="widget_label">Boat at a glance</string>
     <string name="widget_description">Depth, speed over ground and the apparent wind, from the server</string>

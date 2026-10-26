@@ -9,6 +9,7 @@ import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
+import fi.pocketsk.night.NightSettings
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LogFilter
@@ -57,6 +58,10 @@ internal class AppModel {
     var webapps by mutableStateOf<List<Webapps.Webapp>?>(null)
     /** The home screen takes pinned shortcuts. */
     var canPin by mutableStateOf(false)
+
+    /** The helm screen's settings, and whether the app may draw over other apps, which they need. */
+    var night by mutableStateOf(NightSettings())
+    var nightAllowed by mutableStateOf(false)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -172,4 +177,10 @@ internal interface AppActions {
 
     /** Asks the home screen to pin a shortcut that opens the webapp [name]. */
     fun pinWebapp(name: String)
+
+    /** Keeps the helm screen's settings and puts them on the screen at once. */
+    fun setNight(settings: NightSettings)
+
+    /** The system's page that allows the app to draw over other apps, for the night filter. */
+    fun openOverlaySettings()
 }
