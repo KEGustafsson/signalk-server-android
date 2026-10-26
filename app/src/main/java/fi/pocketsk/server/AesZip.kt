@@ -1,6 +1,5 @@
 package fi.pocketsk.server
 
-import android.annotation.SuppressLint
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
@@ -15,6 +14,7 @@ import java.util.zip.Deflater
 import java.util.zip.Inflater
 import javax.crypto.Cipher
 import javax.crypto.Mac
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
@@ -133,7 +133,7 @@ internal object AesZip {
                 val local = buf.getInt(c + 42).toLong() and 0xffffffffL
                 if (c + 46L + nameLen + extraLen > end) throw NotOurs("a damaged central directory")
                 val name = String(zip, c + 46, nameLen, Charsets.UTF_8)
-                if (flags and 1 == 0 || method != METHOD_AES) throw NotOurs("$name is not encrypted with AES")
+                if ((flags and 1) == 0 || method != METHOD_AES) throw NotOurs("$name is not encrypted with AES")
                 val inner = aesMethod(zip, c + 46 + nameLen, extraLen) ?: throw NotOurs("$name is not AES-256 as WinZip writes it")
                 total += plain
                 if (total > MAX_BYTES) throw NotOurs("over ${MAX_BYTES / MB} MB unpacked")
@@ -196,38 +196,26 @@ internal object AesZip {
 
     /**
      * AES-256 in WinZip's CTR mode: a little-endian block counter from 1. Its own inverse. The
-     * platform's AES/CTR counts big-endian, so the counter blocks are made here and enciphered in
-     * ECB mode, one block each, which is how CTR mode is built: ECB is the block cipher alone, and
-     * nothing is ever encrypted with it but the counters.
+     * platform's AES/CTR counts big-endian, so it is started afresh at every block, the block's
+     * number as its counter: each block is then enciphered exactly as WinZip's counter says. The
+     * counter starts at 1 under every entry's own key, which the salt makes new each time, so no
+     * key ever meets the same counter twice.
      */
-    // Lint's GetInstance warns of ECB used to encrypt data; here it only enciphers the counter blocks.
-    @SuppressLint("GetInstance")
     private fun ctr(keys: ByteArray, data: ByteArray): ByteArray {
-        val aes = Cipher.getInstance("AES/ECB/NoPadding").apply { init(Cipher.ENCRYPT_MODE, SecretKeySpec(keys, 0, KEY, "AES")) }
+        val key = SecretKeySpec(keys, 0, KEY, "AES")
+        val aes = Cipher.getInstance("AES/CTR/NoPadding")
         val out = ByteArray(data.size)
-        val counter = ByteArray(BLOCK)
-        val stream = ByteArray(BLOCK * CHUNK_BLOCKS)
+        var block = 1L
         var pos = 0
         while (pos < data.size) {
-            val blocks = minOf(CHUNK_BLOCKS, (data.size - pos + BLOCK - 1) / BLOCK)
-            val counters = ByteArray(blocks * BLOCK)
-            for (b in 0 until blocks) {
-                increment(counter)
-                counter.copyInto(counters, b * BLOCK)
-            }
-            aes.doFinal(counters, 0, counters.size, stream, 0)
-            val n = minOf(counters.size, data.size - pos)
-            for (i in 0 until n) out[pos + i] = (data[pos + i].toInt() xor stream[i].toInt()).toByte()
+            val counter = ByteBuffer.allocate(BLOCK).order(ByteOrder.LITTLE_ENDIAN).putLong(block).array()
+            aes.init(Cipher.ENCRYPT_MODE, key, IvParameterSpec(counter))
+            val n = minOf(BLOCK, data.size - pos)
+            aes.doFinal(data, pos, n, out, pos)
             pos += n
+            block++
         }
         return out
-    }
-
-    private fun increment(counter: ByteArray) {
-        for (i in counter.indices) {
-            counter[i] = (counter[i] + 1).toByte()
-            if (counter[i].toInt() != 0) return
-        }
     }
 
     private fun mac(keys: ByteArray, cipherText: ByteArray): ByteArray =
@@ -366,7 +354,6 @@ internal object AesZip {
     private const val VERIFIER = 2
     private const val TAG = 10
     private const val BLOCK = 16
-    private const val CHUNK_BLOCKS = 4096
     private const val ROUNDS = 1000
     private const val BUFFER = 64 * 1024
     private const val MB = 1024L * 1024
