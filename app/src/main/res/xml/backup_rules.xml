@@ -7,8 +7,9 @@
   files/bin, files/prebuilds, files/plugins (the Android bridge's plugin) and files/runtime (the
   preload every node loads) are the APK's own and made again on the next start; files/bridge.sock is the bridge's socket, nothing to keep. files/logs is
   the server's output, which is this phone's story and may carry whatever a plugin printed.
-  The data folders the owner may move to an SD card or USB drive (DataStore) are in the app's
-  folder on that card, which neither backup nor device transfer takes. The USB inbox (Inbox) is in
+  The data folders (DataStore) and the copies of .signalk's files (ConfigMirror) are in the app's
+  folder on the phone's shared storage, the external domain excluded below, or on a card, which
+  neither backup nor device transfer takes: they hold security.json's copy. The USB inbox (Inbox) is in
   the app's folder on the phone's shared storage, the external domain, and stays on this phone.
 -->
 <full-backup-content>

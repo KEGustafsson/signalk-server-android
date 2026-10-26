@@ -248,7 +248,7 @@ private fun StorageCard(model: AppModel, actions: AppActions) {
             StorageRow(stringResource(R.string.dock_storage_missing, view.chosenName ?: view.chosen), selected = true, enabled = false) {}
         }
         if (inPhone.isEmpty()) Text(stringResource(R.string.dock_storage_none), style = MaterialTheme.typography.bodySmall)
-        if (view.chosen != null) Text(stringResource(R.string.dock_storage_charts), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.dock_storage_usb), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.dock_storage_upload), style = MaterialTheme.typography.bodySmall)
         view.inbox?.let { waiting ->
             Text(stringResource(R.string.dock_inbox_where), style = MaterialTheme.typography.bodySmall)

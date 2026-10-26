@@ -47,7 +47,7 @@ internal class ServerPrefs(context: Context) {
 
     /**
      * The card the server's data folders live on ([DataStore], [DataVolumes]), by its UUID; null
-     * for the phone. [dataVolumeName] is its name as the Dock last showed it, for the messages
+     * for the phone, whose shared storage holds them then ([DataVolumes.phone]). [dataVolumeName] is its name as the Dock last showed it, for the messages
      * about a card that is not there.
      */
     var dataVolume: String?

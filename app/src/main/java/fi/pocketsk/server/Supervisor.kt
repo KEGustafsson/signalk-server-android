@@ -2,6 +2,7 @@ package fi.pocketsk.server
 
 import android.content.Context
 import android.os.SystemClock
+import fi.pocketsk.R
 import fi.pocketsk.bridge.Bridge
 import fi.pocketsk.bridge.BridgePlugin
 import fi.pocketsk.install.HealthGate
@@ -46,8 +47,11 @@ import kotlin.concurrent.thread
  * version bad, and the server starts again from there. That call waits for an install in
  * progress to finish, since both rewrite `current`.
  *
- * Before every run the data folders are put where the owner chose ([placeData], [DataStore]): on
- * the phone or on a card, which is waited for while it is out ([ServerState.Storage]).
+ * Before every run the data folders are put where the owner chose ([placeData], [DataStore]): in
+ * the app's folder on the phone's shared storage or on a card, which a computer sees over USB, and
+ * which is waited for while it is out ([ServerState.Storage]). The files that stay in `.signalk`
+ * are copied there too ([ConfigMirror]): every 30 s while the server runs, and once more when it
+ * has ended; the computer's changes to those copies go into `.signalk` before the next start.
  *
  * Everything reported goes through [onState]; [onAlert] is for what the user should hear about
  * even with no screen open: a rollback, or giving up (with the [ServerState.Failed] it ends in).
@@ -84,6 +88,24 @@ internal class Supervisor(
 
     /** When the data's card was last ejected ([storageEjected]), until it is seen gone. */
     private var ejectedAt: Long? = null
+
+    /**
+     * The card [ejectedAt] belongs to: a card chosen in the Dock after another was ejected is
+     * not the one being taken out, and a card already in sends no mount to clear it.
+     */
+    private var ejectedVolume: String? = null
+
+    /**
+     * The folder a computer sees ([DataStore]'s root), as [placeData] last found it; null before.
+     * Read and written under DataStore.LOCK, so a sync never goes to a root the data just left.
+     */
+    private var shown: File? = null
+
+    // Of [mirror], on the supervisor's threads one at a time (under DataStore.LOCK): what was
+    // last said, so a sync every 30 s says a thing once.
+    private var mirrorWaiting = emptyList<String>()
+    private val mirrorNoted = mutableSetOf<String>()
+    private var mirrorError: String? = null
 
     @Volatile var state: ServerState = ServerState.Stopped
         private set
@@ -269,6 +291,8 @@ internal class Supervisor(
             val code = n.process.waitFor()
             val whole = n.reap()
             health.interrupt()
+            // What the server saved last, before anyone opens the folder to look.
+            mirror(running = true)
             reader.join(DRAIN_MS)
             val now = SystemClock.elapsedRealtime()
             val why = synchronized(this) {
@@ -357,6 +381,8 @@ internal class Supervisor(
                     trial = onTrial
                 }
             }
+            // With the health poll's cadence once the server answers: a settings file is small.
+            if (answering != null) mirror(running = true)
             try {
                 Thread.sleep(if (answering != null) HEALTH_POLL_MS else FIRST_POLL_MS)
             } catch (_: InterruptedException) {
@@ -422,8 +448,8 @@ internal class Supervisor(
 
     /**
      * Puts the data folders where the owner chose ([DataStore]) before a run, and takes in what
-     * waits in the USB inbox ([Inbox]); null when the run
-     * may go on, else the state to end in. A chosen card that is not in the phone, or that was
+     * waits in the USB inbox ([Inbox]) and the computer's changes to the settings files' copies
+     * ([mirror]); null when the run may go on, else the state to end in. A chosen card that is not in the phone, or that was
      * just taken out ([storageEjected]), is waited for, checked every [CARD_POLL_MS] and at once
      * when it is put in ([storageMounted]), rather than given up on: the server without its
      * data would start as a new one, and so is one taken out in the middle of a move. A folder
@@ -433,25 +459,13 @@ internal class Supervisor(
     private fun placeData(): ServerState? {
         while (true) {
             var told: String? = null
-            var root: File? = null
+            var root: File
             var to: String? = null
-            while (true) {
-                // Read again on every look: the owner may choose the phone while the card is away.
-                val uuid = prefs.dataVolume ?: break
-                val name = prefs.dataVolumeName ?: uuid
-                val volume = DataVolumes.mounted(app, uuid)
-                val ejecting = synchronized(this) {
-                    val at = ejectedAt
-                    // Ejected and gone again: from here on it is a card coming back.
-                    if (at != null && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) ejectedAt = null
-                    ejectedAt != null
-                }
-                if (volume != null && !ejecting) {
-                    root = volume.root
-                    to = name
-                    break
-                }
-                if (told != name) log.note("waiting for $name, the card the server's data is on")
+
+            // One look's wait for [name], where the data is: the state to end in when the run is
+            // no longer wanted, else null for the next look.
+            fun waitFor(name: String): ServerState? {
+                if (told != name) log.note("waiting for $name, where the server's data is")
                 told = name
                 publish(ServerState.Storage(waiting = true, volume = name))
                 waiter.await(CARD_POLL_MS)
@@ -460,13 +474,56 @@ internal class Supervisor(
                     // A restart asked for while waiting (a new choice in the Dock) is this look.
                     if (ask == Ask.RESTART) ask = Ask.NONE
                 }
+                return null
             }
-            if (told != null && to != null) log.note("$to is in")
-            try {
-                DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
-                    log.note("moving $rel to ${to ?: "the phone"}")
-                    publish(ServerState.Storage(waiting = false, volume = to))
+
+            while (true) {
+                // Read again on every look: the owner may choose the phone while the card is away.
+                val uuid = prefs.dataVolume
+                if (uuid == null) {
+                    // The phone's shared storage, there whenever the phone is unlocked; waited for
+                    // like a card if not, since the server without its data would start as a new one.
+                    val phone = DataVolumes.phone(app)
+                    if (phone != null) {
+                        root = phone
+                        to = null
+                        break
+                    }
+                    waitFor(app.getString(R.string.server_storage_phone))?.let { return it }
+                    continue
                 }
+                val name = prefs.dataVolumeName ?: uuid
+                val volume = DataVolumes.mounted(app, uuid)
+                val ejecting = synchronized(this) {
+                    val at = ejectedAt
+                    // Ejected and gone again: from here on it is a card coming back. Another card's
+                    // eject says nothing about this one, and is kept: chosen again while still
+                    // going, that card must wait like any other ejected card.
+                    if (at != null && ejectedVolume == uuid && (volume == null || SystemClock.elapsedRealtime() - at > EJECT_HOLD_MS)) {
+                        ejectedAt = null
+                    }
+                    ejectedAt != null && ejectedVolume == uuid
+                }
+                if (volume != null && !ejecting) {
+                    root = volume.root
+                    to = name
+                    break
+                }
+                waitFor(name)?.let { return it }
+            }
+            if (told != null) log.note("${to ?: "the phone's shared storage"} is there")
+            try {
+                // Moved and recorded in one hold of the lock: a sync from the last run's health
+                // thread that reads [shown] in between would put the copies where the data was.
+                synchronized(DataStore.LOCK) {
+                    DataStore(runtime.configDir, log::note, DataVolumes::free).place(root) { rel ->
+                        log.note("moving $rel to ${to ?: "the phone"}")
+                        publish(ServerState.Storage(waiting = false, volume = to))
+                    }
+                    shown = root
+                }
+                // The computer's changes to the settings files' copies, while nothing reads them.
+                mirror(running = false)
                 // What a computer left in the USB inbox, now the folders are where they belong; a
                 // folder new to the server is made where they are.
                 DataVolumes.inbox(app)?.let { dir ->
@@ -487,6 +544,31 @@ internal class Supervisor(
     }
 
     /**
+     * Brings the copies of `.signalk`'s files in the folder a computer sees in line ([ConfigMirror]),
+     * the computer's changes taken in only when not [running]. A failure is said once and costs
+     * the copies, never the run: the server's own files are untouched by it.
+     */
+    private fun mirror(running: Boolean) {
+        synchronized(DataStore.LOCK) {
+            val root = shown ?: return
+            try {
+                val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme)) { if (mirrorNoted.add(it)) log.note(it) }
+                    .sync(running)
+                if (r.taken.isNotEmpty()) log.note("taken in from ${root.path}: ${r.taken.joinToString()}")
+                if (r.waiting.isNotEmpty() && r.waiting != mirrorWaiting) {
+                    log.note("changed in ${root.path}, taken in at the next start: ${r.waiting.joinToString()}")
+                }
+                mirrorWaiting = r.waiting
+                mirrorError = null
+            } catch (e: IOException) {
+                val why = e.message ?: e.toString()
+                if (why != mirrorError) log.note("the settings files could not be copied to ${root.path}: $why")
+                mirrorError = why
+            }
+        }
+    }
+
+    /**
      * The card at [path] is being taken out ([ejecting]: Android's eject, sent while it is still
      * mounted) or is gone: a run on it ends now, so its files are closed before the card goes, and
      * the next waits until it is back ([placeData]). Only the eject is remembered: after the others
@@ -496,7 +578,10 @@ internal class Supervisor(
     fun storageEjected(path: String?, ejecting: Boolean) {
         val uuid = prefs.dataVolume ?: return
         if (!DataVolumes.isVolume(path, uuid)) return
-        if (ejecting) ejectedAt = SystemClock.elapsedRealtime()
+        if (ejecting) {
+            ejectedAt = SystemClock.elapsedRealtime()
+            ejectedVolume = uuid
+        }
         if (node != null) {
             log.note("${prefs.dataVolumeName ?: uuid} is being taken out: stopping the server until it is back")
             end(Ask.RESTART)
@@ -507,22 +592,26 @@ internal class Supervisor(
         }
     }
 
-    /** Whether the card the data is on was ejected or is not mounted, after [placeData] found it. */
+    /**
+     * Whether the card the data is on was ejected or is not mounted, after [placeData] found it;
+     * with no card chosen, whether the phone's shared storage has gone (before the first unlock).
+     */
     private fun dataCardGone(): Boolean {
-        val uuid = prefs.dataVolume ?: return false
-        if (synchronized(this) { ejectedAt != null }) return true
+        val uuid = prefs.dataVolume ?: return DataVolumes.phone(app) == null
+        if (synchronized(this) { ejectedAt != null && ejectedVolume == uuid }) return true
         return DataVolumes.mounted(app, uuid) == null
     }
 
     /**
-     * The card at [path] was put in: when it is the data's, it is back (whatever eject came
-     * before), and a run waiting for it looks now rather than at its next poll.
+     * The card at [path] was put in: when it is the ejected card, its eject is over, whichever
+     * card is chosen now (another card's eject stands); when it is the data's, a run waiting for
+     * it looks now rather than at its next poll.
      */
     @Synchronized
     fun storageMounted(path: String?) {
+        if (ejectedVolume?.let { DataVolumes.isVolume(path, it) } == true) ejectedAt = null
         val uuid = prefs.dataVolume ?: return
         if (!DataVolumes.isVolume(path, uuid)) return
-        ejectedAt = null
         if (state is ServerState.Storage) waiter.wake()
     }
 

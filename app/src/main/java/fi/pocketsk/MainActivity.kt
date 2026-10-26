@@ -643,9 +643,9 @@ class MainActivity : ComponentActivity() {
             val log = ServerStatus.log(this)
             val taken = synchronized(DataStore.LOCK) {
                 val uuid = prefs.dataVolume
-                val card = uuid?.let { DataVolumes.mounted(this, it) }?.root
-                if (uuid != null && card == null) {
-                    log.note("the USB inbox waits for ${prefs.dataVolumeName ?: uuid}, the card the server's data is on")
+                val card = if (uuid == null) DataVolumes.phone(this) else DataVolumes.mounted(this, uuid)?.root
+                if (card == null) {
+                    log.note("the USB inbox waits for ${prefs.dataVolumeName ?: uuid ?: getString(R.string.server_storage_phone)}, where the server's data is")
                     emptyList()
                 } else {
                     inbox(card)?.take().orEmpty()

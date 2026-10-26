@@ -8,11 +8,11 @@ import fi.pocketsk.R
 import java.io.File
 
 /**
- * The cards the server's data may go to ([DataStore]): every removable volume, an SD card or a USB
- * drive, on which Android gives the app a folder of its own (`Android/data/fi.pocketsk/files`).
- * That folder needs no permission, is a real path the server's node can use as the app can (same
- * user), and goes with the app when it is uninstalled. The phone's own shared storage is left out:
- * it is the same flash as `.signalk`, without its encryption per user.
+ * Where the server's data may go ([DataStore]): the app's folder on the phone's shared storage
+ * ([phone]), and every removable volume, an SD card or a USB drive ([list]), on which Android gives
+ * the app a folder of its own (`Android/data/fi.pocketsk/files`). Such a folder needs no
+ * permission, is a real path the server's node can use as the app can (same user), is what a
+ * computer sees over USB, and goes with the app when it is uninstalled.
  *
  * A volume is known by its UUID, which stays when its mount path or the phone's order of volumes
  * changes. [list] touches the disk (Android makes the folders it reports): off the main thread.
@@ -57,6 +57,14 @@ internal object DataVolumes {
             null
         }
     }
+
+    /**
+     * The data's folder on the phone's shared storage, `Android/data/fi.pocketsk/files/signalk`,
+     * where a computer on the phone's USB finds it; null while that storage is not available.
+     */
+    fun phone(context: Context): File? = context.getExternalFilesDir(null)
+        ?.takeIf { Environment.getExternalStorageState(it) == Environment.MEDIA_MOUNTED }
+        ?.let { File(it, DataStore.CARD_DIR) }
 
     /**
      * The USB inbox ([Inbox]) on the phone's shared storage, which a computer over USB can write;
