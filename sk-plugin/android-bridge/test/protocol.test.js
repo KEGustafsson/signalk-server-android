@@ -245,6 +245,15 @@ test("a glance takes the first path with a number, its time, and null for what t
     awa: { v: -0.52, ts: null },
   });
   assert.deepEqual(glanceMessage(() => undefined), { t: "glance", depth: null, sog: null, aws: null, awa: null });
+  // A value no boat could give is a broken instrument: the next path is tried.
+  const broken = {
+    "environment.depth.belowTransducer": { value: -1, timestamp: ts },
+    "environment.depth.belowKeel": { value: 3.2, timestamp: ts },
+    "navigation.speedOverGround": { value: 250, timestamp: ts },
+    "environment.wind.angleApparent": { value: 7, timestamp: ts },
+  };
+  const g = glanceMessage((p) => broken[p]);
+  assert.deepEqual([g.depth, g.sog, g.awa], [{ v: 3.2, ts: Date.parse(ts) }, null, null]);
   // A server that throws for a path it does not know costs that reading alone.
   assert.deepEqual(glanceMessage((p) => {
     if (p.startsWith("environment.depth")) throw new Error("no such path");

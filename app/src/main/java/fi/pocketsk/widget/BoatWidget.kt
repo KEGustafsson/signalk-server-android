@@ -73,18 +73,16 @@ class BoatWidget : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_status, View.GONE)
             val view = glance?.let { GlanceView.of(it, now) } ?: GlanceView.EMPTY
             val dash = context.getString(R.string.widget_no_value)
-            views.setTextViewText(R.id.widget_depth, view.depth?.let { context.getString(R.string.widget_depth_value, it) } ?: dash)
-            views.setTextViewText(R.id.widget_sog, view.sog?.let { context.getString(R.string.widget_speed_value, it) } ?: dash)
-            views.setTextViewText(R.id.widget_wind, view.windSpeed?.let { context.getString(R.string.widget_speed_value, it) } ?: dash)
+            // Bare numbers under labels that carry the units, so three columns fit in two cells.
+            views.setTextViewText(R.id.widget_depth, view.depth ?: dash)
+            views.setTextViewText(R.id.widget_sog, view.sog ?: dash)
+            views.setTextViewText(R.id.widget_wind, view.windSpeed ?: dash)
             val side = when (view.windSide) {
                 GlanceView.Side.PORT -> context.getString(R.string.widget_port)
                 GlanceView.Side.STARBOARD -> context.getString(R.string.widget_starboard)
                 null -> ""
             }
-            views.setTextViewText(
-                R.id.widget_wind_label,
-                view.windAngle?.let { context.getString(R.string.widget_wind_angle, it, side) } ?: context.getString(R.string.widget_wind),
-            )
+            views.setTextViewText(R.id.widget_wind_angle, view.windAngle?.let { context.getString(R.string.widget_wind_angle, it, side) } ?: "")
             return views
         }
 

@@ -307,15 +307,28 @@ const GLANCE_PATHS = {
 };
 
 /**
+ * What a boat can give for each reading, as the app's BridgeProtocol takes it (change both
+ * together): a depth to 12 km, a speed to 200 m/s, an angle within a turn either way. A value
+ * outside them is a broken instrument, so the next path is tried.
+ */
+const GLANCE_BOUNDS = {
+  depth: [0, 12000],
+  sog: [0, 200],
+  aws: [0, 200],
+  awa: [-2 * Math.PI, 2 * Math.PI],
+};
+
+/**
  * The boat at a glance for the app's widget, from `getSelfPath` (the server's `app.getSelfPath`):
- * for each of depth, SOG and apparent wind speed and angle the first path with a finite number,
- * as `{v, ts}` with the time the server got it (null when it gives none), else null. The app
+ * for each of depth, SOG and apparent wind speed and angle the first path with a number a boat
+ * can give (GLANCE_BOUNDS), as `{v, ts}` with the time the server got it (null when it gives none), else null. The app
  * decides what is too old to show.
  */
 function glanceMessage(getSelfPath) {
   const msg = { t: "glance" };
   for (const [key, paths] of Object.entries(GLANCE_PATHS)) {
     msg[key] = null;
+    const [min, max] = GLANCE_BOUNDS[key];
     for (const path of paths) {
       let leaf;
       try {
@@ -324,7 +337,7 @@ function glanceMessage(getSelfPath) {
         leaf = undefined;
       }
       const v = leaf?.value;
-      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) continue;
       const ts = typeof leaf.timestamp === "string" ? Date.parse(leaf.timestamp) : NaN;
       msg[key] = { v, ts: Number.isFinite(ts) ? ts : null };
       break;

@@ -407,7 +407,10 @@ internal object BridgeProtocol {
         return Ble(scan = msg["scan"] == true, watch = watch)
     }
 
-    /** Deepest a depth may be, metres: the deepest sea is 11 km. */
+    /**
+     * Deepest a depth may be, metres: the deepest sea is 11 km. The plugin's GLANCE_BOUNDS are
+     * these bounds, so it tries the next path for a value they leave out: change both together.
+     */
     private const val MAX_DEPTH = 12_000.0
 
     /** Fastest a speed may be, m/s (about 390 knots): faster is a broken instrument, not a boat. */
