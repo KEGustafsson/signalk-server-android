@@ -81,6 +81,30 @@ class ConfigMirrorTest {
     }
 
     @Test
+    fun aFileAddedOnTheComputerWhileTheServerRunsGoesInAtTheNextStart() {
+        mirror().sync(running = true)
+        write(File(shown, "baseDeltas.json"), "the owner's")
+        // No manifest line for it yet: one with the owner's digest would read as already taken in,
+        // and the next start would delete the copy as a file the server had dropped.
+        repeat(2) { assertEquals(listOf("baseDeltas.json"), mirror().sync(running = true).waiting) }
+        assertEquals(listOf("baseDeltas.json"), mirror().sync(running = false).taken)
+        assertEquals("the owner's", File(config, "baseDeltas.json").readText())
+    }
+
+    @Test
+    fun aFileAddedAndRemovedOnTheComputerWhileTheServerMadeItsOwnLeavesTheServers() {
+        mirror().sync(running = true)
+        write(File(shown, "baseDeltas.json"), "the owner's")
+        mirror().sync(running = true)
+        write(File(config, "baseDeltas.json"), "the server's")
+        File(shown, "baseDeltas.json").delete()
+        // The owner's addition never went in, so its removal deletes nothing of the server's.
+        assertEquals(ConfigMirror.Result(emptyList(), emptyList()), mirror().sync(running = false))
+        assertEquals("the server's", File(config, "baseDeltas.json").readText())
+        assertEquals("the server's", File(shown, "baseDeltas.json").readText())
+    }
+
+    @Test
     fun aFileAddedOnTheComputerGoesInReadableByTheAppAlone() {
         mirror().sync(running = false)
         write(File(shown, "ssl-key.pem"), "KEY")
