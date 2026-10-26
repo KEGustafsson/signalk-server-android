@@ -600,14 +600,15 @@ internal class Supervisor(
     }
 
     /**
-     * The card at [path] was put in: when it is the data's, it is back (whatever eject came
-     * before), and a run waiting for it looks now rather than at its next poll.
+     * The card at [path] was put in: when it is the data's, it is back (whatever eject of it
+     * came before; another card's eject stands), and a run waiting for it looks now rather than
+     * at its next poll.
      */
     @Synchronized
     fun storageMounted(path: String?) {
         val uuid = prefs.dataVolume ?: return
         if (!DataVolumes.isVolume(path, uuid)) return
-        ejectedAt = null
+        if (ejectedVolume == uuid) ejectedAt = null
         if (state is ServerState.Storage) waiter.wake()
     }
 
