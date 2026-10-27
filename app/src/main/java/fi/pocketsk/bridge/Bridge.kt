@@ -129,6 +129,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         p.send(BridgeProtocol.hello(BuildConfig.VERSION_NAME))
         // The device list is sent on change only; a new plugin has not heard it.
         devices.resend()
+        sensors.connected()
         glance.connected()
         log.note("bridge: the server's plugin connected")
     }
@@ -181,8 +182,11 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         reporting(::failed) { BoatWidget.render(app) }
     }
 
-    private fun sendToPeer(line: String) {
-        peer?.send(line)
+    /** Whether a plugin was connected to take [line]. */
+    private fun sendToPeer(line: String): Boolean {
+        val p = peer ?: return false
+        p.send(line)
+        return true
     }
 
     companion object {
