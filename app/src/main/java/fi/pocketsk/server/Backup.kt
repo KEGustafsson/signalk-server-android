@@ -60,9 +60,13 @@ internal object Backup {
      * Writes [entries] into [configDir] by way of [staging], a folder on the same file system that
      * is emptied first and removed afterwards; the names written, in order. Throws, having
      * written nothing, when one is not a name [collect] writes or would land on a folder or a link.
+     *
+     * The names are added to [marker] before any file moves, so the next sync of the USB folder
+     * takes them as the phone's ([restored], [ConfigMirror.sync]) even after a process killed
+     * half way: a copy the computer edited or deleted before the restore must not undo it.
      */
     @Throws(IOException::class)
-    fun restore(configDir: File, staging: File, entries: List<AesZip.Entry>): List<String> {
+    fun restore(configDir: File, staging: File, entries: List<AesZip.Entry>, marker: File): List<String> {
         if (entries.isEmpty()) throw IOException("the backup holds no files")
         val names = entries.map { it.name }
         names.firstOrNull { !restorable(it) }?.let { throw IOException("the backup holds $it, which is not a settings file") }
@@ -83,6 +87,9 @@ internal object Backup {
                 if (e.modified > 0) f.setLastModified(e.modified)
             }
             Files.createDirectories(File(configDir, DataStore.PLUGIN_DATA).toPath())
+            val part = File(marker.path + ConfigMirror.PART)
+            part.writeText((restored(marker) + names).joinToString("") { "$it\n" })
+            Files.move(part.toPath(), marker.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             for (name in names) {
                 Files.move(File(staging, name).toPath(), File(configDir, name).toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             }
@@ -91,6 +98,10 @@ internal object Backup {
         }
         return names
     }
+
+    /** The names a restore wrote that the USB folder's sync has not yet taken as the phone's ([restore]); empty without [marker]. */
+    fun restored(marker: File): Set<String> =
+        if (marker.isFile) marker.readLines().filter { it.isNotEmpty() && restorable(it) }.toSortedSet() else emptySet()
 
     /**
      * Whether [rel], a path read from a backup, is one [collect] could have written: a file directly

@@ -48,9 +48,14 @@ internal class ConfigMirror(
      */
     data class Result(val taken: List<String>, val waiting: List<String>)
 
-    /** Brings [root]'s copies and `.signalk`'s files in line, the computer's changes going in only when not [running]. */
+    /**
+     * Brings [root]'s copies and `.signalk`'s files in line, the computer's changes going in only
+     * when not [running]. The files named in [ours] follow the phone's whatever the computer did to
+     * their copies: a backup just restored ([Backup.restore]), which an older edit or deletion on
+     * the computer must not undo.
+     */
     @Throws(IOException::class)
-    fun sync(running: Boolean): Result {
+    fun sync(running: Boolean, ours: Set<String> = emptySet()): Result {
         Files.createDirectories(root.toPath())
         Files.createDirectories(File(root, DataStore.PLUGIN_DATA).toPath())
         sweep(configDir)
@@ -80,8 +85,9 @@ internal class ConfigMirror(
             val mine = digest(here)
             val theirs = digest(there)
             val last = known[rel]
-            val edited = theirs != null && theirs != last && theirs != mine
-            val deleted = theirs == null && last != null && mine != null
+            val restored = rel in ours && mine != null
+            val edited = !restored && theirs != null && theirs != last && theirs != mine
+            val deleted = !restored && theirs == null && last != null && mine != null
             when {
                 edited && running -> {
                     waiting += rel

@@ -100,7 +100,7 @@ internal object BackupJob {
             if (!runtime.configDir.isDirectory) return@work State.Failed(true, Why.NO_SERVER_YET)
             val written = synchronized(DataStore.LOCK) {
                 if (!stopped()) return@work State.Failed(true, Why.SERVER_RUNNING)
-                Backup.restore(runtime.configDir, File(runtime.home, STAGING), entries)
+                Backup.restore(runtime.configDir, File(runtime.home, STAGING), entries, restoredMarker(runtime))
             }
             val log = ServerStatus.log(app)
             log.note("restored ${written.size} settings files from a backup: ${written.joinToString(", ")}")
@@ -179,8 +179,16 @@ internal object BackupJob {
         for (o in observers) o.onState(state)
     }
 
+    /**
+     * What the last restore wrote, until the USB folder's next sync has taken it as the phone's
+     * ([Backup.restore], the supervisor's mirror). Beside `.signalk`, not in it, so it is not
+     * copied to the USB folder itself.
+     */
+    fun restoredMarker(runtime: NodeRuntime): File = File(runtime.home, RESTORED)
+
     /** In `files/home`, beside `.signalk`: the same file system, and kept out of backups with it. */
     private const val STAGING = ".pocketsk-restore"
+    private const val RESTORED = ".pocketsk-restored"
 
     /** The code a restore reports when npm could not be started at all. */
     private const val NPM_NOT_RUN = -1

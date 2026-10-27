@@ -578,8 +578,12 @@ internal class Supervisor(
         synchronized(DataStore.LOCK) {
             val root = shown ?: return
             try {
+                // A backup restored since the last sync: its files are the phone's, whatever the
+                // computer did to their copies before it.
+                val marker = BackupJob.restoredMarker(runtime)
                 val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme)) { if (mirrorNoted.add(it)) log.note(it) }
-                    .sync(running)
+                    .sync(running, ours = Backup.restored(marker))
+                marker.delete()
                 if (r.taken.isNotEmpty()) log.note("taken in from ${root.path}: ${r.taken.joinToString()}")
                 if (r.waiting.isNotEmpty() && r.waiting != mirrorWaiting) {
                     log.note("changed in ${root.path}, taken in at the next start: ${r.waiting.joinToString()}")

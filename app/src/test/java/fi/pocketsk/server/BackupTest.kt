@@ -31,6 +31,8 @@ class BackupTest {
         File(dir, "charts/chart.mbtiles").writeText("tiles")
     }
 
+    private fun marker() = File(tmp.root, "home/.pocketsk-restored")
+
     private fun entry(name: String, text: String) = AesZip.Entry(name, text.toByteArray(), 1_761_500_000_000)
 
     @Test
@@ -60,6 +62,7 @@ class BackupTest {
             dir,
             staging,
             listOf(entry("settings.json", "{\"restored\":true}"), entry("plugin-config-data/bar.json", "{}"), entry("baseDeltas.json", "[]")),
+            marker(),
         )
         assertEquals(listOf("settings.json", "plugin-config-data/bar.json", "baseDeltas.json"), written)
         assertEquals("{\"restored\":true}", File(dir, "settings.json").readText())
@@ -71,11 +74,22 @@ class BackupTest {
     }
 
     @Test
+    fun aRestoreMarksItsFilesForTheUsbFolderAndABadOneMarksNothing() {
+        val dir = signalk()
+        Backup.restore(dir, File(tmp.root, "s"), listOf(entry("settings.json", "{}")), marker())
+        Backup.restore(dir, File(tmp.root, "s"), listOf(entry("plugin-config-data/foo.json", "{}")), marker())
+        assertEquals(setOf("settings.json", "plugin-config-data/foo.json"), Backup.restored(marker()))
+        marker().delete()
+        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "s"), listOf(entry("../x", "{}")), marker()) }
+        assertEquals(emptySet<String>(), Backup.restored(marker()))
+    }
+
+    @Test
     fun aBadNameWritesNothing() {
         val dir = signalk()
         for (bad in listOf("../escape.json", "plugin-config-data/../../x", "charts/chart.mbtiles", "node_modules/p/index.js", ".npmrc", "a\\b", "", "server.log")) {
             assertThrows(bad, IOException::class.java) {
-                Backup.restore(dir, File(tmp.root, "staging"), listOf(entry("settings.json", "{\"changed\":1}"), entry(bad, "x")))
+                Backup.restore(dir, File(tmp.root, "staging"), listOf(entry("settings.json", "{\"changed\":1}"), entry(bad, "x")), marker())
             }
         }
         assertEquals("{\"interfaces\":{}}", File(dir, "settings.json").readText())
@@ -87,8 +101,8 @@ class BackupTest {
         val dir = signalk()
         // A data folder DataStore moved to the card is a link in .signalk.
         Files.createSymbolicLink(File(dir, "serverstate").toPath(), tmp.newFolder("card-serverstate").toPath())
-        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "staging"), listOf(entry("charts", "x"))) }
-        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "staging"), listOf(entry("serverstate", "x"))) }
+        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "staging"), listOf(entry("charts", "x")), marker()) }
+        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "staging"), listOf(entry("serverstate", "x")), marker()) }
         assertTrue(File(dir, "charts").isDirectory)
         assertTrue(Files.isSymbolicLink(File(dir, "serverstate").toPath()))
     }
@@ -96,8 +110,8 @@ class BackupTest {
     @Test
     fun aNameTwiceOrNoneIsRefused() {
         val dir = signalk()
-        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "s"), listOf(entry("a.json", "1"), entry("a.json", "2"))) }
-        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "s"), emptyList()) }
+        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "s"), listOf(entry("a.json", "1"), entry("a.json", "2")), marker()) }
+        assertThrows(IOException::class.java) { Backup.restore(dir, File(tmp.root, "s"), emptyList(), marker()) }
     }
 
     @Test
@@ -105,7 +119,7 @@ class BackupTest {
         val from = signalk()
         val bytes = java.io.ByteArrayOutputStream().also { AesZip.write(it, Backup.collect(from), "twelve chars!".toCharArray()) }.toByteArray()
         val to = tmp.newFolder("other", ".signalk")
-        Backup.restore(to, File(tmp.root, "other/.pocketsk-restore"), AesZip.read(bytes, "twelve chars!".toCharArray()))
+        Backup.restore(to, File(tmp.root, "other/.pocketsk-restore"), AesZip.read(bytes, "twelve chars!".toCharArray()), marker())
         for (name in listOf("package.json", "security.json", "settings.json", "plugin-config-data/foo.json")) {
             assertEquals(name, File(from, name).readText(), File(to, name).readText())
         }
