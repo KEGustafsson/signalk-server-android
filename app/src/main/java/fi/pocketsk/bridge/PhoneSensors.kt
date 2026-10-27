@@ -51,11 +51,8 @@ import fi.pocketsk.net.reporting
  * roaming are open to every app, while the network's generation (LTE, 5G) would need the phone
  * permission, which a Signal K server has no other use for. It is the modem's last report, read
  * once a period rather than listened to, since a listener below Android 12 is a deprecated API.
- *
- * [send] says whether a plugin was there to take the line: a clear that found none is kept and
- * sent again when one connects ([connected]).
  */
-internal class PhoneSensors(context: Context, private val send: (String) -> Boolean, private val note: (String) -> Unit) {
+internal class PhoneSensors(context: Context, private val send: (String) -> Unit, private val note: (String) -> Unit) {
     private val app = context.applicationContext
     private val thread = HandlerThread("bridge-sensors").apply { start() }
     private val handler = Handler(thread.looper)
@@ -68,11 +65,13 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Bool
     private val published = HashMap<String, String>()
 
     /**
-     * The paths [clear] nulled while no plugin was connected (the plugin going is what stops the
-     * sensors), by their source: the server still shows their last readings, so [connected]
-     * sends the nulls again. A path read again before that leaves it. Handler thread only.
+     * The paths [clear] nulled, by their source, until the next plugin connects: [connected]
+     * sends their nulls again. A null that left may still not have reached the plugin: the
+     * plugin going is what stops the sensors, so its own nulls find no peer, and one queued
+     * just before a peer closed goes with the queue. Nulls the plugin already had cost nothing.
+     * A path read again leaves it. Handler thread only.
      */
-    private val unsent = HashMap<String, String>()
+    private val cleared = HashMap<String, String>()
     private var batteryOn = false
     private var lastBattery: Map<String, Double>? = null
     private var lastBatteryAt = 0L
@@ -259,14 +258,12 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Bool
         }
     }
 
-    /** A plugin connected: the clears no plugin heard go to it before any new reading. */
+    /** A plugin connected: the clears since the last one go to it again, before any new reading. */
     fun connected() {
         handler.post {
-            if (unsent.isEmpty()) return@post
             val ts = System.currentTimeMillis()
-            for ((path, src) in unsent.toList()) {
-                if (send(BridgeProtocol.sensor(path, null as Double?, src, ts))) unsent.remove(path)
-            }
+            for ((path, src) in cleared) send(BridgeProtocol.sensor(path, null as Double?, src, ts))
+            cleared.clear()
         }
     }
 
@@ -632,23 +629,24 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Bool
     /** Sends [line], a reading for [path] from [src], and remembers the path for [clear]. */
     private fun put(path: String, src: String, line: String) {
         published[path] = src
-        unsent.remove(path)
+        cleared.remove(path)
         send(line)
     }
 
     /**
      * A sensor stopped (the plugin no longer asks for it, the power profile left it out, the
      * plugin went): each path it sent a reading for gets a null, which is how Signal K says there
-     * is no reading now, so the server stops showing the last one as current. A null no plugin
-     * took waits in [unsent] for the next one.
+     * is no reading now, so the server stops showing the last one as current. Each is kept in
+     * [cleared] and sent again to the next plugin that connects.
      */
     private fun clear(src: String) {
         val paths = published.filterValues { it == src }.keys
         if (paths.isEmpty()) return
         val ts = System.currentTimeMillis()
         for (path in paths.toList()) {
-            if (!send(BridgeProtocol.sensor(path, null as Double?, src, ts))) unsent[path] = src
+            send(BridgeProtocol.sensor(path, null as Double?, src, ts))
             published.remove(path)
+            cleared[path] = src
         }
     }
 

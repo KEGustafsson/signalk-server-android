@@ -182,11 +182,8 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         reporting(::failed) { BoatWidget.render(app) }
     }
 
-    /** Whether a plugin was connected to take [line]. */
-    private fun sendToPeer(line: String): Boolean {
-        val p = peer ?: return false
-        p.send(line)
-        return true
+    private fun sendToPeer(line: String) {
+        peer?.send(line)
     }
 
     companion object {
