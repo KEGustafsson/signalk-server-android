@@ -113,6 +113,20 @@ function preGypArgs(packageJson, modulePath) {
   return [`--module_name=${binary.module_name}`, `--module_path=${modulePath}`, `--napi_build_version=${napi}`];
 }
 
+/**
+ * A package's own gyp variables from packages.json (`"gyp": ["--force_build=1"]`): each a
+ * `--name=value` option, which node-gyp hands gyp as a variable, and nothing else, so the list
+ * can set what a binding.gyp asks of its builder and never add a command of its own.
+ */
+function gypArgs(entry) {
+  const list = entry?.gyp ?? [];
+  if (!Array.isArray(list)) throw new Error(`${entry.name}: "gyp" is not a list`);
+  for (const a of list) {
+    if (typeof a !== "string" || !/^--[a-z_][a-z0-9_]*=[A-Za-z0-9_.-]*$/.test(a)) throw new Error(`${entry.name}: "${a}" is not a --name=value gyp variable`);
+  }
+  return list;
+}
+
 const key = (e) => `${e.name}@${e.version}/${e.platform}-${e.arch}/${e.abi}`;
 
 /**
@@ -176,4 +190,4 @@ function mergeIndex(published, built, nodejsMobile) {
   return { format: INDEX_FORMAT, nodejsMobile, entries };
 }
 
-module.exports = { INDEX_FORMAT, NAPI, nodeAbi, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, abiOf, loadsUnder, preGypArgs, has, checkIndex, parseIndex, mergeIndex };
+module.exports = { INDEX_FORMAT, NAPI, nodeAbi, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, abiOf, loadsUnder, preGypArgs, gypArgs, has, checkIndex, parseIndex, mergeIndex };

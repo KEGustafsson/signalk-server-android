@@ -90,8 +90,11 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
-/** Builds one version; returns its index entry. Throws with the reason when it cannot. */
-function build(name, version, o) {
+/**
+ * Builds one version; returns its index entry. Throws with the reason when it cannot. [gyp] is
+ * the package's own gyp variables from packages.json, after node-pre-gyp's.
+ */
+function build(name, version, gyp, o) {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "prebuild-"));
   try {
     run("npm", ["pack", `${name}@${version}`, "--pack-destination", work, "--silent"], { stdio: ["ignore", "ignore", "inherit"] });
@@ -114,7 +117,7 @@ function build(name, version, o) {
     };
     const jobs = String(os.availableParallelism ? os.availableParallelism() : os.cpus().length);
     const preGyp = lib.preGypArgs(JSON.parse(fs.readFileSync(path.join(pkg, "package.json"), "utf8")), path.join(pkg, "build/binding"));
-    run("npx", ["--yes", NODE_GYP, "rebuild", "--release", "-j", jobs, `--target=${o.node}`, `--arch=${ARCH}`, `--devdir=${o.devdir}`, ...preGyp], { cwd: pkg, env });
+    run("npx", ["--yes", NODE_GYP, "rebuild", "--release", "-j", jobs, `--target=${o.node}`, `--arch=${ARCH}`, `--devdir=${o.devdir}`, ...preGyp, ...gyp], { cwd: pkg, env });
 
     const release = path.join(pkg, "build/Release");
     const files = fs.existsSync(release) ? fs.readdirSync(release).filter((f) => f.endsWith(".node")).sort() : [];
@@ -174,7 +177,7 @@ function main() {
         }
         console.log(`::group::${p.name}@${version}`);
         try {
-          built.push(build(p.name, version, o));
+          built.push(build(p.name, version, lib.gypArgs(p), o));
         } catch (e) {
           failed.push({ what: `${p.name}@${version}`, why: e.message });
         }

@@ -116,3 +116,11 @@ test("parseIndex: a file holding null, or anything but an index, is refused, nev
   const text = JSON.stringify({ format: lib.INDEX_FORMAT, nodejsMobile: "v", entries: [entry("sqlite3", "5.1.7")] });
   assert.equal(lib.parseIndex(text).entries.length, 1);
 });
+
+test("gypArgs: a package's own gyp variables, --name=value only", () => {
+  assert.deepEqual(lib.gypArgs({ name: "better-sqlite3", gyp: ["--force_build=1"] }), ["--force_build=1"]);
+  assert.deepEqual(lib.gypArgs({ name: "sqlite3" }), []);
+  assert.throws(() => lib.gypArgs({ name: "x", gyp: "--force_build=1" }), /not a list/);
+  assert.throws(() => lib.gypArgs({ name: "x", gyp: ["--force_build=1; rm -rf /"] }), /not a --name=value/);
+  assert.throws(() => lib.gypArgs({ name: "x", gyp: ["rebuild"] }), /not a --name=value/);
+});
