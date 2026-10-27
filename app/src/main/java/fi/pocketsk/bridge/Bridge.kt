@@ -3,6 +3,8 @@ package fi.pocketsk.bridge
 import android.content.Context
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.net.reporting
+import fi.pocketsk.power.PowerPrefs
+import fi.pocketsk.power.PowerRules
 import fi.pocketsk.server.ServerLog
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.widget.BoatWidget
@@ -21,6 +23,9 @@ import java.util.concurrent.Executors
  * and stopped with it by [fi.pocketsk.server.SignalKService]; the plugin itself is put in place by
  * [BridgePlugin] before every start and finds the socket through [ENV].
  *
+ * What the plugin asks for is served as the Dock's power profile allows ([PowerRules]): battery
+ * saver keeps GNSS and the battery of the phone's sensors and stops the Bluetooth LE scan.
+ *
  * The protocol's lines are [BridgeProtocol]'s. What the plugin sends that is not a known message
  * is noted in the server log, a few times, then only counted, so a broken plugin cannot fill it.
  */
@@ -36,6 +41,17 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     private val server = BridgeServer(socketFile(context), ::connected, ::line, ::disconnected, log::note)
 
     @Volatile private var peer: BridgeServer.Peer? = null
+
+    /** What the plugin last asked for, which the power profile may cut ([PowerRules]); read again when the profile changes. */
+    @Volatile private var asked = BridgeProtocol.Subscription.NONE
+    private val power = PowerPrefs(context)
+
+    /**
+     * Held while what the phone serves is decided and posted: a subscription from the plugin's
+     * reader, a profile change from the service and a disconnect come on different threads, and
+     * each posts to the same handlers, so without it an older one could land after a newer one.
+     */
+    private val serving = Any()
     @Volatile private var droppedNotes = 0
 
     /**
@@ -86,6 +102,9 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     /** Silence for the alarm [id], from its notification, its screen or the Dock ([PhoneAlarm.silence]). */
     fun silence(id: String) = alarms.silence(id)
 
+    /** The owner chose another power profile in the Dock: what the plugin asked for is served again under it. */
+    fun powerChanged() = synchronized(serving) { serve() }
+
     /** "Level now" from the Dock: the phone's present tilt becomes the boat's level ([PhoneSensors.level]). */
     fun level() = sensors.level()
 
@@ -110,17 +129,18 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         p.send(BridgeProtocol.hello(BuildConfig.VERSION_NAME))
         // The device list is sent on change only; a new plugin has not heard it.
         devices.resend()
+        sensors.connected()
         glance.connected()
         log.note("bridge: the server's plugin connected")
     }
 
     private fun line(p: BridgeServer.Peer, text: String) {
         when (val msg = BridgeProtocol.parse(text)) {
-            is BridgeProtocol.Incoming.Subscribe -> if (p === peer) {
-                sensors.apply(msg.subscription)
-                usb.apply(msg.subscription.serial)
-                bluetooth.apply(msg.subscription.serial)
-                ble.apply(msg.subscription.ble)
+            is BridgeProtocol.Incoming.Subscribe -> synchronized(serving) {
+                if (p === peer) {
+                    asked = msg.subscription
+                    serve()
+                }
             }
             is BridgeProtocol.Incoming.Alarms -> if (p === peer) alarms.update(msg.list)
             is BridgeProtocol.Incoming.Stats -> if (p === peer) ServerStatus.publishDeltaRate(msg.deltaRate)
@@ -130,18 +150,30 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     }
 
     private fun disconnected(p: BridgeServer.Peer) {
-        if (peer !== p) return
-        peer = null
-        sensors.apply(BridgeProtocol.Subscription.NONE)
-        usb.apply(BridgeProtocol.Serial.NONE)
-        bluetooth.apply(BridgeProtocol.Serial.NONE)
-        ble.apply(BridgeProtocol.Ble.NONE)
+        synchronized(serving) {
+            if (peer !== p) return
+            peer = null
+            asked = BridgeProtocol.Subscription.NONE
+            sensors.apply(BridgeProtocol.Subscription.NONE)
+            usb.apply(BridgeProtocol.Serial.NONE)
+            bluetooth.apply(BridgeProtocol.Serial.NONE)
+            ble.apply(BridgeProtocol.Ble.NONE)
+        }
         alarms.lost()
         // With the plugin gone, nobody counts: no rate is better than the last one shown as current.
         ServerStatus.publishDeltaRate(null)
         glance.disconnected()
         showGlance(null)
         if (p.dropped > 0) log.note("bridge: ${p.dropped} readings were dropped while the plugin was not reading")
+    }
+
+    /** What the plugin asked for, as the power profile lets the phone serve it. Under [serving]. */
+    private fun serve() {
+        val s = PowerRules.subscription(power.profile, asked)
+        sensors.apply(s)
+        usb.apply(s.serial)
+        bluetooth.apply(s.serial)
+        ble.apply(s.ble)
     }
 
     /** The widget's readings, or none when the plugin has gone: drawn at once. */

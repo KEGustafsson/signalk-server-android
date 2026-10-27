@@ -10,6 +10,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.night.NightSettings
+import fi.pocketsk.power.PowerProfile
 import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
@@ -63,6 +64,9 @@ internal class AppModel {
     /** The helm screen's settings, and whether the app may draw over other apps, which they need. */
     var night by mutableStateOf(NightSettings())
     var nightAllowed by mutableStateOf(false)
+
+    /** The power profile chosen ([fi.pocketsk.power.PowerRules]). */
+    var power by mutableStateOf(PowerProfile.HARBOR)
 
     /** The backup or restore running or last finished ([fi.pocketsk.server.BackupJob]); null before the first. */
     var backup by mutableStateOf<BackupJob.State?>(null)
@@ -166,6 +170,9 @@ internal interface AppActions {
     fun restartWithLocation()
     /** Moves the server's data to [volume], or to the phone when null; the server restarts to do it. */
     fun chooseStorage(volume: DataVolumes.Volume?)
+
+    /** Chooses the power profile: the phone serves the plugin and dims the screen as it says. */
+    fun setPower(profile: PowerProfile)
 
     /** Saves a backup encrypted with [passphrase] where the owner picks; [passphrase] is wiped once used. */
     fun saveBackup(passphrase: CharArray)

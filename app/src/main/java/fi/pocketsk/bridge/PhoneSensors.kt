@@ -60,6 +60,19 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
 
     // All below on [thread] only.
     private var subscription = Subscription.NONE
+
+    /** The paths a reading was sent for, by their source: what [clear] nulls when the sensor stops. Handler thread only. */
+    private val published = HashMap<String, String>()
+
+    /**
+     * The paths [clear] nulled, by their source, until a reading for the path is sent again:
+     * every plugin that connects ([connected]) gets their nulls again. A null that left may
+     * still not have reached the plugin: the plugin going is what stops the sensors, so its own
+     * nulls find no peer, and one queued just before a peer closed goes with the queue, the
+     * replayed ones too. Nulls the plugin already had cost nothing, and the set holds no more
+     * than the handful of paths the sensors write. Handler thread only.
+     */
+    private val cleared = HashMap<String, String>()
     private var batteryOn = false
     private var lastBattery: Map<String, Double>? = null
     private var lastBatteryAt = 0L
@@ -200,7 +213,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
 
     private val baroTick = object : Runnable {
         override fun run() {
-            pressure.take()?.let { send(BridgeProtocol.sensor(Readings.PRESSURE_PATH, it, Readings.SRC_BARO, System.currentTimeMillis())) }
+            pressure.take()?.let { put(Readings.PRESSURE_PATH, Readings.SRC_BARO, BridgeProtocol.sensor(Readings.PRESSURE_PATH, it, Readings.SRC_BARO, System.currentTimeMillis())) }
             handler.postDelayed(this, periodMs(subscription.baroHz))
         }
     }
@@ -246,6 +259,14 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         }
     }
 
+    /** A plugin connected: every path still cleared gets its null again, before any new reading. */
+    fun connected() {
+        handler.post {
+            val ts = System.currentTimeMillis()
+            for ((path, src) in cleared) send(BridgeProtocol.sensor(path, null as Double?, src, ts))
+        }
+    }
+
     /** Stops everything and ends the thread; this object is not used again. */
     fun close() {
         handler.post {
@@ -268,6 +289,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             batteryOn = false
             app.unregisterReceiver(batteryReceiver)
             handler.removeCallbacks(batteryTick)
+            clear(Readings.SRC_BATTERY)
         }
         val wantBaro = BridgeProtocol.BARO in next.sensors
         if (wantBaro && !baroOn) {
@@ -285,6 +307,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             baroOn = false
             sensorManager?.unregisterListener(baroListener)
             handler.removeCallbacks(baroTick)
+            clear(Readings.SRC_BARO)
         } else if (baroOn && rateChanged) {
             handler.removeCallbacks(baroTick)
             handler.postDelayed(baroTick, periodMs(next.baroHz))
@@ -296,6 +319,9 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             if (gnssOn) stopGnss()
             toldWaiting = false
             hadFix = false
+            clear(Readings.SRC_GNSS)
+            sogSent = false
+            cogSent = false
         }
         switchMotion(next)
         switchEnvironment(next, rateChanged = next.environmentHz != previousEnvironmentHz)
@@ -347,6 +373,9 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             gyroOn = false
             sensorManager?.unregisterListener(gyroListener)
         }
+        // What is no longer sent is cleared: the attitude and rate of turn, the heading, or both.
+        if (!wantAttitude || type == 0) clear(Readings.SRC_IMU)
+        if (!wantHeading || type != Sensor.TYPE_ROTATION_VECTOR) clear(Readings.SRC_COMPASS)
     }
 
     /**
@@ -387,6 +416,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             environmentOn = false
             sensorManager?.unregisterListener(environmentListener)
             handler.removeCallbacks(environmentTick)
+            clear(Readings.SRC_ENVIRONMENT)
         } else if (environmentOn && rateChanged) {
             handler.removeCallbacks(environmentTick)
             handler.postDelayed(environmentTick, periodMs(next.environmentHz))
@@ -408,6 +438,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         } else if (!want && cellularOn) {
             cellularOn = false
             handler.removeCallbacks(cellularTick)
+            clear(Readings.SRC_CELLULAR)
         } else if (cellularOn && next.cellularHz != cellularHzOn) {
             cellularHzOn = next.cellularHz
             handler.removeCallbacks(cellularTick)
@@ -452,10 +483,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             null
         }
         val r = reading ?: Readings.Cellular.NONE
-        send(BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, r.strength, Readings.SRC_CELLULAR, ts))
-        send(BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, r.dbm, Readings.SRC_CELLULAR, ts))
-        send(BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, r.operator, Readings.SRC_CELLULAR, ts))
-        send(BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, r.roaming, Readings.SRC_CELLULAR, ts))
+        put(Readings.CELLULAR_STRENGTH_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, r.strength, Readings.SRC_CELLULAR, ts), r.strength != null)
+        put(Readings.CELLULAR_DBM_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, r.dbm, Readings.SRC_CELLULAR, ts), r.dbm != null)
+        put(Readings.CELLULAR_OPERATOR_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, r.operator, Readings.SRC_CELLULAR, ts), !r.operator.isNullOrBlank())
+        put(Readings.CELLULAR_ROAMING_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, r.roaming, Readings.SRC_CELLULAR, ts), r.roaming != null)
         return reading != null
     }
 
@@ -469,10 +500,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         val e = Attitude.euler(r, mount)
         val northed = motionType == Sensor.TYPE_ROTATION_VECTOR && BridgeProtocol.HEADING in subscription.sensors
         if (BridgeProtocol.ATTITUDE in subscription.sensors) {
-            send(BridgeProtocol.sensor(Readings.ATTITUDE_PATH, Readings.attitude(e, withYaw = northed), Readings.SRC_IMU, ts))
-            turnRate.take()?.let { send(BridgeProtocol.sensor(Readings.RATE_OF_TURN_PATH, it, Readings.SRC_IMU, ts)) }
+            put(Readings.ATTITUDE_PATH, Readings.SRC_IMU, BridgeProtocol.sensor(Readings.ATTITUDE_PATH, Readings.attitude(e, withYaw = northed), Readings.SRC_IMU, ts))
+            turnRate.take()?.let { put(Readings.RATE_OF_TURN_PATH, Readings.SRC_IMU, BridgeProtocol.sensor(Readings.RATE_OF_TURN_PATH, it, Readings.SRC_IMU, ts)) }
         }
-        if (northed) send(BridgeProtocol.sensor(Readings.HEADING_MAGNETIC_PATH, e.yaw, Readings.SRC_COMPASS, ts))
+        if (northed) put(Readings.HEADING_MAGNETIC_PATH, Readings.SRC_COMPASS, BridgeProtocol.sensor(Readings.HEADING_MAGNETIC_PATH, e.yaw, Readings.SRC_COMPASS, ts))
     }
 
     /** Each cabin sensor's mean for the period, or its last value when it reported no change. */
@@ -480,15 +511,15 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         val ts = System.currentTimeMillis()
         (cabinTemperature.take() ?: lastTemperature)?.let {
             lastTemperature = it
-            send(BridgeProtocol.sensor(Readings.INSIDE_TEMPERATURE_PATH, it, Readings.SRC_ENVIRONMENT, ts))
+            put(Readings.INSIDE_TEMPERATURE_PATH, Readings.SRC_ENVIRONMENT, BridgeProtocol.sensor(Readings.INSIDE_TEMPERATURE_PATH, it, Readings.SRC_ENVIRONMENT, ts))
         }
         (cabinHumidity.take() ?: lastHumidity)?.let {
             lastHumidity = it
-            send(BridgeProtocol.sensor(Readings.INSIDE_HUMIDITY_PATH, it, Readings.SRC_ENVIRONMENT, ts))
+            put(Readings.INSIDE_HUMIDITY_PATH, Readings.SRC_ENVIRONMENT, BridgeProtocol.sensor(Readings.INSIDE_HUMIDITY_PATH, it, Readings.SRC_ENVIRONMENT, ts))
         }
         (cabinLight.take() ?: lastLight)?.let {
             lastLight = it
-            send(BridgeProtocol.sensor(Readings.INSIDE_ILLUMINANCE_PATH, it, Readings.SRC_ENVIRONMENT, ts))
+            put(Readings.INSIDE_ILLUMINANCE_PATH, Readings.SRC_ENVIRONMENT, BridgeProtocol.sensor(Readings.INSIDE_ILLUMINANCE_PATH, it, Readings.SRC_ENVIRONMENT, ts))
         }
     }
 
@@ -567,13 +598,13 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             hadFix = true
             note("gnss: first fix" + (satellites?.let { ", $it satellites" } ?: ""))
         }
-        send(BridgeProtocol.sensor(Readings.POSITION_PATH, fix.position, Readings.SRC_GNSS, ts))
+        put(Readings.POSITION_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.POSITION_PATH, fix.position, Readings.SRC_GNSS, ts))
         // A fix without speed or course (a bearing is often dropped at rest) clears the last one sent.
-        if (fix.speedOverGround != null || sogSent) send(BridgeProtocol.sensor(Readings.SOG_PATH, fix.speedOverGround, Readings.SRC_GNSS, ts))
-        if (fix.courseOverGroundTrue != null || cogSent) send(BridgeProtocol.sensor(Readings.COG_PATH, fix.courseOverGroundTrue, Readings.SRC_GNSS, ts))
+        if (fix.speedOverGround != null || sogSent) put(Readings.SOG_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.SOG_PATH, fix.speedOverGround, Readings.SRC_GNSS, ts), fix.speedOverGround != null)
+        if (fix.courseOverGroundTrue != null || cogSent) put(Readings.COG_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.COG_PATH, fix.courseOverGroundTrue, Readings.SRC_GNSS, ts), fix.courseOverGroundTrue != null)
         sogSent = fix.speedOverGround != null
         cogSent = fix.courseOverGroundTrue != null
-        satellites?.let { send(BridgeProtocol.sensor(Readings.SATELLITES_PATH, it.toDouble(), Readings.SRC_GNSS, ts)) }
+        satellites?.let { put(Readings.SATELLITES_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.SATELLITES_PATH, it.toDouble(), Readings.SRC_GNSS, ts)) }
     }
 
     private fun battery(intent: Intent) {
@@ -592,7 +623,40 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         lastBattery = now
         lastBatteryAt = at
         val ts = System.currentTimeMillis()
-        for ((path, value) in now) send(BridgeProtocol.sensor(path, value, Readings.SRC_BATTERY, ts))
+        for ((path, value) in now) put(path, Readings.SRC_BATTERY, BridgeProtocol.sensor(path, value, Readings.SRC_BATTERY, ts))
+    }
+
+    /**
+     * Sends [line], a reading for [path] from [src], and remembers the path for [clear]. A line
+     * whose value is null ([present] false: a fix without a course, a cellular network that could
+     * not be read) is a clear itself, so the path goes to [cleared] like one, to be sent again.
+     */
+    private fun put(path: String, src: String, line: String, present: Boolean = true) {
+        if (present) {
+            published[path] = src
+            cleared.remove(path)
+        } else {
+            published.remove(path)
+            cleared[path] = src
+        }
+        send(line)
+    }
+
+    /**
+     * A sensor stopped (the plugin no longer asks for it, the power profile left it out, the
+     * plugin went): each path it sent a reading for gets a null, which is how Signal K says there
+     * is no reading now, so the server stops showing the last one as current. Each is kept in
+     * [cleared] and sent again to every plugin that connects until the path is read again.
+     */
+    private fun clear(src: String) {
+        val paths = published.filterValues { it == src }.keys
+        if (paths.isEmpty()) return
+        val ts = System.currentTimeMillis()
+        for (path in paths.toList()) {
+            send(BridgeProtocol.sensor(path, null as Double?, src, ts))
+            published.remove(path)
+            cleared[path] = src
+        }
     }
 
     private fun periodMs(hz: Double): Long = (1000.0 / hz).toLong().coerceAtLeast(1000L)

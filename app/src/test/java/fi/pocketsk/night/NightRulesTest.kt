@@ -7,7 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NightRulesTest {
-    private fun overlay(settings: NightSettings) = NightRules.overlay(settings) ?: throw AssertionError("no overlay for $settings")
+    private fun overlay(settings: NightSettings, dimmed: Boolean = false) =
+        NightRules.overlay(settings, dimmed) ?: throw AssertionError("no overlay for $settings")
 
     @Test
     fun nothingOnIsNoOverlay() {
@@ -40,6 +41,14 @@ class NightRulesTest {
         assertEquals(NightRules.MAX_ALPHA, o.alpha, 1e-6f)
         assertEquals(0.05f, o.brightness, 1e-6f)
         assertTrue(o.keepOn)
+    }
+
+    @Test
+    fun passageDimsToTheHelmScreensBrightnessWithoutItsDim() {
+        val o = overlay(NightSettings(brightness = 20), dimmed = true)
+        assertEquals(0f, o.alpha)
+        assertEquals(0.2f, o.brightness, 1e-6f)
+        assertNull(NightRules.overlay(NightSettings(brightness = 20), dimmed = false))
     }
 
     @Test

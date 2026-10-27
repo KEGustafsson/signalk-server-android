@@ -298,13 +298,13 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 
 ### 8.1 Dock (native Compose, bottom nav tab 1)
 
-**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1), the delta rate (10.2), the Updates card's changelog (10.3), the Logs card's filter and diagnostics bundle (10.4), and the Webapps card with its home-screen shortcuts (10.5, §8.3). The Backup card is in (10.8). Not yet: the Power card, which comes with the step that gives it something to show. The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
+**First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1), the delta rate (10.2), the Updates card's changelog (10.3), the Logs card's filter and diagnostics bundle (10.4), and the Webapps card with its home-screen shortcuts (10.5, §8.3). The Backup card is in (10.8), and the Power card (10.9). The bottom navigation comes when there is a second tab. The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
 
 - **Status card**: running/stopped, version, uptime, URL(s), CPU/RAM of child process, delta rate.
 - **Updates**: current slot, available versions, "Install", "Rollback to <prev>", install history with pass/fail. Changelog pulled from GitHub releases.
 - **Devices**: USB/BT list, per-device protocol selector, live byte counters, "forget". **USB devices card done** (§16 9.5.4): each device's state, baud rate and bytes read, and Allow for one waiting for permission; the baud rates are the plugin's settings.
 - **Sensors**: mounting calibration ("hold phone level, tap": **Level now**, §16 9.5.3); the toggles are the bridge plugin's settings in the admin UI.
-- **Power**: profiles *Harbor* (keep everything), *Passage* (dim screen, keep server), *Battery saver* (stop sensors except GNSS at 1 Hz).
+- **Power**: profiles *Harbor* (keep everything), *Passage* (dim screen, keep server), *Battery saver* (stop sensors except GNSS at 1 Hz). **Done** (§16 10.9).
 - **Logs**: live tail, filter, "Share diagnostics bundle" (logs + settings sans tokens + device info as zip via share sheet). **Done** (§16 10.4).
 - **Backup**: export/import `.signalk` as encrypted zip to SAF (works with Drive/Nextcloud). **Done** (§16 10.8): the settings files only, in a WinZip AES-256 zip, as the owner chose (2026-10-26).
 
@@ -568,6 +568,18 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **Restore with the server stopped.** The server rewrites its settings while it runs; files changed under it would be overwritten by it, or read half old.
          - **The app's own settings stay out.** The Bluetooth devices chosen, the data's card and the night filter belong to this phone, not to the server a backup moves to another.
        - **To check on a device:** Save a backup writes the zip to Drive or a card; 7-Zip on a computer opens it with the passphrase and lists the settings files; Restore with a wrong passphrase says so and changes nothing; on a fresh install, Restore brings back the users, the connections and the plugins (npm installs them with the network on), and the admin UI logs in with the old password after a start.
+    9. ~~The power profiles~~ **Done** (`PowerRules`, pure and tested; `PowerPrefs`; the Dock's Power card). Chosen by the owner as the next part (2026-10-27), the last of M5.
+       - **What it does.** A **Power** card under Helm screen, three profiles, each with a line saying what it does. The server runs in all three.
+         - **Harbor**: everything the plugin asks of the phone, the screen as the owner set it.
+         - **Passage**: as Harbor, with the screen dimmed to the helm screen's brightness, whether or not the helm screen's own Dim is on. It uses the helm screen's overlay, so it needs the app allowed to display over other apps; the card says so when it is not.
+         - **Battery saver**: of the phone's sensors the plugin asked for, only GNSS, at no more than one fix a second, and the battery; no Bluetooth LE scan.
+       - **How.** The bridge keeps what the plugin last asked for and serves it through `PowerRules.subscription`, again whenever the profile changes (the Dock tells a running service, `ACTION_POWER`). The overlay takes the profile's dimming into its own rules (`NightRules.overlay`). The profile is the phone's own (preferences file `power`), so it is neither the server's nor in a backup.
+       - **Decisions (not made by the plan).**
+         - **The battery stays on in Battery saver.** Android broadcasts the battery's state anyway, so reading it costs nothing, and it is what one watches with the battery low.
+         - **The Bluetooth LE scan stops in Battery saver.** A scan keeps a radio listening all the time; the sensors heard that way are the phone's to hear, like its own.
+         - **Serial instruments carry on in every profile.** USB and Bluetooth serial devices are the boat's instruments, and their data is what the server is for.
+         - **Passage dims through the overlay.** An app can set its own windows' brightness, not the phone's; the overlay over every app is the one window that reaches the browser and its webapps.
+       - **To check on a device:** Battery saver stops the attitude, barometer and cellular readings in the server's data browser and keeps the position and the battery, at one fix a second; the plugin's Bluetooth LE devices stop showing; Harbor brings them back without a restart; Passage dims the screen over the browser, and the card asks for the overlay permission while it is missing.
 ## 17. Reuse from Crew Radio
 
 Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotlin on AndroidX with no third-party libraries) already solved most of the "keep a network thing alive on an Android phone" problems. Copy, don't depend: the two apps should not share a library yet. Keep the file-level doc comments; they are the reasoning.

@@ -87,6 +87,8 @@ app/                 the Android app
                      Webapps (a package.json as a webapp, the deep link) (pure, tested)
   fi.pocketsk.night  NightFilter (the helm screen's overlay: red filter, dimming, screen kept on;
                      App holds it), NightTile (Quick Settings); NightRules (pure, tested)
+  fi.pocketsk.power  PowerPrefs (the Dock's power profile); PowerRules (what Harbor, Passage and
+                     Battery saver take from the plugin's subscription and the screen) (pure, tested)
   fi.pocketsk.widget BoatWidget (the home-screen widget: depth, SOG, apparent wind), GlanceWatch
                      (asks the plugin for them while a widget is placed and the screen is on);
                      GlanceView (pure, tested)
