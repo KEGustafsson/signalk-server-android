@@ -23,8 +23,10 @@
  * stripped, and packed as build/Release/<name>.node, the path the `bindings` package looks in,
  * into <out>/<asset>.tar.gz, made the same way every time (sorted, owner 0, mtime 0, gzip -n).
  * <out>/index.json is the published index (--index; none only for the first run) with this run's
- * builds joined in. A version already in the published index is not built again: N-API builds
- * keep loading across Node releases.
+ * builds joined in, each marked with the ABI it loads under (lib.js), read from the symbols it
+ * defines. A version already in the published index is not built again if that build loads
+ * under this runtime: an N-API one always, a C++ API one (better-sqlite3) only when built for
+ * this runtime's NODE_MODULE_VERSION.
  *
  * A build that fails is reported and the rest carry on, so one package's new release cannot hold
  * back the others; with --strict (pull requests, where packages.json or this script changed) it
@@ -61,13 +63,18 @@ function args(argv) {
   return out;
 }
 
-/** The Node version nodejs-mobile's headers are, from node_version.h: the headers node-gyp fetches. */
+/**
+ * The Node version nodejs-mobile's headers are, from node_version.h (the headers node-gyp
+ * fetches), and the C++ API ABI of that runtime, its NODE_MODULE_VERSION.
+ */
 function nodeVersion(nodejsMobileDir) {
-  const h = fs.readFileSync(path.join(nodejsMobileDir, "include/node/node_version.h"), "utf8");
+  const file = path.join(nodejsMobileDir, "include/node/node_version.h");
+  const h = fs.readFileSync(file, "utf8");
   const part = (n) => new RegExp(`#define NODE_${n}_VERSION (\\d+)`).exec(h)?.[1];
   const v = `${part("MAJOR")}.${part("MINOR")}.${part("PATCH")}`;
-  if (!lib.parseVersion(v)) throw new Error(`no Node version in ${nodejsMobileDir}/include/node/node_version.h`);
-  return v;
+  const moduleVersion = /#define NODE_MODULE_VERSION (\d+)/.exec(h)?.[1];
+  if (!lib.parseVersion(v) || !moduleVersion) throw new Error(`no Node version in ${file}`);
+  return { node: v, abi: lib.nodeAbi(Number(moduleVersion)) };
 }
 
 function run(cmd, argv, opts = {}) {
@@ -121,13 +128,20 @@ function build(name, version, o) {
       if (!lib.isAarch64SharedObject(head)) throw new Error(`${f} is not an AArch64 shared object`);
       run(path.join(bin, "llvm-strip"), ["--strip-unneeded", file]);
     }
+    // Which ABI the build loads under, from the symbols it defines: N-API or this runtime's C++ API.
+    const symbols = files.map((f) =>
+      execFileSync(path.join(bin, "llvm-nm"), ["-D", "--defined-only", "--format=just-symbols", path.join(release, f)], { encoding: "utf8" }).split("\n"),
+    );
+    const abi = lib.abiOf(symbols);
+    if (!abi) throw new Error("no .node in build/Release registers a Node module");
+    if (!lib.loadsUnder(abi, o.abi)) throw new Error(`built for ${abi}, not this runtime's ${o.abi}`);
 
-    const asset = lib.assetName(name, version, PLATFORM, ARCH);
+    const asset = lib.assetName(name, version, PLATFORM, ARCH, abi);
     const tarball = path.join(o.out, asset);
     const members = files.map((f) => `build/Release/${f}`);
     const tar = execFileSync("tar", ["--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner", "-cf", "-", ...members], { cwd: pkg, maxBuffer: 1 << 30 });
     fs.writeFileSync(tarball, execFileSync("gzip", ["-n", "-9"], { input: tar, maxBuffer: 1 << 30 }));
-    return { name, version, platform: PLATFORM, arch: ARCH, file: asset, sha256: sha256(tarball), size: fs.statSync(tarball).size, files: members };
+    return { name, version, platform: PLATFORM, arch: ARCH, abi, file: asset, sha256: sha256(tarball), size: fs.statSync(tarball).size, files: members };
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
@@ -135,7 +149,7 @@ function build(name, version, o) {
 
 function main() {
   const o = args(process.argv.slice(2));
-  o.node = nodeVersion(o["nodejs-mobile"]);
+  Object.assign(o, nodeVersion(o["nodejs-mobile"]));
   o.devdir = path.join(os.tmpdir(), "prebuild-node-gyp");
   fs.mkdirSync(o.out, { recursive: true });
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, "packages.json"), "utf8"));
@@ -154,7 +168,7 @@ function main() {
     }
     for (const range of p.versions) {
       for (const version of lib.pickVersions(view(p.name, range), config.keep)) {
-        if (lib.has(published, p.name, version, PLATFORM, ARCH)) {
+        if (lib.has(published, p.name, version, PLATFORM, ARCH, o.abi)) {
           kept.push(`${p.name}@${version}`);
           continue;
         }
@@ -171,9 +185,9 @@ function main() {
 
   fs.writeFileSync(path.join(o.out, "index.json"), JSON.stringify(lib.mergeIndex(published, built, o["nodejs-mobile-version"]), null, 2) + "\n");
   const summary = [
-    `Built for ${PLATFORM}-${ARCH} against nodejs-mobile ${o["nodejs-mobile-version"]} (Node ${o.node} headers).`,
+    `Built for ${PLATFORM}-${ARCH} against nodejs-mobile ${o["nodejs-mobile-version"]} (Node ${o.node} headers, C++ API ${o.abi}).`,
     "",
-    ...built.map((e) => `- built ${e.name}@${e.version}: ${e.file}, ${e.size} bytes`),
+    ...built.map((e) => `- built ${e.name}@${e.version} (${e.abi}): ${e.file}, ${e.size} bytes`),
     ...kept.map((k) => `- already published: ${k}`),
     ...failed.map((f) => `- **failed** ${f.what}: ${f.why}`),
   ].join("\n");

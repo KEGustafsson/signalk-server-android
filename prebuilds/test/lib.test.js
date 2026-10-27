@@ -14,9 +14,24 @@ test("versions: the newest of a range first, prereleases and repeats left out", 
   assert.deepEqual(lib.pickVersions(["1.0.0", "2.0.0"], 0), []);
 });
 
-test("an asset is named as npm packs the package, with its version and platform", () => {
+test("an asset is named as npm packs the package, with its version, platform and a C++ API's ABI", () => {
   assert.equal(lib.assetName("@serialport/bindings-cpp", "13.0.1", "android", "arm64"), "serialport-bindings-cpp@13.0.1-android-arm64.tar.gz");
-  assert.equal(lib.assetName("better-sqlite3", "12.4.1", "android", "arm64"), "better-sqlite3@12.4.1-android-arm64.tar.gz");
+  assert.equal(lib.assetName("@serialport/bindings-cpp", "13.0.1", "android", "arm64", lib.NAPI), "serialport-bindings-cpp@13.0.1-android-arm64.tar.gz");
+  assert.equal(lib.assetName("better-sqlite3", "12.4.1", "android", "arm64", lib.nodeAbi(137)), "better-sqlite3@12.4.1-android-arm64-node137.tar.gz");
+});
+
+test("abiOf: N-API from napi_register_module_v1, a C++ API build from its NODE_MODULE_VERSION", () => {
+  assert.equal(lib.abiOf([["napi_register_module_v1", "other"]]), lib.NAPI);
+  assert.equal(lib.abiOf([["node_register_module_v137"], ["sqlite3_extension_init"]]), "node-137");
+  assert.equal(lib.abiOf([["napi_register_module_v1"], ["node_register_module_v137"]]), "node-137", "the stricter wins");
+  assert.equal(lib.abiOf([["sqlite3_extension_init"], [""]]), null);
+  assert.equal(lib.abiOf([]), null);
+});
+
+test("loadsUnder: N-API under any runtime, a C++ API build only under its own", () => {
+  assert.equal(lib.loadsUnder(lib.NAPI, "node-141"), true);
+  assert.equal(lib.loadsUnder("node-137", "node-137"), true);
+  assert.equal(lib.loadsUnder("node-137", "node-141"), false);
 });
 
 /** The first 20 bytes of an ELF header: class, data, type and machine as given. */
@@ -37,7 +52,7 @@ test("only a 64-bit little-endian AArch64 shared object passes", () => {
   assert.equal(lib.isAarch64SharedObject(Buffer.alloc(4)), false);
 });
 
-const entry = (name, version, sha256 = "0".repeat(64)) => ({ name, version, platform: "android", arch: "arm64", file: lib.assetName(name, version, "android", "arm64"), sha256, size: 1, files: [] });
+const entry = (name, version, sha256 = "0".repeat(64), abi = lib.NAPI) => ({ name, version, platform: "android", arch: "arm64", abi, file: lib.assetName(name, version, "android", "arm64", abi), sha256, size: 1, files: [] });
 
 test("a run's builds join the published index, sorted, a rebuild replacing its entry", () => {
   const published = { format: lib.INDEX_FORMAT, nodejsMobile: "24.19.0-0", entries: [entry("sqlite3", "5.1.7"), entry("better-sqlite3", "12.0.10", "1".repeat(64))] };
@@ -62,14 +77,28 @@ test("checkIndex: a well-formed index passes, anything else names what is wrong"
   assert.ok(lib.checkIndex("index") instanceof Error);
   assert.ok(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [entry("sqlite3", "5.1.7", "short")] }) instanceof Error);
   assert.ok(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [{ ...entry("sqlite3", "5.1.7", "a".repeat(64)), file: "" }] }) instanceof Error);
+  assert.ok(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [{ ...entry("sqlite3", "5.1.7"), abi: undefined }] }) instanceof Error, "no ABI");
+  assert.ok(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [entry("sqlite3", "5.1.7", undefined, "v8")] }) instanceof Error, "an unknown ABI");
 });
 
-test("has: a package, version and platform already published", () => {
-  const index = { format: lib.INDEX_FORMAT, entries: [entry("sqlite3", "5.1.7")] };
-  assert.equal(lib.has(index, "sqlite3", "5.1.7", "android", "arm64"), true);
-  assert.equal(lib.has(index, "sqlite3", "5.1.6", "android", "arm64"), false);
-  assert.equal(lib.has(index, "sqlite3", "5.1.7", "android", "arm"), false);
-  assert.equal(lib.has(null, "sqlite3", "5.1.7", "android", "arm64"), false);
+test("has: a build already published that loads under this runtime", () => {
+  const index = { format: lib.INDEX_FORMAT, entries: [entry("sqlite3", "5.1.7"), entry("better-sqlite3", "12.4.1", undefined, "node-137")] };
+  assert.equal(lib.has(index, "sqlite3", "5.1.7", "android", "arm64", "node-137"), true);
+  assert.equal(lib.has(index, "sqlite3", "5.1.7", "android", "arm64", "node-141"), true, "N-API loads under a new runtime");
+  assert.equal(lib.has(index, "sqlite3", "5.1.6", "android", "arm64", "node-137"), false);
+  assert.equal(lib.has(index, "sqlite3", "5.1.7", "android", "arm", "node-137"), false);
+  assert.equal(lib.has(index, "better-sqlite3", "12.4.1", "android", "arm64", "node-137"), true);
+  assert.equal(lib.has(index, "better-sqlite3", "12.4.1", "android", "arm64", "node-141"), false, "a new runtime builds it again");
+  assert.equal(lib.has(null, "sqlite3", "5.1.7", "android", "arm64", "node-137"), false);
+});
+
+test("a rebuild for a new runtime's C++ API joins the index beside the old one", () => {
+  const published = { format: lib.INDEX_FORMAT, entries: [entry("better-sqlite3", "12.4.1", "1".repeat(64), "node-137")] };
+  const merged = lib.mergeIndex(published, [entry("better-sqlite3", "12.4.1", "2".repeat(64), "node-141")], "v");
+  assert.deepEqual(merged.entries.map((e) => `${e.abi}:${e.file}`), [
+    "node-137:better-sqlite3@12.4.1-android-arm64-node137.tar.gz",
+    "node-141:better-sqlite3@12.4.1-android-arm64-node141.tar.gz",
+  ]);
 });
 
 test("a node-pre-gyp package gets the variables its binding.gyp expects, any other none", () => {

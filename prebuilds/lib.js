@@ -7,8 +7,13 @@
  * passes as an Android arm64 library, and how a run's results join the published index.
  *
  * The index is what the phone's node-gyp shim (§9.2) reads to find a package's build: one entry
- * per package, version and platform, naming the release asset and its SHA-256, which the shim
- * checks before unpacking a byte.
+ * per package, version, platform and ABI, naming the release asset and its SHA-256, which the
+ * shim checks before unpacking a byte.
+ *
+ * The ABI is what the build loads under. Most of the list is N-API ("napi"), which every later
+ * Node release keeps loading; better-sqlite3 is written against Node's C++ API and loads only
+ * under the NODE_MODULE_VERSION it was built for ("node-137" for Node 24), so a build of it
+ * stays useful only while the app ships that runtime, and a new runtime builds it again.
  */
 
 /** The index's own version, which the shim checks before reading the rest. */
@@ -50,10 +55,39 @@ function pickVersions(viewed, keep) {
  * packs as "serialport-bindings-cpp"), then the version and the platform. A release asset's name
  * may hold neither "/" nor a leading "@".
  */
-function assetName(name, version, platform, arch) {
+function assetName(name, version, platform, arch, abi = NAPI) {
   const base = name.replace(/^@/, "").replace(/\//g, "-");
-  return `${base}@${version}-${platform}-${arch}.tar.gz`;
+  const suffix = abi === NAPI ? "" : `-${abi.replace("-", "")}`;
+  return `${base}@${version}-${platform}-${arch}${suffix}.tar.gz`;
 }
+
+/** An N-API build's ABI: it loads under every Node release from the one it names on. */
+const NAPI = "napi";
+
+/** The ABI of a build for the C++ API of the Node whose NODE_MODULE_VERSION is [moduleVersion]. */
+const nodeAbi = (moduleVersion) => `node-${moduleVersion}`;
+
+/**
+ * The ABI of a build from the dynamic symbols its `.node` files define (`llvm-nm -D
+ * --defined-only`): N-API modules register through `napi_register_module_v1`, the others through
+ * `node_register_module_v<NODE_MODULE_VERSION>`. A file defining neither (better-sqlite3's
+ * test_extension, an SQLite extension) does not decide; one C++ API file makes the whole build
+ * that ABI, being the stricter. Null when no file is a Node module at all.
+ */
+function abiOf(symbolLists) {
+  let abi = null;
+  for (const symbols of symbolLists) {
+    for (const s of symbols) {
+      const m = /^node_register_module_v(\d+)$/.exec(s);
+      if (m) return nodeAbi(Number(m[1]));
+      if (s === "napi_register_module_v1") abi = NAPI;
+    }
+  }
+  return abi;
+}
+
+/** Whether a build of ABI [abi] loads under a runtime whose C++ API ABI is [runtimeAbi]. */
+const loadsUnder = (abi, runtimeAbi) => abi === NAPI || abi === runtimeAbi;
 
 /** Whether [bytes] begin an ELF 64-bit little-endian shared object for AArch64. */
 function isAarch64SharedObject(bytes) {
@@ -79,16 +113,20 @@ function preGypArgs(packageJson, modulePath) {
   return [`--module_name=${binary.module_name}`, `--module_path=${modulePath}`, `--napi_build_version=${napi}`];
 }
 
-const key = (e) => `${e.name}@${e.version}/${e.platform}-${e.arch}`;
+const key = (e) => `${e.name}@${e.version}/${e.platform}-${e.arch}/${e.abi}`;
 
-/** Whether [index] already has a build of that package, version and platform. */
-function has(index, name, version, platform, arch) {
-  return (index?.entries ?? []).some((e) => key(e) === key({ name, version, platform, arch }));
+/**
+ * Whether [index] already has a build of that package, version and platform that loads under a
+ * runtime of C++ API ABI [runtimeAbi]: an N-API one, or one built for that same runtime. A build
+ * for another runtime's C++ API is not one; it stays listed for the APKs that ship that runtime.
+ */
+function has(index, name, version, platform, arch, runtimeAbi) {
+  return (index?.entries ?? []).some((e) => e.name === name && e.version === version && e.platform === platform && e.arch === arch && loadsUnder(e.abi, runtimeAbi));
 }
 
 /**
  * [index] as an index this script can extend, or an Error saying why not: another format, or
- * entries that do not each name a package, version, platform, arch, asset and SHA-256. Such an
+ * entries that do not each name a package, version, platform, arch, ABI, asset and SHA-256. Such an
  * index is refused rather than replaced, since a run that started afresh from it would publish
  * an index that has lost every earlier build.
  */
@@ -97,7 +135,11 @@ function checkIndex(index) {
   if (index.format !== INDEX_FORMAT) return new Error(`the published index is format ${JSON.stringify(index.format)}, this script writes ${INDEX_FORMAT}`);
   if (!Array.isArray(index.entries)) return new Error("the published index has no entries list");
   const bad = index.entries.findIndex(
-    (e) => !e || ["name", "version", "platform", "arch", "file"].some((k) => typeof e[k] !== "string" || e[k] === "") || !/^[0-9a-f]{64}$/.test(e.sha256),
+    (e) =>
+      !e ||
+      ["name", "version", "platform", "arch", "file"].some((k) => typeof e[k] !== "string" || e[k] === "") ||
+      !/^[0-9a-f]{64}$/.test(e.sha256) ||
+      !(e.abi === NAPI || /^node-\d+$/.test(e.abi)),
   );
   if (bad >= 0) return new Error(`entry ${bad} of the published index is not a build`);
   return index;
@@ -115,9 +157,10 @@ function parseIndex(text) {
 
 /**
  * The published index with this run's [built] entries joined in: a new build of a package,
- * version and platform already listed replaces the old entry; everything else is kept, sorted
- * so the file changes only where a build did. An index [checkIndex] refuses throws. [nodejsMobile] is the runtime the run built
- * against, recorded for whoever reads the index; N-API keeps older builds loading under it.
+ * version, platform and ABI already listed replaces the old entry; everything else is kept,
+ * builds for an older runtime's C++ API among them, sorted so the file changes only where a
+ * build did. An index [checkIndex] refuses throws. [nodejsMobile] is the runtime the run built
+ * against, recorded for whoever reads the index.
  */
 function mergeIndex(published, built, nodejsMobile) {
   const byKey = new Map();
@@ -133,4 +176,4 @@ function mergeIndex(published, built, nodejsMobile) {
   return { format: INDEX_FORMAT, nodejsMobile, entries };
 }
 
-module.exports = { INDEX_FORMAT, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, preGypArgs, has, checkIndex, parseIndex, mergeIndex };
+module.exports = { INDEX_FORMAT, NAPI, nodeAbi, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, abiOf, loadsUnder, preGypArgs, has, checkIndex, parseIndex, mergeIndex };
