@@ -55,8 +55,12 @@ internal object AesZip {
         val password = ascii(passphrase)
         val zip = ByteArrayOutputStream()
         val central = ByteArrayOutputStream()
+        // The limits read enforces, so a backup that saves is one that restores.
+        var plain = 0L
         try {
             for (e in entries) {
+                plain += e.data.size
+                if (plain > MAX_BYTES) throw IOException("backup over ${MAX_BYTES / MB} MB unpacked")
                 val name = e.name.toByteArray(Charsets.UTF_8)
                 val salt = ByteArray(SALT).also(random::nextBytes)
                 val keys = derive(password, salt)
@@ -96,6 +100,7 @@ internal object AesZip {
                     .short(0).short(0).short(entries.size).short(entries.size).int(central.size()).int(cdOffset).short(0)
                     .bytes(),
             )
+            if (zip.size() > MAX_BYTES) throw IOException("backup over ${MAX_BYTES / MB} MB")
             out.write(zip.toByteArray())
         } finally {
             password.fill(0)

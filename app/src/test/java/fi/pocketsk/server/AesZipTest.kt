@@ -89,6 +89,13 @@ class AesZipTest {
     }
 
     @Test
+    fun aBackupTooBigToRestoreIsRefusedWhenSaved() {
+        // Zeros deflate to almost nothing: what counts is what they unpack to.
+        val parts = List(5) { AesZip.Entry("part$it", ByteArray(14 * 1024 * 1024), 0) }
+        assertThrows(java.io.IOException::class.java) { zip(*parts.toTypedArray()) }
+    }
+
+    @Test
     fun onlyPrintableAsciiEncrypts() {
         assertThrows(java.io.IOException::class.java) { zip(AesZip.Entry("a", ByteArray(1), 0), passphrase = "salasana-äiti-1".toCharArray()) }
     }

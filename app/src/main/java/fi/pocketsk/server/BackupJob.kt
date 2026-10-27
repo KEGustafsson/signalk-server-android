@@ -17,7 +17,7 @@ import java.util.concurrent.CopyOnWriteArraySet
  * picker: the phone, a card, Drive or Nextcloud. The passphrase is used once and wiped.
  *
  * A restore runs only while the server is stopped and writes `.signalk`'s files under
- * [DataStore.LOCK], so a start asked for meanwhile waits for them. Then the bridge's plugin is put
+ * [DataStore.LOCK]; a start asked for at any time before npm is done waits for it ([isRestoring]). Then the bridge's plugin is put
  * in place and the plugins `package.json` lists are installed, as Signal K's own restore does:
  * `npm install --ignore-scripts` in `.signalk`, the App Store's flags. That needs the network; the
  * settings are restored whether or not it has it, and a plugin npm could not install is missing
@@ -54,6 +54,12 @@ internal object BackupJob {
         private set
 
     val isRunning: Boolean get() = latest is State.Working
+
+    /**
+     * A restore runs, from the moment it is asked for until npm is done: the supervisor starts no
+     * server meanwhile ([Supervisor]), so none reads half a restore or a plugin tree npm is writing.
+     */
+    val isRestoring: Boolean get() = (latest as? State.Working)?.restore == true
 
     /** Writes a backup to [uri]; false, nothing started, while another runs. Wipes [passphrase]. */
     @Synchronized
@@ -99,14 +105,22 @@ internal object BackupJob {
             val log = ServerStatus.log(app)
             log.note("restored ${written.size} settings files from a backup: ${written.joinToString(", ")}")
             publish(State.Working(restore = true, installing = true))
-            BridgePlugin.install(app, runtime)
-            runtime.ensureExtracted()
-            log.note("$ npm ${NPM_ARGS.joinToString(" ")} (in .signalk, the plugins package.json lists)")
-            val code = runtime.npm(*NPM_ARGS, cwd = runtime.configDir).drain(NPM_TIMEOUT_S) { log.line(it) }
+            // The settings are in from here on: a failure now is the plugins', and says so, rather
+            // than a "not restored" that would leave the owner thinking the old settings stand.
+            val code = try {
+                BridgePlugin.install(app, runtime)
+                runtime.ensureExtracted()
+                log.note("$ npm ${NPM_ARGS.joinToString(" ")} (in .signalk, the plugins package.json lists)")
+                runtime.npm(*NPM_ARGS, cwd = runtime.configDir).drain(NPM_TIMEOUT_S) { log.line(it) }
+            } catch (e: IOException) {
+                log.note("the restored plugins could not be installed: ${e.message ?: e}")
+                NPM_NOT_RUN
+            }
             log.note(
                 when (code) {
                     0 -> "the restored plugins are installed"
                     null -> "npm ran out of time installing the restored plugins"
+                    NPM_NOT_RUN -> "npm did not run"
                     else -> "npm failed with exit code $code installing the restored plugins"
                 },
             )
@@ -167,6 +181,9 @@ internal object BackupJob {
 
     /** In `files/home`, beside `.signalk`: the same file system, and kept out of backups with it. */
     private const val STAGING = ".pocketsk-restore"
+
+    /** The code a restore reports when npm could not be started at all. */
+    private const val NPM_NOT_RUN = -1
 
     private val NPM_ARGS = arrayOf("install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund")
     private const val NPM_TIMEOUT_S = 20 * 60L
