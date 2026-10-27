@@ -1,0 +1,11 @@
+{
+  "keep": 2,
+  "packages": [
+    { "name": "@serialport/bindings-cpp", "versions": ["12.x", "13.x"] },
+    { "name": "better-sqlite3", "versions": ["11.x", "12.x"] },
+    { "name": "sqlite3", "versions": ["5.x"] },
+    { "name": "bufferutil", "versions": ["4.x"] },
+    { "name": "utf-8-validate", "versions": ["6.x"] },
+    { "name": "@abandonware/noble", "versions": ["1.9.x"], "skip": "needs BlueZ; the preload's node-ble stand-in serves Bluetooth LE instead" }
+  ]
+}
