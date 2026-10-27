@@ -8,7 +8,8 @@
   PreferenceManager.getDefaultSharedPreferences uses: <package>_preferences.xml.
   files/npm, files/bin, files/prebuilds, files/plugins (the Android bridge's plugin) and files/runtime
   (the preload every node loads) hold nothing of the boat's: the APK unpacks or fetches them again, and files/bin/node points into the old install's nativeLibraryDir, which a new
-  phone does not have. files/logs is the server's output, this phone's story, and may carry
+  phone does not have. files/home/.pocketsk-restore, a restore's
+  staging folder (BackupJob), is under home and excluded with it. files/logs is the server's output, this phone's story, and may carry
   whatever a plugin printed.
   The data folders (DataStore) and the copies of .signalk's files (ConfigMirror) are in the app's
   folder on the phone's shared storage, the external domain excluded below, or on a card, which

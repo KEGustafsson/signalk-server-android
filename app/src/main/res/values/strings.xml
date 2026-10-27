@@ -195,6 +195,39 @@
     <string name="dock_helm_dim">Dim the screen</string>
     <string name="dock_helm_brightness">Brightness: %1$d %%</string>
     <string name="dock_helm_keep_on">Keep the screen on</string>
+    <string name="dock_backup_title">Backup</string>
+    <string name="dock_backup_body">The server\'s settings, its users and passwords and the plugins\' settings, as one zip encrypted with AES-256, saved wherever you choose: this phone, a card, Drive or Nextcloud. 7-Zip opens it on a computer with the passphrase. The plugins themselves are installed again from the App Store\'s registry when you restore, and the data folders (charts and the rest) are not in it: they are in the USB folder.</string>
+    <string name="dock_backup_passphrase">Passphrase</string>
+    <string name="dock_backup_rule">12 to 64 characters: letters, digits, spaces and punctuation, no accents. Nobody can open the backup without it, you included.</string>
+    <string name="dock_backup_again">Passphrase again, for a new backup</string>
+    <string name="dock_backup_save">Save a backup</string>
+    <string name="dock_backup_restore">Restore</string>
+    <string name="dock_backup_stop_first">Stop the server to restore a backup.</string>
+    <string name="dock_backup_confirm_title">Restore a backup?</string>
+    <string name="dock_backup_confirm">The backup\'s settings, users and passwords replace the server\'s, and the plugins it lists are installed with npm, which needs the network. A file the backup does not hold is left as it is. Save a backup of the present settings first if you may want them back.</string>
+    <string name="dock_backup_confirm_go">Choose the backup</string>
+    <string name="dock_backup_cancel">Cancel</string>
+    <string name="dock_backup_saving">Saving the backup…</string>
+    <string name="dock_backup_restoring">Restoring…</string>
+    <string name="dock_backup_installing">Settings restored. Installing the plugins with npm…</string>
+    <plurals name="dock_backup_saved">
+        <item quantity="one">Saved %1$d settings file.</item>
+        <item quantity="other">Saved %1$d settings files.</item>
+    </plurals>
+    <plurals name="dock_backup_restored">
+        <item quantity="one">Restored %1$d settings file and installed the plugins. Start the server to use them.</item>
+        <item quantity="other">Restored %1$d settings files and installed the plugins. Start the server to use them.</item>
+    </plurals>
+    <plurals name="dock_backup_restored_no_plugins">
+        <item quantity="one">Restored %1$d settings file, but npm could not install the plugins (the log says why). Restore again with the network there, or install them from the App Store.</item>
+        <item quantity="other">Restored %1$d settings files, but npm could not install the plugins (the log says why). Restore again with the network there, or install them from the App Store.</item>
+    </plurals>
+    <string name="dock_backup_wrong">That passphrase does not open this backup.</string>
+    <string name="dock_backup_not_ours">This is not a backup the app can restore, or it was damaged: %1$s</string>
+    <string name="dock_backup_no_server">Install the server first, then restore its settings.</string>
+    <string name="dock_backup_save_failed">The backup was not saved: %1$s</string>
+    <string name="dock_backup_restore_failed">The backup was not restored: %1$s</string>
+    <string name="dock_backup_again_please">Type the passphrase again, then choose the file.</string>
 
     <!-- The boat widget (BoatWidget). -->
     <string name="widget_label">Boat at a glance</string>

@@ -68,7 +68,9 @@ app/                 the Android app
                      ConfigMirror (.signalk's files copied there, the computer's changes taken in
                      at the next start), Inbox (files a computer copied over USB, into the data
                      folders), LogFilter, Diagnostics (the
-                     bundle's contents, never anything under .signalk) (pure, tested)
+                     bundle's contents, never anything under .signalk), AesZip (WinZip AES-256
+                     zips, by hand), Backup (the Dock's backup: what is in it, how it goes back)
+                     (pure, tested); BackupJob (the one backup or restore, npm for the plugins)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),

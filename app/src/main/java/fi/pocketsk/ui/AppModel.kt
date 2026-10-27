@@ -10,6 +10,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.night.NightSettings
+import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LogFilter
@@ -62,6 +63,9 @@ internal class AppModel {
     /** The helm screen's settings, and whether the app may draw over other apps, which they need. */
     var night by mutableStateOf(NightSettings())
     var nightAllowed by mutableStateOf(false)
+
+    /** The backup or restore running or last finished ([fi.pocketsk.server.BackupJob]); null before the first. */
+    var backup by mutableStateOf<BackupJob.State?>(null)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -162,6 +166,12 @@ internal interface AppActions {
     fun restartWithLocation()
     /** Moves the server's data to [volume], or to the phone when null; the server restarts to do it. */
     fun chooseStorage(volume: DataVolumes.Volume?)
+
+    /** Saves a backup encrypted with [passphrase] where the owner picks; [passphrase] is wiped once used. */
+    fun saveBackup(passphrase: CharArray)
+
+    /** Restores a backup the owner picks, opened with [passphrase]; [passphrase] is wiped once used. */
+    fun restoreBackup(passphrase: CharArray)
 
     /** Takes what waits in the USB inbox into the server's data folders now. */
     fun takeInbox()

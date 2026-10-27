@@ -245,7 +245,17 @@ internal class Supervisor(
             if (dataCardGone()) continue
             val trial = armGate(version)
             val endpoint = readEndpoint()
-            publish(ServerState.Starting(version, slot))
+            // A restore of a backup writes .signalk's files and then has npm put the plugins back
+            // (BackupJob): a server started meanwhile would read half of it. Decided under the lock
+            // the restore looks at the state under, so either the restore finds Starting and
+            // refuses, or this finds the restore and waits for it to end.
+            val restoring = synchronized(DataStore.LOCK) {
+                BackupJob.isRestoring.also { if (!it) publish(ServerState.Starting(version, slot)) }
+            }
+            if (restoring) {
+                waitForRestore(version)?.let { return it }
+                continue
+            }
             log.note(
                 "starting signalk-server $version from slot $slot, HTTP on port ${endpoint.port}" +
                     (if (endpoint.ssl) " (redirecting to HTTPS)" else "") +
@@ -456,6 +466,22 @@ internal class Supervisor(
      * that cannot be moved with the card in (a full card) gives up, with the data left whole
      * where it was.
      */
+    /**
+     * Waits while a backup is restored, shown as a wait; the state to end in when the run is no
+     * longer wanted meanwhile, else null once the restore is over.
+     */
+    private fun waitForRestore(version: String): ServerState? {
+        log.note("waiting for the backup being restored, and its plugins, before starting")
+        while (BackupJob.isRestoring) {
+            publish(ServerState.Waiting(version, RESTORE_POLL_MS, "a backup is being restored"))
+            waiter.await(RESTORE_POLL_MS)
+            synchronized(this) {
+                if (!wanted) return ServerState.Stopped
+            }
+        }
+        return null
+    }
+
     private fun placeData(): ServerState? {
         while (true) {
             var told: String? = null
@@ -552,8 +578,12 @@ internal class Supervisor(
         synchronized(DataStore.LOCK) {
             val root = shown ?: return
             try {
+                // A backup restored since the last sync: its files are the phone's, whatever the
+                // computer did to their copies before it.
+                val marker = BackupJob.restoredMarker(runtime)
                 val r = ConfigMirror(runtime.configDir, root, app.getString(R.string.data_readme)) { if (mirrorNoted.add(it)) log.note(it) }
-                    .sync(running)
+                    .sync(running, ours = Backup.restored(marker))
+                marker.delete()
                 if (r.taken.isNotEmpty()) log.note("taken in from ${root.path}: ${r.taken.joinToString()}")
                 if (r.waiting.isNotEmpty() && r.waiting != mirrorWaiting) {
                     log.note("changed in ${root.path}, taken in at the next start: ${r.waiting.joinToString()}")
@@ -656,6 +686,9 @@ internal class Supervisor(
 
         /** How long the exit waits for the last of the output once the group is gone. */
         private const val DRAIN_MS = 2_000L
+
+        /** How often a run waiting for a restore looks whether it is over. */
+        private const val RESTORE_POLL_MS = 2_000L
 
         /** How often a run waiting for its card looks for it. */
         private const val CARD_POLL_MS = 10_000L

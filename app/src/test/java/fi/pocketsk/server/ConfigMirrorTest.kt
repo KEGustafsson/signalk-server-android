@@ -134,6 +134,24 @@ class ConfigMirrorTest {
     }
 
     @Test
+    fun aRestoredFileIsThePhonesWhateverTheComputerDidToItsCopy() {
+        write(File(config, "security.json"), "{\"users\":[\"old\"]}")
+        write(File(config, "settings.json"), "{\"port\":3000}")
+        mirror().sync(running = false)
+        File(shown, "security.json").delete()
+        File(shown, "settings.json").writeText("{\"port\":80}")
+        // A backup restored over both: its files must not be undone at the next start.
+        File(config, "security.json").writeText("{\"users\":[\"restored\"]}")
+        File(config, "settings.json").writeText("{\"port\":3001}")
+        val r = mirror().sync(running = false, ours = setOf("security.json", "settings.json"))
+        assertEquals(emptyList<String>(), r.taken)
+        assertEquals("{\"users\":[\"restored\"]}", File(config, "security.json").readText())
+        assertEquals("{\"users\":[\"restored\"]}", File(shown, "security.json").readText())
+        assertEquals("{\"port\":3001}", File(shown, "settings.json").readText())
+        assertEquals(ConfigMirror.Result(emptyList(), emptyList()), mirror().sync(running = false))
+    }
+
+    @Test
     fun aFolderEmptiedOnTheComputerDeletesNothingAndIsFilledAgain() {
         write(File(config, "settings.json"), "kept")
         write(File(config, "security.json"), "kept too")
