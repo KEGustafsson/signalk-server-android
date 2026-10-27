@@ -42,6 +42,8 @@ import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.night.NightFilter
 import fi.pocketsk.night.NightSettings
+import fi.pocketsk.power.PowerPrefs
+import fi.pocketsk.power.PowerProfile
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.Backup
 import fi.pocketsk.server.BackupJob
@@ -460,6 +462,14 @@ class MainActivity : ComponentActivity() {
             NightFilter.of(this@MainActivity).save(settings)
         }
 
+        override fun setPower(profile: PowerProfile) {
+            model.power = profile
+            PowerPrefs(this@MainActivity).profile = profile
+            // The bridge serves the plugin's subscription again, and Passage's dimming comes or goes.
+            SignalKService.powerChanged(this@MainActivity)
+            NightFilter.of(this@MainActivity).apply()
+        }
+
         override fun openOverlaySettings() = this@MainActivity.openOverlaySettings()
     }
 
@@ -845,6 +855,7 @@ class MainActivity : ComponentActivity() {
         val night = NightFilter.of(this)
         model.night = night.settings()
         model.nightAllowed = night.allowed()
+        model.power = PowerPrefs(this).profile
         night.apply()
     }
 

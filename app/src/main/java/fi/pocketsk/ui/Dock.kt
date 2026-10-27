@@ -54,6 +54,7 @@ import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.night.NightSettings
+import fi.pocketsk.power.PowerProfile
 import fi.pocketsk.server.Backup
 import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
@@ -88,6 +89,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         StatusCard(model, actions)
         WebappsCard(model, actions)
         HelmCard(model, actions)
+        PowerCard(model, actions)
         UpdatesCard(model, actions)
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
         SensorsCard(model, actions)
@@ -229,6 +231,39 @@ private fun HelmSlider(label: String, value: Int, min: Int, onChange: (Int) -> U
         valueRange = min.toFloat()..100f,
         modifier = Modifier.semantics { contentDescription = label },
     )
+}
+
+/**
+ * The power profiles (docs/PLAN.md §8.1): what the phone spends on the server, which runs in all
+ * three ([fi.pocketsk.power.PowerRules]). Each row says what it does, since the names alone do
+ * not; Passage dims with the helm screen's overlay, so the card says when that is not allowed.
+ */
+@Composable
+private fun PowerCard(model: AppModel, actions: AppActions) {
+    Section(stringResource(R.string.dock_power_title)) {
+        Text(stringResource(R.string.dock_power_body), style = MaterialTheme.typography.bodySmall)
+        for (p in PowerProfile.entries) {
+            val (name, what) = when (p) {
+                PowerProfile.HARBOR -> R.string.dock_power_harbor to R.string.dock_power_harbor_what
+                PowerProfile.PASSAGE -> R.string.dock_power_passage to R.string.dock_power_passage_what
+                PowerProfile.SAVER -> R.string.dock_power_saver to R.string.dock_power_saver_what
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+                    .selectable(selected = model.power == p, role = Role.RadioButton) { if (model.power != p) actions.setPower(p) },
+            ) {
+                RadioButton(selected = model.power == p, onClick = null)
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(stringResource(name))
+                    Text(stringResource(what), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        if (model.power == PowerProfile.PASSAGE && !model.nightAllowed) {
+            Text(stringResource(R.string.dock_power_passage_overlay), color = MaterialTheme.colorScheme.error)
+        }
+    }
 }
 
 /**

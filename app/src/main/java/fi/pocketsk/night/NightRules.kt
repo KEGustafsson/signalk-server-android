@@ -46,12 +46,17 @@ internal object NightRules {
     /** The overlay window's opacity, brightness (0 to 1, or [PHONE_BRIGHTNESS]) and whether it holds the screen on. */
     data class Overlay(val alpha: Float, val brightness: Float, val keepOn: Boolean)
 
-    /** The overlay [settings] want, or null when they want none: nothing then stands over the screen. */
-    fun overlay(settings: NightSettings): Overlay? {
-        if (!settings.filter && !settings.dim && !settings.keepOn) return null
+    /**
+     * The overlay [settings] want, or null when they want none: nothing then stands over the
+     * screen. [dimmed] is the power profile's dimming (Passage), which dims to the helm screen's
+     * brightness whether or not its own Dim is on.
+     */
+    fun overlay(settings: NightSettings, dimmed: Boolean = false): Overlay? {
+        val dim = settings.dim || dimmed
+        if (!settings.filter && !dim && !settings.keepOn) return null
         return Overlay(
             alpha = if (settings.filter) alpha(settings.strength) else 0f,
-            brightness = if (settings.dim) brightness(settings.brightness) else PHONE_BRIGHTNESS,
+            brightness = if (dim) brightness(settings.brightness) else PHONE_BRIGHTNESS,
             keepOn = settings.keepOn,
         )
     }

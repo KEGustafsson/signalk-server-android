@@ -9,6 +9,8 @@ import android.view.View
 import android.view.WindowManager
 import androidx.core.content.edit
 import fi.pocketsk.App
+import fi.pocketsk.power.PowerPrefs
+import fi.pocketsk.power.PowerRules
 
 /**
  * The helm screen (docs/PLAN.md §8.3): one overlay window over every app, the browser and its
@@ -56,9 +58,9 @@ internal class NightFilter(context: Context) {
     /** Whether the owner allowed the app to draw over other apps, which the overlay needs. */
     fun allowed(): Boolean = Settings.canDrawOverlays(app)
 
-    /** Shows, changes or takes away the overlay to match the settings and the permission. */
+    /** Shows, changes or takes away the overlay to match the settings, the power profile and the permission. */
     fun apply() {
-        main.post { show(NightRules.overlay(settings())?.takeIf { allowed() }) }
+        main.post { show(NightRules.overlay(settings(), PowerRules.dims(PowerPrefs(app).profile))?.takeIf { allowed() }) }
     }
 
     private fun show(overlay: NightRules.Overlay?) {

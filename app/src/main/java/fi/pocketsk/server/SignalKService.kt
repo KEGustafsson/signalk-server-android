@@ -160,6 +160,7 @@ class SignalKService : Service() {
             ACTION_PERMISSIONS -> if (foreground) permissionsChanged() else stopIfIdle()
             ACTION_LEVEL -> if (foreground) bridge.level() else stopIfIdle()
             ACTION_DEVICES -> if (foreground) bridge.devicesChanged() else stopIfIdle()
+            ACTION_POWER -> if (foreground) bridge.powerChanged() else stopIfIdle()
             ACTION_SILENCE -> {
                 val id = intent.getStringExtra(EXTRA_ALARM)
                 if (foreground && id != null) bridge.silence(id) else stopIfIdle()
@@ -449,6 +450,7 @@ class SignalKService : Service() {
         private const val ACTION_PERMISSIONS = "fi.pocketsk.action.PERMISSIONS"
         private const val ACTION_LEVEL = "fi.pocketsk.action.LEVEL"
         private const val ACTION_DEVICES = "fi.pocketsk.action.DEVICES"
+        private const val ACTION_POWER = "fi.pocketsk.action.POWER"
 
         /** Silence for an alarm ([EXTRA_ALARM], its id), from the alarm's notification ([fi.pocketsk.bridge.PhoneAlarm]). */
         internal const val ACTION_SILENCE = "fi.pocketsk.action.SILENCE"
@@ -527,6 +529,15 @@ class SignalKService : Service() {
          */
         fun devicesChanged(context: Context) {
             if (ServerPrefs(context).running) send(context, ACTION_DEVICES)
+        }
+
+        /**
+         * The owner chose another power profile in the Dock: a running server's bridge serves the
+         * plugin's subscription again under it. Gated like [permissionsChanged]; a server started
+         * later reads the profile as it starts.
+         */
+        fun powerChanged(context: Context) {
+            if (ServerPrefs(context).running) send(context, ACTION_POWER)
         }
 
         /**

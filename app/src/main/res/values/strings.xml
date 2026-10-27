@@ -195,6 +195,15 @@
     <string name="dock_helm_dim">Dim the screen</string>
     <string name="dock_helm_brightness">Brightness: %1$d %%</string>
     <string name="dock_helm_keep_on">Keep the screen on</string>
+    <string name="dock_power_title">Power</string>
+    <string name="dock_power_body">What the phone spends on the server, which runs in all three.</string>
+    <string name="dock_power_harbor">Harbor</string>
+    <string name="dock_power_harbor_what">Everything the server asks of the phone, and the screen as you set it.</string>
+    <string name="dock_power_passage">Passage</string>
+    <string name="dock_power_passage_what">As Harbor, with the screen dimmed to the helm screen\'s brightness.</string>
+    <string name="dock_power_saver">Battery saver</string>
+    <string name="dock_power_saver_what">The phone\'s sensors stop but GNSS, at most once a second, and the battery; no Bluetooth LE scan. Instruments on USB and Bluetooth serial carry on.</string>
+    <string name="dock_power_passage_overlay">Dimming needs the app allowed to display over other apps: the Helm screen card asks for it.</string>
     <string name="dock_backup_title">Backup</string>
     <string name="dock_backup_body">The server\'s settings, its users and passwords and the plugins\' settings, as one zip encrypted with AES-256, saved wherever you choose: this phone, a card, Drive or Nextcloud. 7-Zip opens it on a computer with the passphrase. The plugins themselves are installed again from the App Store\'s registry when you restore, and the data folders (charts and the rest) are not in it: they are in the USB folder.</string>
     <string name="dock_backup_passphrase">Passphrase</string>
