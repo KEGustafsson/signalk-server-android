@@ -79,3 +79,11 @@ test("a node-pre-gyp package gets the variables its binding.gyp expects, any oth
   assert.deepEqual(lib.preGypArgs({ name: "better-sqlite3" }, "/b"), []);
   assert.deepEqual(lib.preGypArgs(null, "/b"), []);
 });
+
+test("parseIndex: a file holding null, or anything but an index, is refused, never taken for none", () => {
+  assert.throws(() => lib.parseIndex("null"), /not an object/);
+  assert.throws(() => lib.parseIndex("[]"), /format/);
+  assert.throws(() => lib.parseIndex("{"), SyntaxError);
+  const text = JSON.stringify({ format: lib.INDEX_FORMAT, nodejsMobile: "v", entries: [entry("sqlite3", "5.1.7")] });
+  assert.equal(lib.parseIndex(text).entries.length, 1);
+});

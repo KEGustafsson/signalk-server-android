@@ -141,12 +141,8 @@ function main() {
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, "packages.json"), "utf8"));
   // An index named is read or the run stops: building on none would publish an index that has
   // lost every build before this run's.
-  const published = o.index ? JSON.parse(fs.readFileSync(o.index, "utf8")) : null;
   // Checked before an hour is spent building, not when the builds are joined to it.
-  if (published) {
-    const checked = lib.checkIndex(published);
-    if (checked instanceof Error) throw checked;
-  }
+  const published = o.index ? lib.parseIndex(fs.readFileSync(o.index, "utf8")) : null;
 
   const built = [];
   const failed = [];

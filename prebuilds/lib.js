@@ -104,6 +104,16 @@ function checkIndex(index) {
 }
 
 /**
+ * A published index read from [text]: parsed and checked, or thrown. Whatever the file holds,
+ * `null` included, it is never taken for no index, which only the first run (no file) may be.
+ */
+function parseIndex(text) {
+  const checked = checkIndex(JSON.parse(text));
+  if (checked instanceof Error) throw checked;
+  return checked;
+}
+
+/**
  * The published index with this run's [built] entries joined in: a new build of a package,
  * version and platform already listed replaces the old entry; everything else is kept, sorted
  * so the file changes only where a build did. An index [checkIndex] refuses throws. [nodejsMobile] is the runtime the run built
@@ -123,4 +133,4 @@ function mergeIndex(published, built, nodejsMobile) {
   return { format: INDEX_FORMAT, nodejsMobile, entries };
 }
 
-module.exports = { INDEX_FORMAT, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, preGypArgs, has, checkIndex, mergeIndex };
+module.exports = { INDEX_FORMAT, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, preGypArgs, has, checkIndex, parseIndex, mergeIndex };
