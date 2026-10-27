@@ -142,6 +142,11 @@ function main() {
   // An index named is read or the run stops: building on none would publish an index that has
   // lost every build before this run's.
   const published = o.index ? JSON.parse(fs.readFileSync(o.index, "utf8")) : null;
+  // Checked before an hour is spent building, not when the builds are joined to it.
+  if (published) {
+    const checked = lib.checkIndex(published);
+    if (checked instanceof Error) throw checked;
+  }
 
   const built = [];
   const failed = [];

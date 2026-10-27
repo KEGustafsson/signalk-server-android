@@ -87,14 +87,35 @@ function has(index, name, version, platform, arch) {
 }
 
 /**
+ * [index] as an index this script can extend, or an Error saying why not: another format, or
+ * entries that do not each name a package, version, platform, arch, asset and SHA-256. Such an
+ * index is refused rather than replaced, since a run that started afresh from it would publish
+ * an index that has lost every earlier build.
+ */
+function checkIndex(index) {
+  if (index === null || typeof index !== "object") return new Error("the published index is not an object");
+  if (index.format !== INDEX_FORMAT) return new Error(`the published index is format ${JSON.stringify(index.format)}, this script writes ${INDEX_FORMAT}`);
+  if (!Array.isArray(index.entries)) return new Error("the published index has no entries list");
+  const bad = index.entries.findIndex(
+    (e) => !e || ["name", "version", "platform", "arch", "file"].some((k) => typeof e[k] !== "string" || e[k] === "") || !/^[0-9a-f]{64}$/.test(e.sha256),
+  );
+  if (bad >= 0) return new Error(`entry ${bad} of the published index is not a build`);
+  return index;
+}
+
+/**
  * The published index with this run's [built] entries joined in: a new build of a package,
  * version and platform already listed replaces the old entry; everything else is kept, sorted
- * so the file changes only where a build did. [nodejsMobile] is the runtime the run built
+ * so the file changes only where a build did. An index [checkIndex] refuses throws. [nodejsMobile] is the runtime the run built
  * against, recorded for whoever reads the index; N-API keeps older builds loading under it.
  */
 function mergeIndex(published, built, nodejsMobile) {
   const byKey = new Map();
-  for (const e of published?.format === INDEX_FORMAT ? published.entries ?? [] : []) byKey.set(key(e), e);
+  if (published != null) {
+    const checked = checkIndex(published);
+    if (checked instanceof Error) throw checked;
+    for (const e of checked.entries) byKey.set(key(e), e);
+  }
   for (const e of built) byKey.set(key(e), e);
   const entries = [...byKey.values()].sort((a, b) =>
     a.name !== b.name ? (a.name < b.name ? -1 : 1) : a.version !== b.version ? compareVersions(a.version, b.version) : key(a) < key(b) ? -1 : 1,
@@ -102,4 +123,4 @@ function mergeIndex(published, built, nodejsMobile) {
   return { format: INDEX_FORMAT, nodejsMobile, entries };
 }
 
-module.exports = { INDEX_FORMAT, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, preGypArgs, has, mergeIndex };
+module.exports = { INDEX_FORMAT, parseVersion, compareVersions, pickVersions, assetName, isAarch64SharedObject, preGypArgs, has, checkIndex, mergeIndex };

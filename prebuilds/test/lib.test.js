@@ -37,19 +37,31 @@ test("only a 64-bit little-endian AArch64 shared object passes", () => {
   assert.equal(lib.isAarch64SharedObject(Buffer.alloc(4)), false);
 });
 
-const entry = (name, version, sha256 = "a") => ({ name, version, platform: "android", arch: "arm64", file: lib.assetName(name, version, "android", "arm64"), sha256, size: 1, files: [] });
+const entry = (name, version, sha256 = "0".repeat(64)) => ({ name, version, platform: "android", arch: "arm64", file: lib.assetName(name, version, "android", "arm64"), sha256, size: 1, files: [] });
 
 test("a run's builds join the published index, sorted, a rebuild replacing its entry", () => {
-  const published = { format: lib.INDEX_FORMAT, nodejsMobile: "24.19.0-0", entries: [entry("sqlite3", "5.1.7"), entry("better-sqlite3", "12.0.10", "old")] };
-  const merged = lib.mergeIndex(published, [entry("better-sqlite3", "12.0.10", "new"), entry("better-sqlite3", "12.0.9")], "24.20.0-0");
+  const published = { format: lib.INDEX_FORMAT, nodejsMobile: "24.19.0-0", entries: [entry("sqlite3", "5.1.7"), entry("better-sqlite3", "12.0.10", "1".repeat(64))] };
+  const merged = lib.mergeIndex(published, [entry("better-sqlite3", "12.0.10", "2".repeat(64)), entry("better-sqlite3", "12.0.9")], "24.20.0-0");
   assert.equal(merged.format, lib.INDEX_FORMAT);
   assert.equal(merged.nodejsMobile, "24.20.0-0");
-  assert.deepEqual(merged.entries.map((e) => `${e.name}@${e.version}:${e.sha256}`), ["better-sqlite3@12.0.9:a", "better-sqlite3@12.0.10:new", "sqlite3@5.1.7:a"]);
+  assert.deepEqual(merged.entries.map((e) => `${e.name}@${e.version}:${e.sha256[0]}`), ["better-sqlite3@12.0.9:0", "better-sqlite3@12.0.10:2", "sqlite3@5.1.7:0"]);
 });
 
-test("an index of another format, or none, starts afresh", () => {
-  assert.deepEqual(lib.mergeIndex({ format: 99, entries: [entry("x", "1.0.0")] }, [], "v").entries, []);
-  assert.deepEqual(lib.mergeIndex(null, [entry("x", "1.0.0")], "v").entries.length, 1);
+test("no index starts afresh; an index of another format or shape is refused, never replaced", () => {
+  assert.equal(lib.mergeIndex(null, [entry("x", "1.0.0")], "v").entries.length, 1);
+  assert.throws(() => lib.mergeIndex({ format: 99, entries: [entry("x", "1.0.0")] }, [], "v"), /format 99/);
+  assert.throws(() => lib.mergeIndex({ format: lib.INDEX_FORMAT }, [], "v"), /no entries/);
+  assert.throws(() => lib.mergeIndex({ format: lib.INDEX_FORMAT, entries: [{ name: "x" }] }, [], "v"), /entry 0/);
+});
+
+test("checkIndex: a well-formed index passes, anything else names what is wrong", () => {
+  const good = { format: lib.INDEX_FORMAT, entries: [entry("sqlite3", "5.1.7", "a".repeat(64))] };
+  assert.equal(lib.checkIndex(good), good);
+  assert.equal(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [] }).entries.length, 0);
+  assert.ok(lib.checkIndex([]) instanceof Error);
+  assert.ok(lib.checkIndex("index") instanceof Error);
+  assert.ok(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [entry("sqlite3", "5.1.7", "short")] }) instanceof Error);
+  assert.ok(lib.checkIndex({ format: lib.INDEX_FORMAT, entries: [{ ...entry("sqlite3", "5.1.7", "a".repeat(64)), file: "" }] }) instanceof Error);
 });
 
 test("has: a package, version and platform already published", () => {
