@@ -22,8 +22,9 @@
  * Every `.node` the build leaves in build/Release is checked to be an AArch64 shared object,
  * stripped, and packed as build/Release/<name>.node, the path the `bindings` package looks in,
  * into <out>/<asset>.tar.gz, made the same way every time (sorted, owner 0, mtime 0, gzip -n).
- * <out>/index.json is the published index with this run's builds joined in. A version already in
- * the published index is not built again: N-API builds keep loading across Node releases.
+ * <out>/index.json is the published index (--index; none only for the first run) with this run's
+ * builds joined in. A version already in the published index is not built again: N-API builds
+ * keep loading across Node releases.
  *
  * A build that fails is reported and the rest carry on, so one package's new release cannot hold
  * back the others; with --strict (pull requests, where packages.json or this script changed) it
@@ -138,7 +139,9 @@ function main() {
   o.devdir = path.join(os.tmpdir(), "prebuild-node-gyp");
   fs.mkdirSync(o.out, { recursive: true });
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, "packages.json"), "utf8"));
-  const published = o.index && fs.existsSync(o.index) ? JSON.parse(fs.readFileSync(o.index, "utf8")) : null;
+  // An index named is read or the run stops: building on none would publish an index that has
+  // lost every build before this run's.
+  const published = o.index ? JSON.parse(fs.readFileSync(o.index, "utf8")) : null;
 
   const built = [];
   const failed = [];

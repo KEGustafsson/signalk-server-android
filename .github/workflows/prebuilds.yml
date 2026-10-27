@@ -68,7 +68,8 @@ jobs:
           NM_VERSION=$(prop nodejsMobile.version)
           NM_SHA256=$(prop nodejsMobile.sha256)
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          # `yes` ends on SIGPIPE when sdkmanager stops reading, which pipefail would count.
+          { yes || true; } | "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
           ZIP="$RUNNER_TEMP/nodejs-mobile-android-$NM_VERSION.zip"
           curl -fsSL -o "$ZIP" "https://github.com/digidem/nodejs-mobile/releases/download/v$NM_VERSION/nodejs-mobile-android-$NM_VERSION.zip"
           echo "$NM_SHA256  $ZIP" | sha256sum -c -
@@ -80,22 +81,32 @@ jobs:
             echo "NM_VERSION=$NM_VERSION"
           } >> "$GITHUB_ENV"
 
-      # The index already published, so versions built before are not built again. None yet
-      # (the first run) is an empty index.
+      # The index already published, so versions built before are not built again and stay
+      # listed. Only a release that is not there (404, the first run) starts an empty index: any
+      # other failure stops the run, or `publish` would replace the index with this run's alone.
       - name: Published index
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p published
-          gh release download prebuilds -R "$REPO" -p index.json -D published || echo "no published index yet"
+          if response=$(gh api --include "repos/$REPO/releases/tags/prebuilds" 2>&1); then
+            gh release download prebuilds -R "$REPO" -p index.json -D published
+            echo "INDEX_ARGS=--index published/index.json" >> "$GITHUB_ENV"
+          elif printf '%s\n' "$response" | grep -qE '^HTTP/[0-9.]+ 404 '; then
+            echo "no prebuilds Release yet: starting an empty index"
+          else
+            printf '%s\n' "$response" >&2
+            echo "::error::the prebuilds Release could not be read"
+            exit 1
+          fi
 
       - name: Build
         env:
           STRICT: ${{ github.event_name == 'pull_request' && '--strict' || '' }}
         run: |
           node prebuilds/build.js --ndk "$NDK_DIR" --nodejs-mobile "$NM_DIR" --nodejs-mobile-version "$NM_VERSION" \
-            --index published/index.json --out out $STRICT
+            $INDEX_ARGS --out out $STRICT
           ls -l out
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
