@@ -65,11 +65,12 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
     private val published = HashMap<String, String>()
 
     /**
-     * The paths [clear] nulled, by their source, until the next plugin connects: [connected]
-     * sends their nulls again. A null that left may still not have reached the plugin: the
-     * plugin going is what stops the sensors, so its own nulls find no peer, and one queued
-     * just before a peer closed goes with the queue. Nulls the plugin already had cost nothing.
-     * A path read again leaves it. Handler thread only.
+     * The paths [clear] nulled, by their source, until a reading for the path is sent again:
+     * every plugin that connects ([connected]) gets their nulls again. A null that left may
+     * still not have reached the plugin: the plugin going is what stops the sensors, so its own
+     * nulls find no peer, and one queued just before a peer closed goes with the queue, the
+     * replayed ones too. Nulls the plugin already had cost nothing, and the set holds no more
+     * than the handful of paths the sensors write. Handler thread only.
      */
     private val cleared = HashMap<String, String>()
     private var batteryOn = false
@@ -258,12 +259,11 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         }
     }
 
-    /** A plugin connected: the clears since the last one go to it again, before any new reading. */
+    /** A plugin connected: every path still cleared gets its null again, before any new reading. */
     fun connected() {
         handler.post {
             val ts = System.currentTimeMillis()
             for ((path, src) in cleared) send(BridgeProtocol.sensor(path, null as Double?, src, ts))
-            cleared.clear()
         }
     }
 
@@ -637,7 +637,7 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
      * A sensor stopped (the plugin no longer asks for it, the power profile left it out, the
      * plugin went): each path it sent a reading for gets a null, which is how Signal K says there
      * is no reading now, so the server stops showing the last one as current. Each is kept in
-     * [cleared] and sent again to the next plugin that connects.
+     * [cleared] and sent again to every plugin that connects until the path is read again.
      */
     private fun clear(src: String) {
         val paths = published.filterValues { it == src }.keys
