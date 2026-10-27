@@ -483,10 +483,10 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
             null
         }
         val r = reading ?: Readings.Cellular.NONE
-        put(Readings.CELLULAR_STRENGTH_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, r.strength, Readings.SRC_CELLULAR, ts))
-        put(Readings.CELLULAR_DBM_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, r.dbm, Readings.SRC_CELLULAR, ts))
-        put(Readings.CELLULAR_OPERATOR_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, r.operator, Readings.SRC_CELLULAR, ts))
-        put(Readings.CELLULAR_ROAMING_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, r.roaming, Readings.SRC_CELLULAR, ts))
+        put(Readings.CELLULAR_STRENGTH_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensor(Readings.CELLULAR_STRENGTH_PATH, r.strength, Readings.SRC_CELLULAR, ts), r.strength != null)
+        put(Readings.CELLULAR_DBM_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensor(Readings.CELLULAR_DBM_PATH, r.dbm, Readings.SRC_CELLULAR, ts), r.dbm != null)
+        put(Readings.CELLULAR_OPERATOR_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensorText(Readings.CELLULAR_OPERATOR_PATH, r.operator, Readings.SRC_CELLULAR, ts), !r.operator.isNullOrBlank())
+        put(Readings.CELLULAR_ROAMING_PATH, Readings.SRC_CELLULAR, BridgeProtocol.sensorFlag(Readings.CELLULAR_ROAMING_PATH, r.roaming, Readings.SRC_CELLULAR, ts), r.roaming != null)
         return reading != null
     }
 
@@ -600,8 +600,8 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         }
         put(Readings.POSITION_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.POSITION_PATH, fix.position, Readings.SRC_GNSS, ts))
         // A fix without speed or course (a bearing is often dropped at rest) clears the last one sent.
-        if (fix.speedOverGround != null || sogSent) put(Readings.SOG_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.SOG_PATH, fix.speedOverGround, Readings.SRC_GNSS, ts))
-        if (fix.courseOverGroundTrue != null || cogSent) put(Readings.COG_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.COG_PATH, fix.courseOverGroundTrue, Readings.SRC_GNSS, ts))
+        if (fix.speedOverGround != null || sogSent) put(Readings.SOG_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.SOG_PATH, fix.speedOverGround, Readings.SRC_GNSS, ts), fix.speedOverGround != null)
+        if (fix.courseOverGroundTrue != null || cogSent) put(Readings.COG_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.COG_PATH, fix.courseOverGroundTrue, Readings.SRC_GNSS, ts), fix.courseOverGroundTrue != null)
         sogSent = fix.speedOverGround != null
         cogSent = fix.courseOverGroundTrue != null
         satellites?.let { put(Readings.SATELLITES_PATH, Readings.SRC_GNSS, BridgeProtocol.sensor(Readings.SATELLITES_PATH, it.toDouble(), Readings.SRC_GNSS, ts)) }
@@ -626,10 +626,19 @@ internal class PhoneSensors(context: Context, private val send: (String) -> Unit
         for ((path, value) in now) put(path, Readings.SRC_BATTERY, BridgeProtocol.sensor(path, value, Readings.SRC_BATTERY, ts))
     }
 
-    /** Sends [line], a reading for [path] from [src], and remembers the path for [clear]. */
-    private fun put(path: String, src: String, line: String) {
-        published[path] = src
-        cleared.remove(path)
+    /**
+     * Sends [line], a reading for [path] from [src], and remembers the path for [clear]. A line
+     * whose value is null ([present] false: a fix without a course, a cellular network that could
+     * not be read) is a clear itself, so the path goes to [cleared] like one, to be sent again.
+     */
+    private fun put(path: String, src: String, line: String, present: Boolean = true) {
+        if (present) {
+            published[path] = src
+            cleared.remove(path)
+        } else {
+            published.remove(path)
+            cleared[path] = src
+        }
         send(line)
     }
 
