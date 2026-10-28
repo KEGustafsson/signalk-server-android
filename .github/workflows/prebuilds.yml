@@ -99,12 +99,15 @@ jobs:
             gh release download prebuilds -R "$REPO" -p index.json -D published
             # An entry whose asset is no longer in the Release (deleted by hand) is dropped, so
             # its version is built again rather than kept in an index that names a missing file.
+            # Anything else is passed on as it is, for build.js to refuse a malformed index.
             gh release view prebuilds -R "$REPO" --json assets --jq '[.assets[].name]' > published/assets.json
             jq --slurpfile names published/assets.json \
-              'if (.entries | type) == "array" then .entries |= map(select(.file as $f | any($names[0][]; . == $f))) else . end' \
+              'def gone: type == "object" and (.file | type) == "string" and (.file as $f | any($names[0][]; . == $f) | not);
+               if (.entries | type) == "array" then .entries |= map(select(gone | not)) else . end' \
               published/index.json > published/checked.json
             jq -r --slurpfile names published/assets.json \
-              '(.entries // [])[]? | select(.file as $f | any($names[0][]; . == $f) | not) | "::warning::\(.file) is in the index but not in the Release: building it again"' \
+              'def gone: type == "object" and (.file | type) == "string" and (.file as $f | any($names[0][]; . == $f) | not);
+               if (.entries | type) == "array" then .entries[] | select(gone) | "::warning::\(.file) is in the index but not in the Release: building it again" else empty end' \
               published/index.json
             mv published/checked.json published/index.json
             echo "INDEX_ARGS=--index published/index.json" >> "$GITHUB_ENV"
