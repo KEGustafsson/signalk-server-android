@@ -24,9 +24,10 @@ import java.util.concurrent.atomic.AtomicLong
  *     files/sk/slots/{A,B}  npm global prefixes: lib/node_modules/signalk-server, as on a Pi
  *     files/sk/current      symlink to the live slot
  *     files/npm             npm itself (bin/npm-cli.js, lib, node_modules), extracted from the APK
- *     files/bin             node and npm, symlinks to the executable; later the node-gyp shim
+ *     files/bin             node and npm, symlinks to the executable
  *     files/runtime         the preloads every node loads ([preloads], from runtime-tools/preload)
- *     files/prebuilds       cache of native addon builds fetched by the node-gyp shim
+ *                           and npm's launcher ([npmLauncher], from runtime-tools/npm)
+ *     files/prebuilds       the native addon builds fetched after npm installs, and their index
  *     cache/tmp             $TMPDIR
  *     no_backup/groups      one file per running [spawn], the id of its process group ([NodeProcess])
  *
@@ -37,10 +38,12 @@ import java.util.concurrent.atomic.AtomicLong
  * `files/bin/npm` is not npm's shell wrapper script. An app that targets API 29 or later may not
  * exec() a file in its own data directory, so a script there could be run only as
  * `sh files/bin/npm`, never by name, and Signal K Server runs npm by name (`npm --version`, its
- * App Store's installs). It is a second link to the executable, which runs npm-cli.js
- * ([NPM_CLI_ENV]) when started under that name. The app itself starts npm as
- * `node files/npm/bin/npm-cli.js` ([npm]). Whether npm's lifecycle scripts get by under the same
- * rule is spike R3 (docs/PLAN.md §3, §15).
+ * App Store's installs). It is a second link to the executable, which runs [npmLauncher]
+ * ([NPM_CLI_ENV]) when started under that name; the app's own [npm] runs it too. The launcher
+ * runs `files/npm/bin/npm-cli.js` and, after an install, puts the Android builds of native
+ * addons in place from the Release the Prebuilds workflow publishes (docs/PLAN.md §9.2), which
+ * nothing else would: Signal K's App Store installs with `--ignore-scripts`. Whether npm's
+ * lifecycle scripts get by under the exec rule is spike R3 (docs/PLAN.md §3, §15).
  */
 class NodeRuntime(context: Context) {
     private val app = context.applicationContext
@@ -75,6 +78,13 @@ class NodeRuntime(context: Context) {
     val preloads: List<File> = PRELOAD_ASSETS.map { File(runtimeDir, it) }
 
     /**
+     * runtime-tools/npm's npm-launch.js, which every npm on the phone runs instead of npm-cli.js
+     * itself (see the class comment), with prebuilds.js beside it ([NPM_TOOL_ASSETS]). Put in
+     * place by [ensureLayout] like the [preloads]; an APK without it runs npm-cli.js directly.
+     */
+    val npmLauncher = File(runtimeDir, NPM_TOOL_ASSETS.first())
+
+    /**
      * Where the launcher records each spawned node's process group; see [NodeProcess]. Not in the
      * cache: Android may clear that while the app runs, and a server's record is first read when
      * it is stopped, hours later perhaps; a lost record leaves the group unreachable. no_backup is
@@ -90,8 +100,8 @@ class NodeRuntime(context: Context) {
 
     /**
      * Creates the directories, points `files/bin/node` and `files/bin/npm` at this install's
-     * executable and puts the APK's [preloads] in place. Idempotent, and cheap enough to call on
-     * every start.
+     * executable and puts the APK's [preloads] and [npmLauncher] in place. Idempotent, and cheap
+     * enough to call on every start.
      *
      * The links are checked every time, not only created once: nativeLibraryDir is a new random
      * path after every app update, so a link made by the previous install dangles. A dangling
@@ -112,7 +122,7 @@ class NodeRuntime(context: Context) {
             groups.listFiles()?.forEach { it.delete() }
             groupsSwept = true
         }
-        installPreloads()
+        installRuntimeAssets()
         if (!isAvailable) return
         // Symlinks into nativeLibraryDir: `node` is on PATH for npm's lifecycle scripts, `npm`
         // for Signal K Server, which runs it by name. Whether exec follows them across the
@@ -122,14 +132,16 @@ class NodeRuntime(context: Context) {
     }
 
     /**
-     * Writes each of the APK's [PRELOAD_ASSETS] to its file in [preloads] unless the file holds it
-     * already; under [LAYOUT_LOCK]. Beside it first and then renamed, so a node starting meanwhile
-     * reads the old file or the new one, never half of one. An APK without an asset (a build that
-     * lost it) writes nothing for it, and [env] then leaves that preload out rather than name a
-     * file that is not there, which would stop every node from starting.
+     * Writes each of the APK's [PRELOAD_ASSETS] and [NPM_TOOL_ASSETS] to its file in [runtimeDir]
+     * unless the file holds it already; under [LAYOUT_LOCK]. Beside it first and then renamed, so
+     * a node starting meanwhile reads the old file or the new one, never half of one. An APK
+     * without an asset (a build that lost it) writes nothing for it, and [env] then leaves that
+     * preload out, or runs npm-cli.js without the launcher, rather than name a file that is not
+     * there, which would stop every node, or every npm, from starting.
      */
-    private fun installPreloads() {
-        for ((name, file) in PRELOAD_ASSETS.zip(preloads)) {
+    private fun installRuntimeAssets() {
+        for (name in PRELOAD_ASSETS + NPM_TOOL_ASSETS) {
+            val file = File(runtimeDir, name)
             val bytes = try {
                 app.assets.open(name).use { it.readBytes() }
             } catch (_: IOException) {
@@ -206,7 +218,9 @@ class NodeRuntime(context: Context) {
             "LD_LIBRARY_PATH" to nativeLibraryDir.absolutePath,
             "SIGNALK_NODE_CONFIG_DIR" to configDir.absolutePath,
             "NODE_OPTIONS" to nodeOptions(heapMb, preloads.filter { it.isFile }),
-            NPM_CLI_ENV to npmCli.absolutePath,
+            NPM_CLI_ENV to npmEntry().absolutePath,
+            NPM_ENV to npmCli.absolutePath,
+            PREBUILDS_ENV to prebuilds.absolutePath,
             "npm_config_cache" to File(home, ".npm").absolutePath,
             "npm_config_prefix" to current.absolutePath,
             "npm_config_update_notifier" to "false",
@@ -244,9 +258,13 @@ class NodeRuntime(context: Context) {
 
     /**
      * Starts `npm args...` the way the npm shell wrapper would on a Pi, as node running
-     * npm-cli.js. [ensureExtracted] must have run; [spawn]'s rules apply.
+     * [npmLauncher], which runs npm-cli.js and puts the native addons' builds in place after an
+     * install. [ensureExtracted] must have run; [spawn]'s rules apply.
      */
-    fun npm(vararg args: String, cwd: File = home): NodeProcess = spawn(npmCli.absolutePath, *args, cwd = cwd)
+    fun npm(vararg args: String, cwd: File = home): NodeProcess = spawn(npmEntry().absolutePath, *args, cwd = cwd)
+
+    /** What runs as npm: [npmLauncher], or npm-cli.js itself in an APK that lacks the launcher. */
+    private fun npmEntry(): File = if (NPM_TOOL_ASSETS.all { File(runtimeDir, it).isFile }) npmLauncher else npmCli
 
     /** A one-paragraph description of the runtime situation, for the spike screen and diagnostics. */
     fun describe(): String = buildString {
@@ -275,14 +293,23 @@ class NodeRuntime(context: Context) {
         /** Named like a library so the build packages it in lib/<abi>/ and the installer extracts it. */
         const val EXEC_NAME = "libnodeexec.so"
 
-        /** Where `files/bin/npm` (the executable started under that name) finds npm-cli.js. */
+        /** What `files/bin/npm` (the executable started under that name) runs: [npmLauncher]. */
         const val NPM_CLI_ENV = "POCKETSK_NPM_CLI"
+
+        /** Where [npmLauncher] finds npm-cli.js. */
+        const val NPM_ENV = "POCKETSK_NPM"
+
+        /** Where [npmLauncher] keeps the builds and the index it fetched ([prebuilds]). */
+        const val PREBUILDS_ENV = "POCKETSK_PREBUILDS"
 
         /** npm's registry tarball, put into the APK's assets by this module's build. */
         const val NPM_ASSET = "npm.tgz"
 
         /** runtime-tools/preload's files, which this module's build adds to the APK's assets, in the order they load. */
         val PRELOAD_ASSETS = listOf("mdns-lookup.js", "node-ble.js")
+
+        /** runtime-tools/npm's files, which this module's build adds to the APK's assets: the launcher first, then what it requires. */
+        val NPM_TOOL_ASSETS = listOf("npm-launch.js", "prebuilds.js")
 
         /**
          * `NODE_OPTIONS`: the heap cap, and each of [preloads] loaded with `--require`, in order.

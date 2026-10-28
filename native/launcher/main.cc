@@ -22,8 +22,9 @@
 // Store's installs as `npm install` in the config directory. On a Pi that is the shell wrapper
 // npm ships; here no script in the app's data directory may be exec'd (W^X, docs/PLAN.md §4.2),
 // so NodeRuntime links files/bin/npm to this executable beside files/bin/node, and a launcher
-// started under the name `npm` runs node with the npm-cli.js that POCKETSK_NPM_CLI names in
-// front of its arguments, as the wrapper would.
+// started under the name `npm` runs node with the script that POCKETSK_NPM_CLI names in front of
+// its arguments, as the wrapper would: runtime-tools/npm's npm-launch.js, which runs npm-cli.js
+// and puts the native addons' Android builds in place after an install.
 
 #include <cerrno>
 #include <cstdio>

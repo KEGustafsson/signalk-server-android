@@ -55,8 +55,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
-      # The preload every node on the phone loads (runtime-tools/preload, an asset of node-runtime):
-      # plain JavaScript with no dependencies, tested with the runner's own Node.
+      # The preload every node on the phone loads and npm's launcher there (runtime-tools/preload and
+      # runtime-tools/npm, assets of node-runtime): plain JavaScript with no dependencies, tested
+      # with the runner's own Node.
       - name: Runtime tools' tests
         working-directory: runtime-tools
         run: node --test test/*.test.js

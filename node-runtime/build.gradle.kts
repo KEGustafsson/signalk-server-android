@@ -135,10 +135,15 @@ val npmAsset = tasks.register<NpmAsset>("npmAsset") {
 // directory is an asset source as it stands, its tests kept outside it in runtime-tools/test.
 val preloadDir = rootProject.file("runtime-tools/preload")
 
+// npm's launcher on the phone (NodeRuntime.npmLauncher): the same kind of directory, its files
+// beside the preloads in the assets and in files/runtime.
+val npmToolsDir = rootProject.file("runtime-tools/npm")
+
 androidComponents {
     onVariants { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(npmAsset, NpmAsset::outputDir)
         variant.sources.assets?.addStaticSourceDirectory(preloadDir.absolutePath)
+        variant.sources.assets?.addStaticSourceDirectory(npmToolsDir.absolutePath)
     }
 }
 
@@ -207,13 +212,15 @@ dependencies {
 }
 
 // TarTest also unpacks the real npm tarball the APK carries, not only archives it builds itself,
-// and NodeOptionsTest finds the preload where the assets are taken from.
+// and NodeOptionsTest finds the preload and npm's launcher where the assets are taken from.
 tasks.withType<Test>().configureEach {
     val tarball = fetchNpm.flatMap { it.dest }
     inputs.file(tarball)
     inputs.dir(preloadDir)
+    inputs.dir(npmToolsDir)
     doFirst {
         systemProperty("pocketsk.npmTarball", tarball.get().asFile.absolutePath)
         systemProperty("pocketsk.preloadDir", preloadDir.absolutePath)
+        systemProperty("pocketsk.npmToolsDir", npmToolsDir.absolutePath)
     }
 }

@@ -5,7 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** NODE_OPTIONS as every node gets it, and the preloads it names where the APK takes them from. */
+/**
+ * NODE_OPTIONS as every node gets it, and the preloads it names and npm's launcher where the APK
+ * takes them from.
+ */
 class NodeOptionsTest {
     @Test
     fun theHeapCapAloneWithoutAPreload() {
@@ -27,5 +30,13 @@ class NodeOptionsTest {
         for (name in NodeRuntime.PRELOAD_ASSETS) assertTrue(name, File(dir, name).isFile)
         // The directory is an asset source as it stands: nothing else in it may ride into the APK.
         assertEquals(NodeRuntime.PRELOAD_ASSETS.sorted(), dir.list()!!.sorted())
+    }
+
+    @Test
+    fun npmsLauncherIsWhereTheBuildTakesIt() {
+        val dir = File(System.getProperty("pocketsk.npmToolsDir") ?: error("pocketsk.npmToolsDir not set by the build"))
+        assertEquals(NodeRuntime.NPM_TOOL_ASSETS.sorted(), dir.list()!!.sorted())
+        // The two directories share the assets' root and files/runtime: no name may be in both.
+        assertTrue(NodeRuntime.PRELOAD_ASSETS.none { it in NodeRuntime.NPM_TOOL_ASSETS })
     }
 }

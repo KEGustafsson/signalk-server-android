@@ -42,7 +42,8 @@ pipeline and several files were lifted (PLAN §17).
   over `prebuilds/packages.json` with the NDK and nodejs-mobile of `gradle.properties`, on a change
   to either, weekly and by hand. The same three-job split: `build` (read-only; it runs the
   packages' binding.gyp), `attest`, and `publish`, which uploads to the Release tagged `prebuilds`
-  (never latest) the builds and `index.json`, the list the phone's shim reads. On a pull request
+  (never latest) the builds and `index.json`, the list the phone's npm launcher reads
+  (runtime-tools/npm). On a pull request
   only `build` runs, with `--strict`. The script's own tests: `node --test test/*.test.js` in
   `prebuilds`.
 - Unit tests (JUnit 4, pure Kotlin, no Android runtime): `./gradlew testDebugUnitTest`. Anything
@@ -99,8 +100,8 @@ app/                 the Android app
   fi.pocketsk.widget BoatWidget (the home-screen widget: depth, SOG, apparent wind), GlanceWatch
                      (asks the plugin for them while a widget is placed and the screen is on);
                      GlanceView (pure, tested)
-node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm and the
-                     preload as assets
+node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the launcher, npm, the
+                     preload and npm's launcher as assets
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
                      process group), Tar (unpacks npm)
 runtime-tools/preload/ every node loads these (NODE_OPTIONS --require, written to files/runtime,
@@ -111,6 +112,12 @@ runtime-tools/preload/ every node loads these (NODE_OPTIONS --require, written t
                      Symbol.for('pocketsk.ble'). Plain CommonJS, no dependencies; `node --test
                      test/*.test.js` in runtime-tools (CI runs it). Nothing else goes in preload/:
                      the directory is an asset source as it stands
+runtime-tools/npm/   what every npm on the phone runs (files/runtime, NodeRuntime.NPM_TOOL_ASSETS;
+                     the same asset rule): npm-launch.js runs npm-cli.js and after an install
+                     prebuilds.js puts the Android builds of native addons in place from the
+                     `prebuilds` Release (index checked, SHA-256 checked, kept in files/prebuilds),
+                     since the App Store installs with --ignore-scripts; its index checks mirror
+                     prebuilds/lib.js: change both together
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
                      (leads a process group when NodeRuntime asks), and `npm` when started
                      as files/bin/npm, for Signal K's App Store;
@@ -130,7 +137,7 @@ prebuilds/           packages.json (the addons built for Android), build.js (npm
                      pure part, tested); plain CommonJS, no dependencies, run by prebuilds.yml
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap.
+Planned, not yet present (PLAN §2): `runtime-tools/bootstrap`.
 
 ## Rules of the house
 - Threading: nothing blocking on the main thread. Worker loops use `transportThread` and report
