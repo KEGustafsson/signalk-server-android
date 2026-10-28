@@ -84,13 +84,18 @@ jobs:
       # The index already published, so versions built before are not built again and stay
       # listed. Only a release that is not there (404, the first run) starts an empty index: any
       # other failure stops the run, or `publish` would replace the index with this run's alone.
+      # A pull request reads none and builds every version, so a change that breaks a build is
+      # caught there even for versions the Release already has.
       - name: Published index
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
         run: |
           mkdir -p published
-          if response=$(gh api --include "repos/$REPO/releases/tags/prebuilds" 2>&1); then
+          if [ "$EVENT" = pull_request ]; then
+            echo "a pull request builds every version, published or not"
+          elif response=$(gh api --include "repos/$REPO/releases/tags/prebuilds" 2>&1); then
             gh release download prebuilds -R "$REPO" -p index.json -D published
             echo "INDEX_ARGS=--index published/index.json" >> "$GITHUB_ENV"
           elif printf '%s\n' "$response" | grep -qE '^HTTP/[0-9.]+ 404 '; then
@@ -107,6 +112,8 @@ jobs:
         run: |
           node prebuilds/build.js --ndk "$NDK_DIR" --nodejs-mobile "$NM_DIR" --nodejs-mobile-version "$NM_VERSION" \
             $INDEX_ARGS --out out $STRICT
+          # For publish to put back if the new index cannot be uploaded; not uploaded itself.
+          if [ -f published/index.json ]; then cp published/index.json out/published-index.json; fi
           ls -l out
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -154,6 +161,17 @@ jobs:
           REPO: ${{ github.repository }}
           COMMIT: ${{ github.sha }}
         run: |
+          # A Release this run creates is deleted again, tag and all, if its first uploads fail:
+          # left without index.json it would stop every later run at the build's index step. An
+          # established Release whose new index fails to upload gets its published one back.
+          created=0
+          failed() {
+            echo "::error::$1"
+            if [ "$created" = 1 ]; then
+              gh release delete prebuilds -R "$REPO" --yes --cleanup-tag || echo "::error::the new prebuilds Release could not be deleted"
+            fi
+            exit 1
+          }
           if ! gh release view prebuilds -R "$REPO" > /dev/null 2>&1; then
             cat > notes.md <<'EOF'
           Native addons for Signal K plugins, built for Android arm64 by the Prebuilds workflow
@@ -164,9 +182,19 @@ jobs:
           EOF
             gh release create prebuilds -R "$REPO" --target "$COMMIT" --title "Native addon prebuilds" \
               --notes-file notes.md --latest=false
+            created=1
           fi
           # The new builds first and the index last, so the index never names a file not yet there.
           shopt -s nullglob
           builds=(out/*.tar.gz)
-          if [ ${#builds[@]} -gt 0 ]; then gh release upload prebuilds -R "$REPO" --clobber "${builds[@]}"; fi
-          gh release upload prebuilds -R "$REPO" --clobber out/index.json
+          if [ ${#builds[@]} -gt 0 ]; then
+            gh release upload prebuilds -R "$REPO" --clobber "${builds[@]}" || failed "the builds could not be uploaded"
+          fi
+          # --clobber deletes the old index before the upload, so a failed upload puts it back.
+          if ! gh release upload prebuilds -R "$REPO" --clobber out/index.json; then
+            if [ -f out/published-index.json ]; then
+              mkdir -p restore && cp out/published-index.json restore/index.json
+              gh release upload prebuilds -R "$REPO" --clobber restore/index.json || echo "::error::the published index could not be put back"
+            fi
+            failed "the new index could not be uploaded"
+          fi

@@ -332,22 +332,25 @@ Problem: no compiler on the phone. Solution: CI builds and a shim.
 
 ### 9.1 CI matrix (GitHub Actions, Linux + NDK r27)
 
-`packages.json`:
+`prebuilds/packages.json`, as it stands:
 
 ```json
-[
-  {"name":"@serialport/bindings-cpp","versions":["12.x","13.x"],"strategy":"prebuildify"},
-  {"name":"better-sqlite3","versions":["11.x","12.x"],"strategy":"node-gyp"},
-  {"name":"sqlite3","versions":["5.x"],"strategy":"node-gyp"},
-  {"name":"bufferutil","versions":["4.x"],"strategy":"prebuildify"},
-  {"name":"utf-8-validate","versions":["6.x"],"strategy":"prebuildify"},
-  {"name":"@abandonware/noble","versions":["1.9.x"],"strategy":"skip","reason":"needs BlueZ"}
-]
+{
+  "keep": 2,
+  "packages": [
+    { "name": "@serialport/bindings-cpp", "versions": ["12.x", "13.x"] },
+    { "name": "better-sqlite3", "versions": ["11.x", "12.x", "13.x"], "gyp": ["--force_build=1"] },
+    { "name": "sqlite3", "versions": ["5.x"] },
+    { "name": "bufferutil", "versions": ["4.x"] },
+    { "name": "utf-8-validate", "versions": ["6.x"] },
+    { "name": "@abandonware/noble", "versions": ["1.9.x"], "skip": "needs BlueZ; the preload's node-ble stand-in serves Bluetooth LE instead" }
+  ]
+}
 ```
 
-Build with nodejs-mobile headers, `--arch arm64 --target_platform android`, output `prebuilds/android-arm64/node.napi.node`. Upload as `pocket-sk-prebuilds` GitHub release assets: `<name>@<version>-android-arm64.tar.gz`.
+`keep` is how many of the newest versions of each range are built; `skip` keeps a package listed with the reason it is not; `gyp` is a package's own gyp variables. To add a package, add its line and run the Prebuilds workflow (a pull request builds it with `--strict`). The builds go to the Release tagged `prebuilds` as `<name>@<version>-android-arm64.tar.gz`, with `index.json`.
 
-**As built** (§16 step 11.1): `prebuilds/packages.json` lists the packages as above, with `keep` (the newest two versions of each range are built) and `skip` in place of `strategy`: every package here builds with node-gyp, prebuildify's included, since prebuildify is node-gyp underneath. `prebuilds/build.js` builds each version with `npm pack`, `npm install --ignore-scripts` for its dependencies, and node-gyp 13.1.0 driven by the NDK's clang for arm64 at API 29, against Node's headers for the version nodejs-mobile's headers name, and linked against nodejs-mobile's `libnode.so` with 16 KB pages allowed (R6). gyp's `OS` stays `linux`: the packages' binding.gyp files know Linux, whose sources build against bionic, and none knows Android. better-sqlite3 13.x (N-API, unlike 11 and 12) is listed too; a package's own gyp variables go in its `gyp` list (`--name=value` only), better-sqlite3's `--force_build=1` because 13's binding.gyp builds nothing on a host it ships a binary for. A node-pre-gyp package (sqlite3 5.1.6) is given the variables its binding.gyp takes from package.json's `binary` (`module_name`, `module_path`, `napi_build_version`), as node-pre-gyp would. Each asset holds `build/Release/<target>.node`, stripped, where `bindings` looks; the shim also puts it under `prebuilds/android-arm64/` for `node-gyp-build`. The assets go to one Release tagged `prebuilds`, never marked latest, with `index.json` (format 1: package, version, platform, arch, ABI, asset, SHA-256, size, files). The ABI is read from the symbol each build defines: `napi` for an N-API module, which loads under every later Node, `node-<NODE_MODULE_VERSION>` for one written against Node's C++ API (better-sqlite3, `node-137` on Node 24), which loads only under that runtime and is asset-named so (`…-android-arm64-node137.tar.gz`). A version in the index is not built again while one of its builds loads under the pinned runtime; a new nodejs-mobile builds the C++ API ones again, beside the old. Only `android-arm64` for now: the phones are arm64, and the 32-bit ABI waits until a phone needs it.
+**As built** (§16 step 11.1): every package here builds with node-gyp, prebuildify's included, since prebuildify is node-gyp underneath, so the list has no per-package strategy. `prebuilds/build.js` builds each version with `npm pack`, `npm install --ignore-scripts` for its dependencies, and node-gyp 13.1.0 driven by the NDK's clang for arm64 at API 29, against Node's headers for the version nodejs-mobile's headers name, and linked against nodejs-mobile's `libnode.so` with 16 KB pages allowed (R6). gyp's `OS` stays `linux`: the packages' binding.gyp files know Linux, whose sources build against bionic, and none knows Android. better-sqlite3 13.x (N-API, unlike 11 and 12) is listed too; a package's own gyp variables go in its `gyp` list (`--name=value` only), better-sqlite3's `--force_build=1` because 13's binding.gyp builds nothing on a host it ships a binary for. A node-pre-gyp package (sqlite3 5.1.6) is given the variables its binding.gyp takes from package.json's `binary` (`module_name`, `module_path`, `napi_build_version`), as node-pre-gyp would. Each asset holds `build/Release/<target>.node`, stripped, where `bindings` looks; the shim also puts it under `prebuilds/android-arm64/` for `node-gyp-build`. The assets go to one Release tagged `prebuilds`, never marked latest, with `index.json` (format 1: package, version, platform, arch, ABI, asset, SHA-256, size, files). The ABI is read from the symbol each build defines: `napi` for an N-API module, which loads under every later Node, `node-<NODE_MODULE_VERSION>` for one written against Node's C++ API (better-sqlite3, `node-137` on Node 24), which loads only under that runtime and is asset-named so (`…-android-arm64-node137.tar.gz`). A version in the index is skipped while one of its builds loads under the pinned runtime; a new nodejs-mobile rebuilds the C++ API ones beside the old. A pull request reads no index and builds every version, so a broken build shows there. A publish that fails puts the published index back, and deletes a Release it had just created, so no Release is left without an index. Only `android-arm64` for now: the phones are arm64, and the 32-bit ABI waits until a phone needs it.
 
 ### 9.2 `gyp-shim` (on device, `files/bin/node-gyp`)
 
