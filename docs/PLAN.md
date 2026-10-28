@@ -40,7 +40,7 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 | How Node runs | A **real executable** (`libnodeexec.so` in `jniLibs/`, exec'd from `nativeLibraryDir`) rather than JNI-embedded | Android forbids exec from writable dirs, but `nativeLibraryDir` is executable. A real `node` binary means `npm`, `child_process`, `process.execPath` and server restarts all work unmodified |
 | Signal K | **Not bundled.** Installed at first run via npm into `files/sk/slots/<A|B>` | Tiny APK, server version independent of app releases, install == upgrade |
 | Upgrades | A/B slots, health-gated promotion, automatic rollback | A failed upgrade on a boat must never brick the hub |
-| Native addons | Prebuilt `android-arm64` / `armeabi-v7a` binaries from our own GitHub Releases, resolved by an npm `node-gyp` shim | No compiler on the phone; prebuild ecosystems have no Android targets |
+| Native addons | Prebuilt `android-arm64` / `armeabi-v7a` binaries from our own GitHub Releases, put in place by the phone's npm after each install (§9.2) | No compiler on the phone; prebuild ecosystems have no Android targets |
 | Hardware I/O | Kotlin bridge exposing USB serial, BT SPP and phone sensors over a Unix domain socket to a small Signal K provider plugin | No `/dev/tty*` without root |
 | UI | Native Compose "Dock" for anything that must work when the server is down; the admin UI and webapps in a browser, the phone's own or any device's on the boat's network (§8.2) | Don't reimplement Signal K's UI, or wrap it: it already works in any browser |
 | Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.8, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
@@ -63,7 +63,7 @@ signalk-server-android/
 │   └── CMakeLists.txt
 ├── runtime-tools/
 │   ├── preload/                     # mdns-lookup.js, node-ble.js: loaded by every node (§4.3, §16 9.5.8)  (present)
-│   ├── gyp-shim/                    # replaces node-gyp on device
+│   ├── npm/                         # npm-launch.js, prebuilds.js: npm on the phone, native addons put in place (§9.2)  (present)
 │   └── bootstrap/                   # first-run install scripts (JS)
 ├── sk-plugin/
 │   └── android-bridge/              # @pocketsk/android-bridge (TS)
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
 ```
 files/
 ├── home/                    # $HOME
-│   ├── .npmrc               # points node-gyp at the shim, cache dir, prefix
+│   ├── .npmrc               # npm's settings; the cache dir and prefix come from the environment
 │   └── .signalk/            # SIGNALK_NODE_CONFIG_DIR (settings, plugins config); its data folders may be links to a card (§16 9.5.9)
 ├── sk/
 │   ├── slots/A/             # npm global prefix: lib/node_modules/signalk-server
@@ -126,15 +126,14 @@ files/
 ├── npm/                     # npm-cli.js + node_modules extracted from assets
 ├── bin/
 │   ├── node -> <nativeLibraryDir>/libnodeexec.so   # symlink, for PATH; re-pointed on every start
-│   ├── npm  -> <nativeLibraryDir>/libnodeexec.so   # the same executable; runs npm-cli.js when started as npm
-│   └── node-gyp             # the shim (§9.2)
-├── runtime/                 # mdns-lookup.js, node-ble.js: the preloads every node loads (§4.3), from the APK's assets
-└── prebuilds/               # downloaded native addon cache
+│   └── npm  -> <nativeLibraryDir>/libnodeexec.so   # the same executable; runs npm-launch.js when started as npm
+├── runtime/                 # mdns-lookup.js, node-ble.js: the preloads every node loads (§4.3); npm-launch.js, prebuilds.js (§9.2); from the APK's assets
+└── prebuilds/               # the native addon builds fetched after installs, and their index
 cache/tmp/                   # $TMPDIR
 no_backup/groups/            # one record per spawned node: its process group's id (§4.1)
 ```
 
-No `bin/npm` wrapper script: an app targeting API 29+ may not `exec()` a file in its own data directory (Android's W^X rule for app data), so a script under `files/` can be run as `sh <file>` but never by name. The app starts npm as `node files/npm/bin/npm-cli.js`. Signal K Server, though, runs `npm` by name: `npm --version` at start (its `/nodeInfo`) and `npm install` in the config directory for every App Store install; with no `npm` on PATH the first logged `npm: inaccessible or not found` on a phone (2026-10-19) and the second would fail every install. So `bin/npm` is a second link to the launcher, which, started under the name `npm`, runs node with `POCKETSK_NPM_CLI` (the unpacked npm-cli.js) in front of its arguments, as npm's wrapper does on a Pi. Checked on a phone (2026-10-19, after §16's npm fix): the log no longer shows the error and App Store installs work. The same rule covers what npm's lifecycle scripts exec by name — `node_modules/.bin/*` (shebang scripts), and the `node-gyp` shim of §9.2 if it is a script — so finding out how much of that npm and Signal K's plugins need is part of R3 (§15).
+No `bin/npm` wrapper script: an app targeting API 29+ may not `exec()` a file in its own data directory (Android's W^X rule for app data), so a script under `files/` can be run as `sh <file>` but never by name. The app starts npm as `node files/npm/bin/npm-cli.js`. Signal K Server, though, runs `npm` by name: `npm --version` at start (its `/nodeInfo`) and `npm install` in the config directory for every App Store install; with no `npm` on PATH the first logged `npm: inaccessible or not found` on a phone (2026-10-19) and the second would fail every install. So `bin/npm` is a second link to the launcher, which, started under the name `npm`, runs node with `POCKETSK_NPM_CLI` in front of its arguments, as npm's wrapper does on a Pi: the unpacked npm-cli.js at first, runtime-tools/npm's `npm-launch.js` since §16 step 11.2, which runs npm-cli.js and puts the native addons' builds in place after an install (§9.2). Checked on a phone (2026-10-19, after §16's npm fix): the log no longer shows the error and App Store installs work. The same rule covers what npm's lifecycle scripts exec by name — `node_modules/.bin/*` (shebang scripts), — so finding out how much of that npm and Signal K's plugins need is part of R3 (§15).
 
 ### 4.3 `NodeRuntime` Kotlin API
 
@@ -328,7 +327,7 @@ When the phone joins a Wi-Fi where another Signal K server is discovered via mDN
 
 ## 9. Native addon prebuilds (`prebuilds/`)
 
-Problem: no compiler on the phone. Solution: CI builds and a shim.
+Problem: no compiler on the phone. Solution: CI builds, and the phone's npm puts them in place.
 
 ### 9.1 CI matrix (GitHub Actions, Linux + NDK r27)
 
@@ -350,20 +349,18 @@ Problem: no compiler on the phone. Solution: CI builds and a shim.
 
 `keep` is how many of the newest versions of each range are built; `skip` keeps a package listed with the reason it is not; `gyp` is a package's own gyp variables. To add a package, add its line and run the Prebuilds workflow (a pull request builds it with `--strict`). The builds go to the Release tagged `prebuilds`, an N-API one as `<name>@<version>-android-arm64.tar.gz` and a C++ API one with its NODE_MODULE_VERSION after it (`<name>@<version>-android-arm64-node137.tar.gz`), both listed in `index.json`.
 
-**As built** (§16 step 11.1): every package here not marked `skip` builds with node-gyp, prebuildify's included, since prebuildify is node-gyp underneath, so the list has no per-package strategy. `prebuilds/build.js` builds each version with `npm pack`, `npm install --ignore-scripts` for its dependencies, and node-gyp 13.1.0 driven by the NDK's clang for arm64 at API 29, against Node's headers for the version nodejs-mobile's headers name, and linked against nodejs-mobile's `libnode.so` with 16 KB pages allowed (R6). gyp's `OS` stays `linux`: the packages' binding.gyp files know Linux, whose sources build against bionic, and none knows Android. better-sqlite3 13.x (N-API, unlike 11 and 12) is listed too; a package's own gyp variables go in its `gyp` list (`--name=value` only), better-sqlite3's `--force_build=1` because 13's binding.gyp builds nothing on a host it ships a binary for. A node-pre-gyp package (sqlite3 5.1.6) is given the variables its binding.gyp takes from package.json's `binary` (`module_name`, `module_path`, `napi_build_version`), as node-pre-gyp would. Each asset holds `build/Release/<target>.node`, stripped, where `bindings` looks; the shim also puts it under `prebuilds/android-arm64/` for `node-gyp-build`. The assets go to one Release tagged `prebuilds`, never marked latest, with `index.json` (format 1: package, version, platform, arch, ABI, asset, SHA-256, size, files). The ABI is read from the symbol each build defines: `napi` for an N-API module, which loads under every later Node, `node-<NODE_MODULE_VERSION>` for one written against Node's C++ API (better-sqlite3, `node-137` on Node 24), which loads only under that runtime and is asset-named so (`…-android-arm64-node137.tar.gz`). A version in the index is skipped while one of its builds loads under the pinned runtime and its asset is still in the Release (an entry whose asset is gone is dropped and built again); a new nodejs-mobile rebuilds the C++ API ones beside the old. A pull request reads no index and builds every version, so a broken build shows there. A publish that fails puts the published index back, and deletes a Release it had just created, so no Release is left without an index. Only `android-arm64` for now: the phones are arm64, and the 32-bit ABI waits until a phone needs it.
+**As built** (§16 step 11.1): every package here not marked `skip` builds with node-gyp, prebuildify's included, since prebuildify is node-gyp underneath, so the list has no per-package strategy. `prebuilds/build.js` builds each version with `npm pack`, `npm install --ignore-scripts` for its dependencies, and node-gyp 13.1.0 driven by the NDK's clang for arm64 at API 29, against Node's headers for the version nodejs-mobile's headers name, and linked against nodejs-mobile's `libnode.so` with 16 KB pages allowed (R6). gyp's `OS` stays `linux`: the packages' binding.gyp files know Linux, whose sources build against bionic, and none knows Android. better-sqlite3 13.x (N-API, unlike 11 and 12) is listed too; a package's own gyp variables go in its `gyp` list (`--name=value` only), better-sqlite3's `--force_build=1` because 13's binding.gyp builds nothing on a host it ships a binary for. A node-pre-gyp package (sqlite3 5.1.6) is given the variables its binding.gyp takes from package.json's `binary` (`module_name`, `module_path`, `napi_build_version`), as node-pre-gyp would. Each asset holds `build/Release/<target>.node`, stripped, where `bindings` looks and where `node-gyp-build` looks before its `prebuilds/` folder. The assets go to one Release tagged `prebuilds`, never marked latest, with `index.json` (format 1: package, version, platform, arch, ABI, asset, SHA-256, size, files). The ABI is read from the symbol each build defines: `napi` for an N-API module, which loads under every later Node, `node-<NODE_MODULE_VERSION>` for one written against Node's C++ API (better-sqlite3, `node-137` on Node 24), which loads only under that runtime and is asset-named so (`…-android-arm64-node137.tar.gz`). A version in the index is skipped while one of its builds loads under the pinned runtime and its asset is still in the Release (an entry whose asset is gone is dropped and built again); a new nodejs-mobile rebuilds the C++ API ones beside the old. A pull request reads no index and builds every version, so a broken build shows there. A publish that fails puts the published index back, and deletes a Release it had just created, so no Release is left without an index. Only `android-arm64` for now: the phones are arm64, and the 32-bit ABI waits until a phone needs it.
 
-### 9.2 `gyp-shim` (on device, `files/bin/node-gyp`)
+### 9.2 Putting the builds in place (on device, `runtime-tools/npm`)
 
-A Node script that npm invokes instead of node-gyp when a package has no matching prebuild:
+The plan was a node-gyp shim, `files/bin/node-gyp` wired in with `.npmrc`. It would never run for a plugin: Signal K's App Store installs with `npm install --save --ignore-scripts` (signalk-server 2.35.1, `modules.js`), so npm calls no node-gyp, and better-sqlite3 13 has no install script at all. So the builds are put in place after npm instead (the owner's choice, 2026-10-28):
 
-1. Read `package.json` name/version from cwd.
-2. Try `files/prebuilds/` cache, then fetch from the release index (`index.json`, cached 24 h).
-3. Extract into `build/Release/` and `prebuilds/<platform>-<arch>/` so both `bindings` and `node-gyp-build` resolution succeed.
-4. If nothing found: exit non-zero with a readable message. npm marks optional deps as skipped; for hard deps the plugin install fails visibly and the Dock shows *"needs a native build we don't ship yet — request it"* with a one-tap GitHub issue link containing name/version.
+1. Every npm on the phone runs `files/runtime/npm-launch.js`: the one Signal K runs by name (`files/bin/npm`, §4.2) and the app's own (`NodeRuntime.npm`: the server's install, the Dock's restore). A command that installs nothing (`npm --version` at every start, `npm view`) runs npm-cli.js in the same process; an install-like one (install, ci, update, rebuild and their aliases) runs it as a child, and once it has succeeded `prebuilds.js` walks the tree it installed into: `<prefix>/lib/node_modules` for `-g`, else `<prefix or cwd>/node_modules`.
+2. Each package there with a `binding.gyp` and no addon of its own (none in `build/Release`, none in `prebuilds/android-arm64`) is looked up in the `prebuilds` Release's `index.json` (§9.1): this platform, this runtime's ABI (`napi`, or `node-<process.versions.modules>`), an N-API build first. The index is fetched once per install and kept in `files/prebuilds`, the kept copy used when the network is not there.
+3. The tarball comes from `files/prebuilds` or the Release, its SHA-256 checked against the index before a byte is unpacked, and kept. Only the files the index lists, all of them `build/Release/<name>.node`, are taken out, each written beside its place and renamed in. A marker in `build/Release` names the asset (pending until the last file is in), so a later run knows the build is its own: it is left alone while the index still names it and replaced when the index names another (a C++ API build for a new runtime). An addon the package brought or built itself is never touched.
+4. npm's output and exit status are the install's; what was put in place goes to stdout and what was not to stderr (no build for this phone yet, a failed download), which the App Store's log shows. A plugin whose addon is missing fails when it loads, as it would without this.
 
-Wire it with `.npmrc`: `node_gyp=<files>/bin/node-gyp`.
-
-Because N-API is ABI-stable, prebuilds survive Node runtime bumps.
+The index's checks mirror `prebuilds/lib.js`'s, so a build is fetched only on the word of a well-formed entry, and an asset name cannot leave the cache directory. Because N-API is ABI-stable, most builds survive Node runtime bumps; a C++ API one (better-sqlite3 11 and 12) is replaced at the next install after the index has the new runtime's build.
 
 ## 10. App self-update and release pipeline
 
@@ -385,7 +382,7 @@ Because N-API is ABI-stable, prebuilds survive Node runtime bumps.
 
 1. **GitHub Releases** (signed APK + self-updater) from day one.
 2. **F-Droid** via the main repo (requires reproducible build of nodejs-mobile or shipping it as a documented binary blob — check F-Droid's policy; `IzzyOnDroid` as fallback, it accepts prebuilt binaries).
-3. **Play Store**: attempt after 1.0. Risks: policy on downloaded executable code (JS plugins — argue interpreter content; native `.node` prebuilds are the hard part). Possible Play-only variant that disables the native-addon shim and ships a curated prebuild set inside the APK.
+3. **Play Store**: attempt after 1.0. Risks: policy on downloaded executable code (JS plugins — argue interpreter content; native `.node` prebuilds are the hard part). Possible Play-only variant that fetches no native addons (§9.2) and ships a curated prebuild set inside the APK.
 
 ## 13. Milestones
 
@@ -586,17 +583,25 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **Passage dims through the overlay.** An app can set its own windows' brightness, not the phone's; the overlay over every app is the one window that reaches the browser and its webapps.
        - **To check on a device:** Battery saver stops the attitude, barometer and cellular readings in the server's data browser and keeps the position and the battery, at one fix a second; the plugin's Bluetooth LE devices stop showing; Harbor brings them back without a restart; Passage dims the screen over the browser, and the card asks for the overlay permission while it is missing.
 11. M6 Prebuilds (§13: §9), in parts, one each. Chosen by the owner as the next milestone (2026-10-27).
-    1. The prebuild workflow (§9.1) **in review** (`prebuilds/`, `.github/workflows/prebuilds.yml`; `lib.js` pure and tested):
+    1. The prebuild workflow (§9.1) **Done** (#43; the first run on main, 2026-10-28, published sixteen builds and `index.json` to the `prebuilds` Release) (`prebuilds/`, `.github/workflows/prebuilds.yml`; `lib.js` pure and tested):
        - **What it does.** Builds the native addons of `prebuilds/packages.json` for Android arm64 on GitHub's runners and publishes them, with `index.json`, as assets of the Release tagged `prebuilds`. It runs when the list, the script or the pinned runtime changes, weekly for the packages' new releases, and by hand. On a pull request it only builds, and a package that does not build fails the check.
        - **How it is kept apart.** As in `build.yml`: `build` runs code from the registry (gyp may run a package's actions), so it has a read-only token and nothing else; `attest` signs provenance for its files; `publish` holds the only write token, without a checkout, and uploads the builds before the index, so the index never names a file not yet there.
        - **Decisions (not made by the plan).**
          - **Linked against `libnode.so`.** R2 has not been run on a phone yet. An addon linked so loads whether or not the unlinked kind does, since `libnode.so` is already in the process that loads it, and it is how nodejs-mobile builds addons for Android itself.
          - **The newest two versions of each range.** The newest is what an App Store install resolves a plugin's range to; the one before covers a plugin pinned a release behind. The index keeps every version built before, so the list only grows.
-         - **One Release, not one per run.** The shim needs one index to read and one place to fetch from; a Release per run would make it search.
+         - **One Release, not one per run.** The phone needs one index to read and one place to fetch from; a Release per run would make it search.
          - **A build that fails does not stop the others** on main and on the weekly run, where a package's new release could otherwise hold back every other; it is a warning there and an error on a pull request.
        - **Tried before review** (2026-10-27, the same NDK r27d and nodejs-mobile 24.20.0-0, Node 22 running node-gyp): all fourteen of the list's versions built, each an AArch64 shared object with 16 KB-aligned segments, needing `libnode.so` and `libc++_shared.so`, both in the APK; a second run with that index built nothing again.
-       - **To check on a device:** with part 2's shim, an App Store plugin that needs serialport or better-sqlite3 installs and loads its addon.
-    2. The node-gyp shim (§9.2): `files/bin/node-gyp`, `.npmrc`, the Dock's message for a build not shipped. Not every package calls node-gyp at install: better-sqlite3 13 has no install script and `"gypfile": false`, ships binaries for Linux, macOS and Windows, and on any other platform loads `build/Release/better_sqlite3.node`; so the shim alone does not cover it, and the builds are also put in place after npm installs, for each package the index has that the install left without its addon. Each entry's ABI is matched to the phone's `process.versions.modules`.
+       - **To check on a device:** with part 2, an App Store plugin that needs serialport or better-sqlite3 installs and loads its addon.
+    2. Putting the builds in place on the phone (§9.2) **in review** (`runtime-tools/npm`: `npm-launch.js`, `prebuilds.js`, tested with `node --test` in runtime-tools; `NodeRuntime` runs every npm through it):
+       - **Decision (by the owner, 2026-10-28): after npm, not a node-gyp shim.** Signal K's App Store installs with `--ignore-scripts`, so a shim would never run for a plugin; nothing is exec'd by name either, so the W^X question of §15 does not arise for addons.
+       - **Decisions (not made by the plan).**
+         - **`build/Release` only.** Both `bindings` and `node-gyp-build` look there first, so a second copy in `prebuilds/android-arm64` would only double the space.
+         - **The index fetched at every install that needs a build**, not cached for a day: it is 6 KB, and a build published since the last install should be found; the kept copy covers being offline.
+         - **npm's result stands.** A build that cannot be put in place is reported, not turned into a failed install: the package is installed, and the Dock's message for it (the plan's "request it" link) waits for a later step.
+         - **Installs from before this step** get their builds at the next install in that tree (any plugin's), not at the server's start, which would put the network on every start's path.
+       - **Tried before review** (2026-10-28, desktop Node 22 and npm 10): `npm-launch.js` ran `npm --version` in its own process and an install of bufferutil 4.1.0 and better-sqlite3 12.11.1 as a child; `prebuilds.place` with the phone's platform then put both builds in place from the real Release, AArch64 shared objects, and a second run fetched only the index.
+       - **To check on a device:** an App Store install of a plugin that needs serialport or better-sqlite3 logs the build put in place, and the plugin loads its addon after a restart; `npm --version` at the server's start still answers.
 
 ## 17. Reuse from Crew Radio
 
