@@ -97,6 +97,16 @@ jobs:
             echo "a pull request builds every version, published or not"
           elif response=$(gh api --include "repos/$REPO/releases/tags/prebuilds" 2>&1); then
             gh release download prebuilds -R "$REPO" -p index.json -D published
+            # An entry whose asset is no longer in the Release (deleted by hand) is dropped, so
+            # its version is built again rather than kept in an index that names a missing file.
+            gh release view prebuilds -R "$REPO" --json assets --jq '[.assets[].name]' > published/assets.json
+            jq --slurpfile names published/assets.json \
+              'if (.entries | type) == "array" then .entries |= map(select(.file as $f | any($names[0][]; . == $f))) else . end' \
+              published/index.json > published/checked.json
+            jq -r --slurpfile names published/assets.json \
+              '(.entries // [])[]? | select(.file as $f | any($names[0][]; . == $f) | not) | "::warning::\(.file) is in the index but not in the Release: building it again"' \
+              published/index.json
+            mv published/checked.json published/index.json
             echo "INDEX_ARGS=--index published/index.json" >> "$GITHUB_ENV"
           elif printf '%s\n' "$response" | grep -qE '^HTTP/[0-9.]+ 404 '; then
             echo "no prebuilds Release yet: starting an empty index"
