@@ -1,0 +1,213 @@
+name: Prebuilds
+
+# The native addons Signal K's plugins need, built for Android (docs/PLAN.md §9.1): the phone has
+# no compiler and npm finds no Android build of them anywhere, so this workflow makes them and
+# the phone's node-gyp shim (§9.2) fetches them. prebuilds/packages.json lists the packages;
+# prebuilds/build.js builds the newest versions of each range that the published index lacks,
+# with the NDK the app is built with, linked against the nodejs-mobile release the app ships.
+#
+# The builds are assets of one GitHub Release, tagged `prebuilds` and never marked latest, so the
+# app's own releases (v<version>, build.yml) stay the latest: <package>@<version>-android-arm64.tar.gz
+# and index.json, which lists them with their SHA-256. The shim checks that sum before it unpacks
+# a byte, and every asset carries a build provenance attestation.
+#
+# Jobs split as in build.yml. `build` runs code from the registry (each package's binding.gyp,
+# which gyp may run commands from), so it holds a read-only token and nothing else. `attest`
+# signs provenance for what `build` produced. `publish` holds the only write token, with no
+# checkout and no project code: it uploads the files and the index with `gh`. On a pull request
+# only `build` runs, strictly: a package that does not build fails the check.
+#
+# Runs when the list, the script or the pinned runtime changes, once a week for the packages'
+# new releases, and by hand.
+
+on:
+  push:
+    branches: [main]
+    paths: ["prebuilds/**", ".github/workflows/prebuilds.yml", "gradle.properties"]
+  pull_request:
+    paths: ["prebuilds/**", ".github/workflows/prebuilds.yml", "gradle.properties"]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Two runs on main would both read the same index and the second would drop the first's builds.
+  group: prebuilds-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # sdkmanager, which installs the NDK, wants a JDK 17.
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prebuild script's tests
+        working-directory: prebuilds
+        run: node --test test/*.test.js
+
+      # The NDK and the nodejs-mobile release the app is built with, both read from
+      # gradle.properties so they move together; the zip is checked against its pinned SHA-256
+      # before anything is unpacked, as node-runtime checks it.
+      - name: NDK and nodejs-mobile
+        run: |
+          prop() { grep -E "^$1=" gradle.properties | cut -d= -f2-; }
+          NDK_VERSION=$(prop nodejsMobile.ndk)
+          NM_VERSION=$(prop nodejsMobile.version)
+          NM_SHA256=$(prop nodejsMobile.sha256)
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          # `yes` ends on SIGPIPE when sdkmanager stops reading, which pipefail would count.
+          { yes || true; } | "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          ZIP="$RUNNER_TEMP/nodejs-mobile-android-$NM_VERSION.zip"
+          curl -fsSL -o "$ZIP" "https://github.com/digidem/nodejs-mobile/releases/download/v$NM_VERSION/nodejs-mobile-android-$NM_VERSION.zip"
+          echo "$NM_SHA256  $ZIP" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/nodejs-mobile"
+          unzip -q "$ZIP" 'include/*' 'bin/arm64-v8a/libnode.so' -d "$RUNNER_TEMP/nodejs-mobile"
+          {
+            echo "NDK_DIR=$SDK/ndk/$NDK_VERSION"
+            echo "NM_DIR=$RUNNER_TEMP/nodejs-mobile"
+            echo "NM_VERSION=$NM_VERSION"
+          } >> "$GITHUB_ENV"
+
+      # The index already published, so versions built before are not built again and stay
+      # listed. Only a release that is not there (404, the first run) starts an empty index: any
+      # other failure stops the run, or `publish` would replace the index with this run's alone.
+      # A pull request reads none and builds every version, so a change that breaks a build is
+      # caught there even for versions the Release already has.
+      - name: Published index
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          mkdir -p published
+          if [ "$EVENT" = pull_request ]; then
+            echo "a pull request builds every version, published or not"
+          elif response=$(gh api --include "repos/$REPO/releases/tags/prebuilds" 2>&1); then
+            gh release download prebuilds -R "$REPO" -p index.json -D published
+            # An entry whose asset is no longer in the Release (deleted by hand) is dropped, so
+            # its version is built again rather than kept in an index that names a missing file.
+            # Anything else is passed on as it is, for build.js to refuse a malformed index.
+            gh release view prebuilds -R "$REPO" --json assets --jq '[.assets[].name]' > published/assets.json
+            jq --slurpfile names published/assets.json \
+              'def gone: type == "object" and (.file | type) == "string" and (.file as $f | any($names[0][]; . == $f) | not);
+               if (.entries | type) == "array" then .entries |= map(select(gone | not)) else . end' \
+              published/index.json > published/checked.json
+            jq -r --slurpfile names published/assets.json \
+              'def gone: type == "object" and (.file | type) == "string" and (.file as $f | any($names[0][]; . == $f) | not);
+               if (.entries | type) == "array" then .entries[] | select(gone) | "::warning::\(.file) is in the index but not in the Release: building it again" else empty end' \
+              published/index.json
+            mv published/checked.json published/index.json
+            echo "INDEX_ARGS=--index published/index.json" >> "$GITHUB_ENV"
+          elif printf '%s\n' "$response" | grep -qE '^HTTP/[0-9.]+ 404 '; then
+            echo "no prebuilds Release yet: starting an empty index"
+          else
+            printf '%s\n' "$response" >&2
+            echo "::error::the prebuilds Release could not be read"
+            exit 1
+          fi
+
+      - name: Build
+        env:
+          STRICT: ${{ github.event_name == 'pull_request' && '--strict' || '' }}
+        run: |
+          node prebuilds/build.js --ndk "$NDK_DIR" --nodejs-mobile "$NM_DIR" --nodejs-mobile-version "$NM_VERSION" \
+            $INDEX_ARGS --out out $STRICT
+          # For publish to put back if the new index cannot be uploaded; not uploaded itself.
+          if [ -f published/index.json ]; then cp published/index.json out/published-index.json; fi
+          ls -l out
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prebuilds
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
+
+  attest:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write        # build provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prebuilds
+          path: out
+
+      - name: Build provenance attestation
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: out/*
+
+  # The only job with a write token: no checkout, nothing from the repository runs here.
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # the `prebuilds` Release and its assets
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prebuilds
+          path: out
+
+      - name: Upload to the prebuilds Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          # A Release this run creates is deleted again, tag and all, if its first uploads fail:
+          # left without index.json it would stop every later run at the build's index step. An
+          # established Release whose new index fails to upload gets its published one back.
+          created=0
+          failed() {
+            echo "::error::$1"
+            if [ "$created" = 1 ]; then
+              gh release delete prebuilds -R "$REPO" --yes --cleanup-tag || echo "::error::the new prebuilds Release could not be deleted"
+            fi
+            exit 1
+          }
+          if ! gh release view prebuilds -R "$REPO" > /dev/null 2>&1; then
+            cat > notes.md <<'EOF'
+          Native addons for Signal K plugins, built for Android arm64 by the Prebuilds workflow
+          (docs/PLAN.md §9). Pocket SK's node-gyp shim fetches them during an App Store install;
+          they are not meant to be downloaded by hand. index.json lists every build with its
+          SHA-256, and each file here carries a signed provenance attestation
+          (`gh attestation verify <file> --repo KEGustafsson/signalk-server-android`).
+          EOF
+            gh release create prebuilds -R "$REPO" --target "$COMMIT" --title "Native addon prebuilds" \
+              --notes-file notes.md --latest=false
+            created=1
+          fi
+          # The new builds first and the index last, so the index never names a file not yet there.
+          shopt -s nullglob
+          builds=(out/*.tar.gz)
+          if [ ${#builds[@]} -gt 0 ]; then
+            gh release upload prebuilds -R "$REPO" --clobber "${builds[@]}" || failed "the builds could not be uploaded"
+          fi
+          # --clobber deletes the old index before the upload, so a failed upload puts it back.
+          if ! gh release upload prebuilds -R "$REPO" --clobber out/index.json; then
+            if [ -f out/published-index.json ]; then
+              mkdir -p restore && cp out/published-index.json restore/index.json
+              gh release upload prebuilds -R "$REPO" --clobber restore/index.json || echo "::error::the published index could not be put back"
+            fi
+            failed "the new index could not be uploaded"
+          fi

@@ -38,6 +38,13 @@ pipeline and several files were lifted (PLAN §17).
   `SIGNALK_ANDROID_CERT_SHA256` variable, attests; `publish` holds the only write token and does
   nothing but `gh release create v<version>` with `SignalKServer-<version>.apk` (universal),
   `SignalKServer-<version>-arm64-v8a.apk`, their `.sha256` files and the CycloneDX SBOM. Without the keystore `assembleRelease` falls back to the debug key.
+- Native addon prebuilds (PLAN §9.1): `.github/workflows/prebuilds.yml` runs `prebuilds/build.js`
+  over `prebuilds/packages.json` with the NDK and nodejs-mobile of `gradle.properties`, on a change
+  to either, weekly and by hand. The same three-job split: `build` (read-only; it runs the
+  packages' binding.gyp), `attest`, and `publish`, which uploads to the Release tagged `prebuilds`
+  (never latest) the builds and `index.json`, the list the phone's shim reads. On a pull request
+  only `build` runs, with `--strict`. The script's own tests: `node --test test/*.test.js` in
+  `prebuilds`.
 - Unit tests (JUnit 4, pure Kotlin, no Android runtime): `./gradlew testDebugUnitTest`. Anything
   that touches the runtime, the service or the bridge is tested on a device; the emulator has no
   USB host, no Bluetooth and a different SELinux policy for exec. The bridge plugin's tests:
@@ -118,9 +125,12 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      lib/ble.js parses the app's Bluetooth LE advertisements for the server's BLE
                      API (as a provider) and node-ble.js's hub; lib/files.js and public/index.html
                      (a webapp) upload files, charts above all, into the server's data folders
+prebuilds/           packages.json (the addons built for Android), build.js (npm pack, node-gyp with
+                     the NDK, linked against libnode.so, packed for the Release) and lib.js (its
+                     pure part, tested); plain CommonJS, no dependencies, run by prebuilds.yml
 docs/PLAN.md         the plan; keep it current when a decision changes
 ```
-Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap, `prebuilds/`.
+Planned, not yet present (PLAN §2): `runtime-tools/` gyp-shim and bootstrap.
 
 ## Rules of the house
 - Threading: nothing blocking on the main thread. Worker loops use `transportThread` and report

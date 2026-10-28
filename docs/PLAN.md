@@ -332,20 +332,25 @@ Problem: no compiler on the phone. Solution: CI builds and a shim.
 
 ### 9.1 CI matrix (GitHub Actions, Linux + NDK r27)
 
-`packages.json`:
+`prebuilds/packages.json`, as it stands:
 
 ```json
-[
-  {"name":"@serialport/bindings-cpp","versions":["12.x","13.x"],"strategy":"prebuildify"},
-  {"name":"better-sqlite3","versions":["11.x","12.x"],"strategy":"node-gyp"},
-  {"name":"sqlite3","versions":["5.x"],"strategy":"node-gyp"},
-  {"name":"bufferutil","versions":["4.x"],"strategy":"prebuildify"},
-  {"name":"utf-8-validate","versions":["6.x"],"strategy":"prebuildify"},
-  {"name":"@abandonware/noble","versions":["1.9.x"],"strategy":"skip","reason":"needs BlueZ"}
-]
+{
+  "keep": 2,
+  "packages": [
+    { "name": "@serialport/bindings-cpp", "versions": ["12.x", "13.x"] },
+    { "name": "better-sqlite3", "versions": ["11.x", "12.x", "13.x"], "gyp": ["--force_build=1"] },
+    { "name": "sqlite3", "versions": ["5.x"] },
+    { "name": "bufferutil", "versions": ["4.x"] },
+    { "name": "utf-8-validate", "versions": ["6.x"] },
+    { "name": "@abandonware/noble", "versions": ["1.9.x"], "skip": "needs BlueZ; the preload's node-ble stand-in serves Bluetooth LE instead" }
+  ]
+}
 ```
 
-Build with nodejs-mobile headers, `--arch arm64 --target_platform android`, output `prebuilds/android-arm64/node.napi.node`. Upload as `pocket-sk-prebuilds` GitHub release assets: `<name>@<version>-android-arm64.tar.gz`.
+`keep` is how many of the newest versions of each range are built; `skip` keeps a package listed with the reason it is not; `gyp` is a package's own gyp variables. To add a package, add its line and run the Prebuilds workflow (a pull request builds it with `--strict`). The builds go to the Release tagged `prebuilds`, an N-API one as `<name>@<version>-android-arm64.tar.gz` and a C++ API one with its NODE_MODULE_VERSION after it (`<name>@<version>-android-arm64-node137.tar.gz`), both listed in `index.json`.
+
+**As built** (§16 step 11.1): every package here not marked `skip` builds with node-gyp, prebuildify's included, since prebuildify is node-gyp underneath, so the list has no per-package strategy. `prebuilds/build.js` builds each version with `npm pack`, `npm install --ignore-scripts` for its dependencies, and node-gyp 13.1.0 driven by the NDK's clang for arm64 at API 29, against Node's headers for the version nodejs-mobile's headers name, and linked against nodejs-mobile's `libnode.so` with 16 KB pages allowed (R6). gyp's `OS` stays `linux`: the packages' binding.gyp files know Linux, whose sources build against bionic, and none knows Android. better-sqlite3 13.x (N-API, unlike 11 and 12) is listed too; a package's own gyp variables go in its `gyp` list (`--name=value` only), better-sqlite3's `--force_build=1` because 13's binding.gyp builds nothing on a host it ships a binary for. A node-pre-gyp package (sqlite3 5.1.6) is given the variables its binding.gyp takes from package.json's `binary` (`module_name`, `module_path`, `napi_build_version`), as node-pre-gyp would. Each asset holds `build/Release/<target>.node`, stripped, where `bindings` looks; the shim also puts it under `prebuilds/android-arm64/` for `node-gyp-build`. The assets go to one Release tagged `prebuilds`, never marked latest, with `index.json` (format 1: package, version, platform, arch, ABI, asset, SHA-256, size, files). The ABI is read from the symbol each build defines: `napi` for an N-API module, which loads under every later Node, `node-<NODE_MODULE_VERSION>` for one written against Node's C++ API (better-sqlite3, `node-137` on Node 24), which loads only under that runtime and is asset-named so (`…-android-arm64-node137.tar.gz`). A version in the index is skipped while one of its builds loads under the pinned runtime and its asset is still in the Release (an entry whose asset is gone is dropped and built again); a new nodejs-mobile rebuilds the C++ API ones beside the old. A pull request reads no index and builds every version, so a broken build shows there. A publish that fails puts the published index back, and deletes a Release it had just created, so no Release is left without an index. Only `android-arm64` for now: the phones are arm64, and the 32-bit ABI waits until a phone needs it.
 
 ### 9.2 `gyp-shim` (on device, `files/bin/node-gyp`)
 
@@ -580,6 +585,19 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **Serial instruments carry on in every profile.** USB and Bluetooth serial devices are the boat's instruments, and their data is what the server is for.
          - **Passage dims through the overlay.** An app can set its own windows' brightness, not the phone's; the overlay over every app is the one window that reaches the browser and its webapps.
        - **To check on a device:** Battery saver stops the attitude, barometer and cellular readings in the server's data browser and keeps the position and the battery, at one fix a second; the plugin's Bluetooth LE devices stop showing; Harbor brings them back without a restart; Passage dims the screen over the browser, and the card asks for the overlay permission while it is missing.
+11. M6 Prebuilds (§13: §9), in parts, one each. Chosen by the owner as the next milestone (2026-10-27).
+    1. The prebuild workflow (§9.1) **in review** (`prebuilds/`, `.github/workflows/prebuilds.yml`; `lib.js` pure and tested):
+       - **What it does.** Builds the native addons of `prebuilds/packages.json` for Android arm64 on GitHub's runners and publishes them, with `index.json`, as assets of the Release tagged `prebuilds`. It runs when the list, the script or the pinned runtime changes, weekly for the packages' new releases, and by hand. On a pull request it only builds, and a package that does not build fails the check.
+       - **How it is kept apart.** As in `build.yml`: `build` runs code from the registry (gyp may run a package's actions), so it has a read-only token and nothing else; `attest` signs provenance for its files; `publish` holds the only write token, without a checkout, and uploads the builds before the index, so the index never names a file not yet there.
+       - **Decisions (not made by the plan).**
+         - **Linked against `libnode.so`.** R2 has not been run on a phone yet. An addon linked so loads whether or not the unlinked kind does, since `libnode.so` is already in the process that loads it, and it is how nodejs-mobile builds addons for Android itself.
+         - **The newest two versions of each range.** The newest is what an App Store install resolves a plugin's range to; the one before covers a plugin pinned a release behind. The index keeps every version built before, so the list only grows.
+         - **One Release, not one per run.** The shim needs one index to read and one place to fetch from; a Release per run would make it search.
+         - **A build that fails does not stop the others** on main and on the weekly run, where a package's new release could otherwise hold back every other; it is a warning there and an error on a pull request.
+       - **Tried before review** (2026-10-27, the same NDK r27d and nodejs-mobile 24.20.0-0, Node 22 running node-gyp): all fourteen of the list's versions built, each an AArch64 shared object with 16 KB-aligned segments, needing `libnode.so` and `libc++_shared.so`, both in the APK; a second run with that index built nothing again.
+       - **To check on a device:** with part 2's shim, an App Store plugin that needs serialport or better-sqlite3 installs and loads its addon.
+    2. The node-gyp shim (§9.2): `files/bin/node-gyp`, `.npmrc`, the Dock's message for a build not shipped. Not every package calls node-gyp at install: better-sqlite3 13 has no install script and `"gypfile": false`, ships binaries for Linux, macOS and Windows, and on any other platform loads `build/Release/better_sqlite3.node`; so the shim alone does not cover it, and the builds are also put in place after npm installs, for each package the index has that the install left without its addon. Each entry's ABI is matched to the phone's `process.versions.modules`.
+
 ## 17. Reuse from Crew Radio
 
 Crew Radio (`app/src/main/java/fi/crewradio`, ~13.7 k lines, EUPL-1.2, pure Kotlin on AndroidX with no third-party libraries) already solved most of the "keep a network thing alive on an Android phone" problems. Copy, don't depend: the two apps should not share a library yet. Keep the file-level doc comments; they are the reasoning.
