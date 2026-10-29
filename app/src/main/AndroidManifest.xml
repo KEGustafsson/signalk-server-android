@@ -58,6 +58,12 @@
          system's settings, which the Dock's Helm screen card opens. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- The app's own update (update.AppUpdater, docs/PLAN.md §10): the APK of a newer release,
+         checked, handed to Android's installer, which asks the owner. Android asks once too
+         whether the app may install apps at all; the Dock opens that setting. Not used on an
+         install a store keeps current (F-Droid, Play). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.wifi" android:required="false" />
@@ -169,6 +175,12 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- What Android's installer says of the app's own update (update.UpdateReceiver),
+             through the PendingIntent the app gives it; not exported. -->
+        <receiver
+            android:name=".update.UpdateReceiver"
+            android:exported="false" />
 
         <!-- The boat widget (widget.BoatWidget): depth, speed over ground and the apparent wind on
              the home screen. Not exported: the system delivers a widget's own broadcasts to it all

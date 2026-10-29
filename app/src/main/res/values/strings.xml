@@ -107,6 +107,22 @@
         <item quantity="other">and %d older releases</item>
     </plurals>
     <string name="dock_notes_github">All release notes on GitHub</string>
+    <!-- The app's own update (update.AppUpdater). -->
+    <string name="dock_app_update_title">App update</string>
+    <string name="dock_app_installed">This app: %1$s</string>
+    <string name="dock_app_up_to_date">The app is up to date</string>
+    <string name="dock_app_update">Update the app to %1$s</string>
+    <string name="dock_app_whats_new">What\'s new</string>
+    <string name="dock_app_allow">Android asks once to allow installs from this app; press Update again after allowing it.</string>
+    <string name="dock_app_downloading">Downloading %1$s…</string>
+    <string name="dock_app_installing">Android\'s installer has %1$s: confirm there. The server starts again after the update if it was running.</string>
+    <string name="dock_app_failed">The app could not be updated: %1$s</string>
+    <string name="dock_app_refused_checksum">%1$s was not installed: the download does not match the checksum its release publishes.</string>
+    <string name="dock_app_refused_unreadable">%1$s was not installed: Android could not read the download as an app.</string>
+    <string name="dock_app_refused_other_app">%1$s was not installed: the download is another app.</string>
+    <string name="dock_app_refused_not_newer">%1$s was not installed: the download is not newer than this build.</string>
+    <string name="dock_app_refused_other_signer">%1$s was not installed: it is signed by another key than this app.</string>
+    <string name="dock_app_checks">Look for a newer app every day</string>
     <string name="dock_rollback_reason">by hand, from the Dock</string>
     <string name="dock_history">History</string>
     <string name="dock_history_line">%1$s  %2$s  %3$s  slot %4$s</string>

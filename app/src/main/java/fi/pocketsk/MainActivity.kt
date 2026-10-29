@@ -4,6 +4,7 @@ import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -69,6 +70,7 @@ import fi.pocketsk.ui.PocketTheme
 import fi.pocketsk.ui.SetupScreen
 import fi.pocketsk.ui.SlotsView
 import fi.pocketsk.ui.StorageView
+import fi.pocketsk.update.AppUpdater
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -148,6 +150,16 @@ class MainActivity : ComponentActivity() {
         // A move under way or just done changes what is free where. Not on every publish of the same
         // state: a starting server's every log line comes here.
         if (state is ServerState.Storage || state::class != before::class || state.isActive != wasActive) refreshStorage()
+    }
+
+    /** Whether this install updates itself: not where a store that keeps it current installed it. */
+    private val selfUpdates by lazy { AppUpdater.selfUpdates(this) }
+
+    private val appUpdateObserver = AppUpdater.Observer { state ->
+        runOnUiThread {
+            model.app = state
+            showInstallConfirmation()
+        }
     }
 
     private val installObserver = InstallJob.Observer { state, running ->
@@ -262,6 +274,8 @@ class MainActivity : ComponentActivity() {
         )
         InstallJob.observe(installObserver)
         BackupJob.observe(backupObserver)
+        model.appChecks = prefs.appUpdateChecks
+        if (selfUpdates) AppUpdater.observe(appUpdateObserver)
         refreshSlots()
         refreshStorage()
         if (savedInstanceState == null) handle(intent)
@@ -281,6 +295,8 @@ class MainActivity : ComponentActivity() {
         refreshStorage()
         // A webapp installed from the admin UI's App Store while the browser was in front.
         refreshWebapps()
+        // Back from the setting that lets the app install apps, or a day since the last look.
+        refreshAppUpdate()
         // With the app in front a running server may take location, which it could not when it
         // was started at boot; or it must give it up, taken back in the settings.
         SignalKService.permissionsChanged(this)
@@ -315,6 +331,7 @@ class MainActivity : ComponentActivity() {
         ServerStatus.detach(serverObserver)
         InstallJob.detach(installObserver)
         BackupJob.detach(backupObserver)
+        AppUpdater.detach(appUpdateObserver)
         super.onDestroy()
     }
 
@@ -401,6 +418,9 @@ class MainActivity : ComponentActivity() {
         override fun loadVersions(refresh: Boolean) = this@MainActivity.loadVersions(refresh)
         override fun loadNotes() = this@MainActivity.loadNotes()
         override fun openReleases() = this@MainActivity.openReleases()
+        override fun updateApp() = this@MainActivity.updateApp()
+        override fun openAppRelease() = this@MainActivity.openAppRelease()
+        override fun setAppChecks(on: Boolean) = this@MainActivity.setAppChecks(on)
         override fun install(source: InstallManager.Source) = this@MainActivity.install(source)
         override fun pickTarball() = this@MainActivity.pickTarball()
         override fun rollBack() = this@MainActivity.rollBack()
@@ -517,9 +537,11 @@ class MainActivity : ComponentActivity() {
         if (!refresh && model.available is Available.Loaded) return
         model.available = Available.Loading
         if (refresh) {
-            // Asked again: the notes too, for a release published since they were read.
+            // Asked again: the notes too, for a release published since they were read, and the
+            // app's own release.
             notesRefresh = true
             if (model.notes !is Notes.Loading) model.notes = Notes.Unknown
+            if (selfUpdates) AppUpdater.check(this, maxAgeMs = 0)
         }
         transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed("$e") } }) {
             val result = try {
@@ -557,6 +579,68 @@ class MainActivity : ComponentActivity() {
      */
     private fun notesRead(result: Notes) {
         model.notes = if (notesRefresh) Notes.Unknown else result
+    }
+
+    /**
+     * Whether the app may install apps, and a look for its own newer build once a day while the
+     * owner leaves the daily look on and nothing newer is on offer already.
+     */
+    private fun refreshAppUpdate() {
+        model.appInstallsAllowed = packageManager.canRequestPackageInstalls()
+        showInstallConfirmation()
+        if (!selfUpdates || !prefs.appUpdateChecks) return
+        val state = AppUpdater.state
+        val looked = state == AppUpdater.State.Idle || state == AppUpdater.State.UpToDate ||
+            (state is AppUpdater.State.Failed && state.release == null)
+        if (looked) AppUpdater.check(this, AppUpdater.CHECK_MAX_AGE_MS)
+    }
+
+    /** Android's confirmation of the app's update, once, while this screen is in front to start it. */
+    private fun showInstallConfirmation() {
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        val confirm = AppUpdater.takeConfirmation() ?: return
+        try {
+            startActivity(confirm)
+        } catch (e: ActivityNotFoundException) {
+            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, "$e")
+        }
+    }
+
+    /**
+     * The app's newer build to Android's installer; while Android does not let the app install
+     * apps, the setting that allows it first, after which the owner presses Update again.
+     */
+    private fun updateApp() {
+        if (!packageManager.canRequestPackageInstalls()) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.fromParts("package", packageName, null)))
+            } catch (_: ActivityNotFoundException) {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+            }
+            return
+        }
+        AppUpdater.update(this)
+    }
+
+    /** The release on offer on GitHub, or the app's releases when none is. */
+    private fun openAppRelease() {
+        val page = when (val s = AppUpdater.state) {
+            is AppUpdater.State.Available -> s.release.page
+            is AppUpdater.State.Failed -> s.release?.page
+            is AppUpdater.State.Refused -> s.release.page
+            else -> null
+        }?.takeIf { it.startsWith("https://") } ?: AppUpdater.URL_RELEASES
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, page.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.no_browser, page), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun setAppChecks(on: Boolean) {
+        prefs.appUpdateChecks = on
+        model.appChecks = on
+        refreshAppUpdate()
     }
 
     private fun openReleases() {

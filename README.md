@@ -12,6 +12,8 @@ The APK ships only a Node.js runtime and a bootstrap installer. On first run the
 - a helm kiosk mode: any webapp as its own launcher icon, red night overlay, widgets
 - the server's offline charts and other mass data on the phone or on an SD card, chosen in the app,
   and filled from a browser on the boat's network or from a laptop over USB
+- the app updating itself from this repository's Releases, the download checked against its
+  published checksum and the app's own signing key (an F-Droid or Play install is left to its store)
 
 <p>
   <img src="docs/images/freeboard-s57-chart.png" alt="An S-57 chart of Government Cut, Miami, drawn by Freeboard-SK" width="49%">

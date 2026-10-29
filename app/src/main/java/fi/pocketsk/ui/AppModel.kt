@@ -19,6 +19,7 @@ import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
 import fi.pocketsk.signalk.Webapps
+import fi.pocketsk.update.AppUpdater
 import java.io.File
 
 /**
@@ -42,6 +43,12 @@ internal class AppModel {
     var available by mutableStateOf<Available>(Available.Unknown)
     /** signalk-server's release notes, read from GitHub when the Updates card opens them. */
     var notes by mutableStateOf<Notes>(Notes.Unknown)
+    /** The app's own update; null where a store that keeps the app current installed it. */
+    var app by mutableStateOf<AppUpdater.State?>(null)
+    /** The Dock looks for a newer build of the app once a day. */
+    var appChecks by mutableStateOf(true)
+    /** Android lets the app ask to install apps, which its own update needs. */
+    var appInstallsAllowed by mutableStateOf(false)
     var lanAddress by mutableStateOf<String?>(null)
     var permissions by mutableStateOf(PermissionsView())
     var devices by mutableStateOf<List<BridgeProtocol.Device>>(emptyList())
@@ -146,6 +153,15 @@ internal interface AppActions {
     fun loadNotes()
     /** signalk-server's releases on GitHub, in the browser. */
     fun openReleases()
+    /**
+     * Downloads the app's newer build and hands it to Android's installer; first, while Android
+     * does not let the app install apps, the setting that allows it.
+     */
+    fun updateApp()
+    /** The app's own release on offer, on GitHub in the browser. */
+    fun openAppRelease()
+    /** Turns the Dock's daily look for a newer build of the app on or off. */
+    fun setAppChecks(on: Boolean)
     fun install(source: InstallManager.Source)
     fun pickTarball()
     fun rollBack()
