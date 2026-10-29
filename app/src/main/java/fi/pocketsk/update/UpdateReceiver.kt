@@ -4,8 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.os.Build
-import fi.pocketsk.LegacyPlatform
+import androidx.core.content.IntentCompat
 
 /**
  * Android's installer reporting on the session [AppUpdater] committed. Not exported: only the
@@ -33,10 +32,11 @@ class UpdateReceiver : BroadcastReceiver() {
         }
     }
 
-    /** The installer's confirmation screen, which it puts in the status intent. */
-    private fun confirmation(intent: Intent): Intent? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-        else LegacyPlatform.intentExtra(intent, Intent.EXTRA_INTENT)
+    /**
+     * The installer's confirmation screen, which it puts in the status intent. Through
+     * IntentCompat, which takes the typed form where it works and the untyped one below it.
+     */
+    private fun confirmation(intent: Intent): Intent? = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java)
 
     companion object {
         /** The action of the status intent [AppUpdater] gives the installer. */

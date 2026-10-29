@@ -50,7 +50,4 @@ object LegacyPlatform {
 
     /** What Android reads of the APK at [path], below API 33; the PackageInfoFlags form replaces it from 33. */
     fun packageArchiveInfo(pm: PackageManager, path: String, flags: Int): PackageInfo? = pm.getPackageArchiveInfo(path, flags)
-
-    /** An Intent extra of [intent], below API 33; the typed getParcelableExtra replaces it from 33. */
-    fun intentExtra(intent: Intent, name: String): Intent? = intent.getParcelableExtra(name)
 }
