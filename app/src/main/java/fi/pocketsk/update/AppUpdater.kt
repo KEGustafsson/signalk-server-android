@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.os.Build
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.LegacyPlatform
@@ -272,21 +273,33 @@ internal object AppUpdater {
         )
     }
 
-    private fun archiveInfo(pm: PackageManager, apk: File): PackageInfo? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageArchiveInfo(apk.path, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
+    /**
+     * What Android reads of [apk], its signer among it. Android 10 reads an archive's
+     * certificates only when the deprecated GET_SIGNATURES is asked for too, so both flags go
+     * ([AppRelease.archiveFlags]); later releases take either.
+     */
+    private fun archiveInfo(pm: PackageManager, apk: File): PackageInfo? {
+        val flags = AppRelease.archiveFlags(PackageManager.GET_SIGNING_CERTIFICATES)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageArchiveInfo(apk.path, PackageManager.PackageInfoFlags.of(flags.toLong()))
         } else {
-            LegacyPlatform.packageArchiveInfo(pm, apk.path, PackageManager.GET_SIGNING_CERTIFICATES)
+            LegacyPlatform.packageArchiveInfo(pm, apk.path, flags)
         }
+    }
 
     /**
-     * Whether every certificate [apk] is signed with is one the installed app has; null when
-     * Android gave no signer for the archive, which leaves the check to the installer.
+     * Whether [apk] is signed by the key that signed the installed app; null when Android gave
+     * no signer for the archive, which leaves the check to the installer. An APK with one signer
+     * gives its certificate history, as SigningInfo prefers: one of its certificates must be the
+     * installed app's, which also lets an APK whose key was rotated through. One with several
+     * signers gives them all, and each must be one the installed app has.
      */
     private fun sameSigner(pm: PackageManager, own: String, apk: PackageInfo): Boolean? {
-        val signers = apk.signingInfo?.apkContentsSigners
-        if (signers.isNullOrEmpty()) return null
-        return signers.all { pm.hasSigningCertificate(own, it.toByteArray(), PackageManager.CERT_INPUT_RAW_X509) }
+        val info = apk.signingInfo ?: return null
+        val certs = if (info.hasMultipleSigners()) info.apkContentsSigners else info.signingCertificateHistory
+        if (certs.isNullOrEmpty()) return null
+        val known = { c: Signature -> pm.hasSigningCertificate(own, c.toByteArray(), PackageManager.CERT_INPUT_RAW_X509) }
+        return if (info.hasMultipleSigners()) certs.all(known) else certs.any(known)
     }
 
     /**

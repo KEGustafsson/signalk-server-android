@@ -119,6 +119,13 @@ class AppReleaseTest {
     }
 
     @Test
+    fun theArchiveIsReadWithBothSignatureFlags() {
+        // PackageManager's own, from the SDK: GET_SIGNATURES and GET_SIGNING_CERTIFICATES.
+        assertEquals(0x40, AppRelease.GET_SIGNATURES)
+        assertEquals(0x08000040, AppRelease.archiveFlags(0x08000000))
+    }
+
+    @Test
     fun storesThatUpdateTheAppThemselvesTurnTheSelfUpdateOff() {
         assertTrue(AppRelease.selfUpdates(null))
         assertTrue(AppRelease.selfUpdates("com.android.packageinstaller"))

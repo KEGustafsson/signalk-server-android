@@ -264,6 +264,9 @@ class MainActivity : ComponentActivity() {
                 when (event) {
                     Lifecycle.Event.ON_RESUME -> {
                         finishRestart()
+                        // Here, not from refreshAppUpdate in onResume: the confirmation needs
+                        // the screen in front, which the lifecycle says only now.
+                        showInstallConfirmation()
                         usage.start()
                     }
                     // The figures are for this screen only: nothing reads /proc while it is hidden.
@@ -587,7 +590,6 @@ class MainActivity : ComponentActivity() {
      */
     private fun refreshAppUpdate() {
         model.appInstallsAllowed = packageManager.canRequestPackageInstalls()
-        showInstallConfirmation()
         if (!selfUpdates || !prefs.appUpdateChecks) return
         val state = AppUpdater.state
         val looked = state == AppUpdater.State.Idle || state == AppUpdater.State.UpToDate ||

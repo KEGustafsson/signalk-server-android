@@ -96,6 +96,16 @@ internal object AppRelease {
         else -> null
     }
 
+    /**
+     * The flags that read a downloaded APK's signer: [signingCertificates]
+     * (`PackageManager.GET_SIGNING_CERTIFICATES`) with [GET_SIGNATURES], which Android 10 needs
+     * before it reads an archive's certificates at all and later releases ignore beside it.
+     */
+    fun archiveFlags(signingCertificates: Int): Int = signingCertificates or GET_SIGNATURES
+
+    /** `PackageManager.GET_SIGNATURES`, deprecated, so written out here; AppReleaseTest pins it. */
+    const val GET_SIGNATURES = 0x40
+
     /** Why a downloaded APK was not installed; the Dock words each one. */
     enum class Refusal { CHECKSUM, UNREADABLE, OTHER_APP, NOT_NEWER, OTHER_SIGNER }
 
