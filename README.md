@@ -72,7 +72,7 @@ The app installs its own plugin, **Pocket SK Android bridge**, which carries eve
 
 - **USB serial.** GPS and AIS receivers and NMEA 0183 interfaces on a USB adapter with an FTDI, Silicon Labs CP210x, CH340 or Prolific PL2303 chip, or one that is a plain USB serial (CDC) device. Plug it in (a USB OTG adapter on most phones), allow it when Android asks, and set its baud rate in the plugin's settings: 4800 unless set, 38400 for most AIS.
 - **Bluetooth serial.** Pair the device in the phone's Bluetooth settings, then switch it on in the **Serial devices** card.
-- **Bluetooth LE sensors.** Battery monitors, temperature and humidity sensors and the like reach plugins such as `bt-sensors-plugin-sk` through the phone's own Bluetooth: no BlueZ needed.
+- **Bluetooth LE sensors.** Sensors that broadcast their readings in their advertisements (Ruuvi tags and other temperature and humidity sensors, Victron devices with instant readout, and the like) reach plugins such as `bt-sensors-plugin-sk` through the phone's own Bluetooth: no BlueZ needed. Sensors that must be connected to (GATT), which most battery monitors are (JBD, Jikong, Renogy), are not supported: the plugin reports "GATT services unavailable" for them.
 - **The phone itself.** Battery, barometer, GNSS position, speed and course, roll, pitch and rate of turn, a magnetic heading (off by default), cabin temperature, humidity and light where the phone has the sensors, and the cellular signal. Each can be switched off or slowed down in the plugin's settings. The GNSS needs **Precise location** allowed.
 
 Each source appears in Signal K as `android.<name>`, so the data browser shows where a value came from.
