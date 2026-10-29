@@ -373,6 +373,7 @@ The index's checks mirror `prebuilds/lib.js`'s, so a build is fetched only on th
 ## 11. Security
 
 - Server binds to all interfaces by default (it's a hub). Dock shows a prominent switch "LAN access", off = `127.0.0.1` only.
+  **As built** (§16 step 12.3): signalk-server has no setting for its listening address, so the preload `runtime-tools/preload/loopback.js` does it: in a node started with `POCKETSK_LOOPBACK=1` every TCP listener (`net.Server.prototype.listen`, which HTTP, HTTPS and TLS servers inherit; the server's own and its plugins') gets 127.0.0.1 unless it asked for a loopback address, and the server's mDNS advertisement is replaced by none. UDP is left alone: the server's UDP sockets are inputs the owner set up (NMEA 0183 from a Wi-Fi multiplexer) and the `.local` lookups'. The supervisor sets the variable for a run while the switch is off, the installer always for its trial run; a process asked for it that cannot have it does not start.
 - Signal K security can be enabled from the admin UI as usual; app's own admin token stored in `EncryptedSharedPreferences`.
 - Unix socket permissions: created in app-private dir, so only our UID.
 - No `INTERNET`-facing endpoints added by the app itself.
@@ -614,7 +615,18 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **A failure keeps the release on offer**, the reason on the card, and the owner's cancel in the installer puts it back without one.
          - **Hidden where a store installed the app**: F-Droid clients (whose builds F-Droid signs, so this repository's APK could not replace them anyway) and Play.
        - **To check on a device:** with a build older than the latest release installed from GitHub, the Dock offers the update; Update opens Android's "install unknown apps" setting the first time, then downloads and shows Android's confirmation; after it the app is the new build and a server that ran is running again. A cancelled confirmation leaves the update on offer.
-    2. The README for 1.0 **in review**: rewritten for boat owners (install from Releases and which APK, the first run, the Dock card by card, instruments and the phone's sensors, alarms, charts and the USB folder, backups, what to know), the "Skeleton" status replaced. Chosen by the owner (2026-10-29) as the part that needs no phone to check.
+    2. ~~The README for 1.0~~ **Done** (#46): rewritten for boat owners (install from Releases and which APK, the first run, the Dock card by card, instruments and the phone's sensors, alarms, charts and the USB folder, backups, what to know), the "Skeleton" status replaced. Chosen by the owner (2026-10-29) as the part that needs no phone to check.
+    3. The LAN access switch (§11) **in review** (`runtime-tools/preload/loopback.js`, tested with `node --test` in runtime-tools; `ServerPrefs.lanAccess`; the Dock's Server card). Chosen by the owner (2026-10-29) after the README.
+       - **What it does.** A **LAN access** switch in the Server card, on by default. Off, only this phone reaches the server: the admin UI, the webapps and the Signal K and NMEA 0183 streams answer on 127.0.0.1 alone, the Dock and the notification show no address on the boat's network, and the server does not advertise itself over mDNS. §11's As built says how.
+       - **Decisions (not made by the plan).**
+         - **A preload, not a setting.** signalk-server listens with `listen(port)` everywhere and offers an address for its TCP stream alone (`TCPSTREAMADDRESS`); plugins open listeners of their own. One wrapper of `net.Server`'s `listen` covers them all without touching the server's files.
+         - **TCP only.** A UDP socket is how the server takes NMEA 0183 from a gateway; closing it would cost the boat's data, not keep anybody out. The mDNS advertisement is the one UDP thing stopped, since it would show the tablets a server they cannot reach.
+         - **Fails closed.** A server asked to stay on the phone that cannot be kept there does not start (the preload missing from the runtime, or failing to install), rather than run open while the Dock says otherwise.
+         - **A change restarts a running server.** It listens where it was started; the Dock shows the running server's own reach, not the switch's, until the restart.
+         - **The installer's trial run is always on the loopback.** Only the phone polls it, and it runs for a minute with a copy of the live security settings.
+         - **Nearby devices is not asked for at a start with LAN access off**, and still is from the Settings card: the server's connections out to a gateway on the boat's network need it on Android 17.
+       - **Tried before review** (2026-10-29, signalk-server 2.35.1 on desktop Node 22, with sample data): with the variable, HTTP, Signal K over TCP and NMEA 0183 over TCP listened on 127.0.0.1 only, the machine's own network address was refused and no mDNS advertisement was made; without it, all three listened on 0.0.0.0 and answered on that address.
+       - **To check on a device:** with LAN access off a tablet on the boat's Wi-Fi cannot open the admin UI or find the server in KIP's or the app's discovery, while the phone's browser and the bridge's plugin carry on; switching it on restarts the server and the tablet reaches it again; the trial run of an update works with either.
 
 ## 17. Reuse from Crew Radio
 

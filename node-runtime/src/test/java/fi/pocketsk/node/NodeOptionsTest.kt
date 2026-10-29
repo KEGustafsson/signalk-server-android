@@ -19,7 +19,7 @@ class NodeOptionsTest {
     fun eachPreloadIsRequiredByItsQuotedPathInOrder() {
         val dir = "/data/user/0/fi.pocketsk/files/runtime"
         assertEquals(
-            "--max-old-space-size=1024 --require=\"$dir/mdns-lookup.js\" --require=\"$dir/node-ble.js\"",
+            "--max-old-space-size=1024 --require=\"$dir/loopback.js\" --require=\"$dir/mdns-lookup.js\" --require=\"$dir/node-ble.js\"",
             NodeRuntime.nodeOptions(1024, NodeRuntime.PRELOAD_ASSETS.map { File(dir, it) }),
         )
     }
@@ -38,5 +38,13 @@ class NodeOptionsTest {
         assertEquals(NodeRuntime.NPM_TOOL_ASSETS.sorted(), dir.list()!!.sorted())
         // The two directories share the assets' root and files/runtime: no name may be in both.
         assertTrue(NodeRuntime.PRELOAD_ASSETS.none { it in NodeRuntime.NPM_TOOL_ASSETS })
+    }
+
+    @Test
+    fun theLoopbackIsAskedForAsLoopbackJsReadsIt() {
+        // runtime-tools/preload/loopback.js: `process.env.POCKETSK_LOOPBACK === "1"`.
+        val js = File(System.getProperty("pocketsk.preloadDir") ?: error("pocketsk.preloadDir not set by the build"), "loopback.js").readText()
+        assertTrue(js.contains("const ENV = \"${NodeRuntime.LOOPBACK_ENV}\";"))
+        assertTrue(js.contains("process.env[ENV] === \"${NodeRuntime.LOOPBACK_ON}\""))
     }
 }

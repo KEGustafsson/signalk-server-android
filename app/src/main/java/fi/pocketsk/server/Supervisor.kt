@@ -53,6 +53,10 @@ import kotlin.concurrent.thread
  * are copied there too ([ConfigMirror]): every 30 s while the server runs, and once more when it
  * has ended; the computer's changes to those copies go into `.signalk` before the next start.
  *
+ * LAN access ([ServerPrefs.lanAccess], docs/PLAN.md §11) is read before every run as well: off,
+ * the server starts with [NodeRuntime.LOOPBACK_ENV] and it and its plugins listen on 127.0.0.1
+ * alone. The Dock restarts a running server when the switch changes.
+ *
  * Everything reported goes through [onState]; [onAlert] is for what the user should hear about
  * even with no screen open: a rollback, or giving up (with the [ServerState.Failed] it ends in).
  * Both are called on the supervisor's threads.
@@ -245,6 +249,8 @@ internal class Supervisor(
             if (dataCardGone()) continue
             val trial = armGate(version)
             val endpoint = readEndpoint()
+            // Read once per run: a change in the Dock restarts the server to take effect.
+            val lan = prefs.lanAccess
             // A restore of a backup writes .signalk's files and then has npm put the plugins back
             // (BackupJob): a server started meanwhile would read half of it. Decided under the lock
             // the restore looks at the state under, so either the restore finds Starting and
@@ -259,7 +265,8 @@ internal class Supervisor(
             log.note(
                 "starting signalk-server $version from slot $slot, HTTP on port ${endpoint.port}" +
                     (if (endpoint.ssl) " (redirecting to HTTPS)" else "") +
-                    if (trial) ", on trial after its promotion" else "",
+                    (if (trial) ", on trial after its promotion" else "") +
+                    if (lan) "" else ", LAN access off: on 127.0.0.1 only",
             )
             // A wake left over from a stop that came between runs would cut the next backoff short.
             waiter.await(0)
@@ -272,7 +279,8 @@ internal class Supervisor(
             }
             val startedAt = SystemClock.elapsedRealtime()
             val n = try {
-                runtime.spawn(main.absolutePath, extraEnv = mapOf(Bridge.ENV to Bridge.socketFile(app).absolutePath))
+                val env = mapOf(Bridge.ENV to Bridge.socketFile(app).absolutePath)
+                runtime.spawn(main.absolutePath, extraEnv = if (lan) env else env + (NodeRuntime.LOOPBACK_ENV to NodeRuntime.LOOPBACK_ON))
             } catch (e: IOException) {
                 return failed("could not start node: $e")
             }
@@ -297,7 +305,7 @@ internal class Supervisor(
                     }
                 }
             }
-            val health = thread(name = "sk-health", isDaemon = true) { watch(n, version, slot, endpoint, startedAt) }
+            val health = thread(name = "sk-health", isDaemon = true) { watch(n, version, slot, endpoint, lan, startedAt) }
             val code = n.process.waitFor()
             val whole = n.reap()
             health.interrupt()
@@ -349,7 +357,7 @@ internal class Supervisor(
      * [HEALTH_POLL_MS]; publishes [ServerState.Running] whenever the answer changes, and feeds
      * the gate. A failed gate ends the run, and [runLoop] rolls back.
      */
-    private fun watch(n: NodeProcess, version: String, slot: String, endpoint: ServerEndpoint, startedAt: Long) {
+    private fun watch(n: NodeProcess, version: String, slot: String, endpoint: ServerEndpoint, lan: Boolean, startedAt: Long) {
         val base = "http://127.0.0.1:${endpoint.port}"
         val client = SignalKClient(app, base, null)
         var answering: Boolean? = null
@@ -386,7 +394,7 @@ internal class Supervisor(
                 // Nothing before the first answer: until then the run is Starting.
                 if ((ok || answering != null) && (ok != answering || onTrial != trial)) {
                     if (answering == true && !ok) log.note("not answering on $base")
-                    publish(ServerState.Running(version, slot, endpoint.port, ok, onTrial, startedAt, n.groupIdOrNull))
+                    publish(ServerState.Running(version, slot, endpoint.port, ok, onTrial, startedAt, n.groupIdOrNull, lan))
                     answering = ok
                     trial = onTrial
                 }

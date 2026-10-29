@@ -108,8 +108,11 @@ node-runtime/        Android library: nodejs-mobile's libnode.so per ABI, the la
   fi.pocketsk.node   NodeRuntime (paths, environment, spawn, npm), NodeProcess (a spawn and its
                      process group), Tar (unpacks npm)
 runtime-tools/preload/ every node loads these (NODE_OPTIONS --require, written to files/runtime,
-                     NodeRuntime.PRELOAD_ASSETS): mdns-lookup.js, `.local` names over mDNS, which
-                     Android gives native code no resolver for; node-ble.js, a stand-in for
+                     NodeRuntime.PRELOAD_ASSETS): loopback.js, every TCP listener on 127.0.0.1
+                     and no mDNS advertisement when POCKETSK_LOOPBACK=1 (the Dock's LAN access
+                     off; NodeRuntime.LOOPBACK_ENV), failing closed; mdns-lookup.js, `.local`
+                     names over mDNS, which Android gives native code no resolver for;
+                     node-ble.js, a stand-in for
                      @naugehyde/node-ble fed by the phone's Bluetooth LE scanner, so BlueZ plugins
                      (bt-sensors-plugin-sk) run unchanged, sharing a hub with the bridge plugin on
                      Symbol.for('pocketsk.ble'). Plain CommonJS, no dependencies; `node --test

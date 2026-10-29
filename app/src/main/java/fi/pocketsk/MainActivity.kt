@@ -278,6 +278,7 @@ class MainActivity : ComponentActivity() {
         InstallJob.observe(installObserver)
         BackupJob.observe(backupObserver)
         model.appChecks = prefs.appUpdateChecks
+        model.lanAccess = prefs.lanAccess
         if (selfUpdates) AppUpdater.observe(appUpdateObserver)
         refreshSlots()
         refreshStorage()
@@ -431,6 +432,7 @@ class MainActivity : ComponentActivity() {
         override fun askLocation() = this@MainActivity.askLocation()
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
         override fun setAutostart(on: Boolean) = this@MainActivity.setAutostart(on)
+        override fun setLanAccess(on: Boolean) = this@MainActivity.setLanAccess(on)
         override fun finishSetup(startServer: Boolean) = this@MainActivity.finishSetup(startServer)
         override fun openRuntimeChecks() = this@MainActivity.openRuntimeChecks()
         override fun levelAttitude() = SignalKService.level(this@MainActivity)
@@ -513,7 +515,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startServer() {
-        val wanted = ServerActions.missingPermissions(this)
+        val wanted = ServerActions.missingPermissions(this, prefs.lanAccess)
         if (wanted.isEmpty()) SignalKService.start(this) else askThenStart.launch(wanted.toTypedArray())
     }
 
@@ -759,6 +761,17 @@ class MainActivity : ComponentActivity() {
     private fun setAutostart(on: Boolean) {
         prefs.autostart = on
         refreshPermissions()
+    }
+
+    /**
+     * LAN access on or off. A server listens where it was started, so a running one restarts to
+     * move; turned on, the local network permission it then needs is asked for (Android 17).
+     */
+    private fun setLanAccess(on: Boolean) {
+        prefs.lanAccess = on
+        model.lanAccess = on
+        SignalKService.restart(this)
+        if (on) askPermissions()
     }
 
     private fun finishSetup(startServer: Boolean) {

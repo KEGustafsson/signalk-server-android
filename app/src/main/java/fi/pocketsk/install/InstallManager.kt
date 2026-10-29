@@ -238,7 +238,9 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
          * data, and waits for its discovery document; null when it answered, otherwise why not.
          * The copy has mDNS and SSL off: the test server must neither announce a second Signal K
          * server on the boat's network nor move to its HTTPS port, and every listener it has
-         * moves to a port of its own, beside the live server's.
+         * moves to a port of its own, beside the live server's, on 127.0.0.1 alone
+         * ([NodeRuntime.LOOPBACK_ENV]): only this phone polls it, and its copy of the live
+         * security settings is nothing to offer the boat's network for a minute.
          */
         private fun smokeTest(dir: File, log: Writer): String? {
             val verify = File(app.cacheDir, "verify")
@@ -254,6 +256,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                         "PORT" to "$SMOKE_PORT",
                         "TCPSTREAMPORT" to "$SMOKE_TCP_PORT",
                         "NMEA0183PORT" to "$SMOKE_NMEA_PORT",
+                        NodeRuntime.LOOPBACK_ENV to NodeRuntime.LOOPBACK_ON,
                     ),
                 )
                 val p = node.process
