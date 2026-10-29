@@ -18,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,6 +62,8 @@ import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerUsage
+import fi.pocketsk.update.AppRelease
+import fi.pocketsk.update.AppUpdater
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -91,6 +94,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         HelmCard(model, actions)
         PowerCard(model, actions)
         UpdatesCard(model, actions)
+        model.app?.let { AppUpdateCard(it, model, actions) }
         Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
         SensorsCard(model, actions)
         DevicesCard(model, actions)
@@ -620,6 +624,64 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
         }
     }
 }
+
+/**
+ * The app's own update (docs/PLAN.md §10): whether a newer build is published, its download, and
+ * what Android's installer or the checks before it said. Shown only where the app updates itself,
+ * not where a store keeps it current.
+ */
+@Composable
+private fun AppUpdateCard(state: AppUpdater.State, model: AppModel, actions: AppActions) {
+    Section(stringResource(R.string.dock_app_update_title)) {
+        Text(stringResource(R.string.dock_app_installed, BuildConfig.VERSION_NAME))
+        val offered = when (state) {
+            is AppUpdater.State.Available -> state.release
+            is AppUpdater.State.Failed -> state.release
+            is AppUpdater.State.Refused -> state.release
+            else -> null
+        }
+        when (state) {
+            AppUpdater.State.Idle -> Unit
+            AppUpdater.State.Checking -> CircularProgressIndicator()
+            AppUpdater.State.UpToDate -> Text(stringResource(R.string.dock_app_up_to_date))
+            is AppUpdater.State.Available -> Unit
+            is AppUpdater.State.Downloading -> {
+                if (state.total > 0) LinearProgressIndicator(progress = { state.done.toFloat() / state.total }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(stringResource(R.string.dock_app_downloading, state.release.versionName))
+            }
+            is AppUpdater.State.Installing -> Text(stringResource(R.string.dock_app_installing, state.release.versionName))
+            is AppUpdater.State.Failed -> Text(stringResource(R.string.dock_app_failed, state.reason), color = MaterialTheme.colorScheme.error)
+            is AppUpdater.State.Refused -> Text(refusalText(state.refusal, state.release.versionName), color = MaterialTheme.colorScheme.error)
+        }
+        offered?.let { release ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = actions::updateApp) { Text(stringResource(R.string.dock_app_update, release.versionName)) }
+                TextButton(onClick = actions::openAppRelease) { Text(stringResource(R.string.dock_app_whats_new)) }
+            }
+            if (!model.appInstallsAllowed) Text(stringResource(R.string.dock_app_allow), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().toggleable(value = model.appChecks, role = Role.Switch, onValueChange = actions::setAppChecks),
+        ) {
+            Text(stringResource(R.string.dock_app_checks), modifier = Modifier.weight(1f))
+            Switch(checked = model.appChecks, onCheckedChange = null)
+        }
+    }
+}
+
+@Composable
+private fun refusalText(refusal: AppRelease.Refusal, version: String): String = stringResource(
+    when (refusal) {
+        AppRelease.Refusal.CHECKSUM -> R.string.dock_app_refused_checksum
+        AppRelease.Refusal.UNREADABLE -> R.string.dock_app_refused_unreadable
+        AppRelease.Refusal.OTHER_APP -> R.string.dock_app_refused_other_app
+        AppRelease.Refusal.NOT_NEWER -> R.string.dock_app_refused_not_newer
+        AppRelease.Refusal.OTHER_SIGNER -> R.string.dock_app_refused_other_signer
+    },
+    version,
+)
 
 /**
  * "What's new in 2.14.0": signalk-server's release notes from the live version up to the one on

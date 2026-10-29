@@ -8,6 +8,8 @@ package fi.pocketsk
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.nsd.NsdManager
 import android.service.quicksettings.TileService
 import android.net.nsd.NsdServiceInfo
@@ -40,4 +42,12 @@ object LegacyPlatform {
     fun startActivityAndCollapse(tile: TileService, intent: Intent) {
         tile.startActivityAndCollapse(intent)
     }
+
+    // ---- The app's own update ------------------------------------------------------------------
+
+    /** Who installed [packageName], below API 30; getInstallSourceInfo replaces it from 30. */
+    fun installerPackageName(pm: PackageManager, packageName: String): String? = pm.getInstallerPackageName(packageName)
+
+    /** What Android reads of the APK at [path], below API 33; the PackageInfoFlags form replaces it from 33. */
+    fun packageArchiveInfo(pm: PackageManager, path: String, flags: Int): PackageInfo? = pm.getPackageArchiveInfo(path, flags)
 }

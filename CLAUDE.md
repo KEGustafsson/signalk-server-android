@@ -90,6 +90,9 @@ app/                 the Android app
                      BridgePlugin (puts the plugin in place before every start);
                      BridgeProtocol, Json, Readings, Attitude, SerialIds, DeviceList, AlarmBook,
                      BleRules (ScanBudget, Repeats) (pure, tested)
+  fi.pocketsk.update AppUpdater (the app's own update: GitHub's latest release, the download, the
+                     checks, the PackageInstaller session), UpdateReceiver (the installer's status
+                     and confirmation); AppRelease (pure, tested)
   fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only),
                      Webapps (a package.json as a webapp, the deep link) (pure, tested)

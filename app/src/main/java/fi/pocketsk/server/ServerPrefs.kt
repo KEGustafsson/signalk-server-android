@@ -58,6 +58,11 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getString(DATA_VOLUME_NAME, null)
         set(value) = prefs.edit { if (value == null) remove(DATA_VOLUME_NAME) else putString(DATA_VOLUME_NAME, value) }
 
+    /** The Dock looks for a newer build of the app once a day ([fi.pocketsk.update.AppUpdater]). */
+    var appUpdateChecks: Boolean
+        get() = prefs.getBoolean(APP_UPDATE_CHECKS, true)
+        set(value) = prefs.edit { putBoolean(APP_UPDATE_CHECKS, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -91,6 +96,7 @@ internal class ServerPrefs(context: Context) {
         const val FILE = "server"
         const val RUNNING = "running"
         const val AUTOSTART = "autostart"
+        const val APP_UPDATE_CHECKS = "app_update_checks"
         const val SETUP_DONE = "setup_done"
         const val LOCATION_ASKED = "location_asked"
         const val BLUETOOTH_ASKED = "bluetooth_asked"

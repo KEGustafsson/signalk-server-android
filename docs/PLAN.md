@@ -367,6 +367,7 @@ The index's checks mirror `prebuilds/lib.js`'s, so a build is fetched only on th
 - Check GitHub Releases API daily (configurable); show in Dock.
 - Download APK to `cache/`, verify signature matches installed app (`PackageManager.getPackageArchiveInfo` + signing cert compare), launch `PackageInstaller` session. Standard Obtainium-style flow.
 - F-Droid users get updates via F-Droid; detect installer package name and hide self-update there.
+- **As built** (§16 step 12.1): `update/AppRelease` (pure, tested) and `AppUpdater`, `UpdateReceiver`, the Dock's App update card. The Dock looks at `releases/latest` of this repository when it comes to the front, the answer kept a day (`prebuilds` is never marked latest), and offers a release whose `v1.<count>` is above the installed versionCode. It downloads the APK this phone takes (the arm64 split where the phone runs arm64 code, else the universal one) and the `.sha256` beside it, and hands the file to a `PackageInstaller` session only when the checksum matches, Android reads it as `fi.pocketsk` with a higher versionCode, and every certificate it is signed with is one the installed app has (`hasSigningCertificate`); a phone that gives no signer for an archive leaves that to the installer, which refuses another key anyway. The installer's confirmation is started from the session's status broadcast. Android asks once whether the app may install apps; the Dock opens that setting. A server that ran comes back after the update through `BootReceiver`'s package-replaced start. Hidden when an F-Droid client or Play installed the app.
 - **Pipeline**: copy Crew Radio's `build.yml` whole. Version = `1.<commit count>` from git, shallow-clone guard, keystore from `POCKETSK_*` secrets, split `build` / `release` (read-only token, signs, verifies cert SHA-256, attests) / `publish` (only write token, no checkout, `gh release create`). Add: `nodejs-mobile` zip download pinned by SHA-256 in `verification-metadata`-style, SBOM including `libnode.so` provenance, and the APK's `.sha256` + CycloneDX SBOM as release assets. Add `prebuilds.yml` (§9) and reuse `signalk-ci.yml` for `sk-plugin/android-bridge`.
 
 ## 11. Security
@@ -593,7 +594,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **A build that fails does not stop the others** on main and on the weekly run, where a package's new release could otherwise hold back every other; it is a warning there and an error on a pull request.
        - **Tried before review** (2026-10-27, the same NDK r27d and nodejs-mobile 24.20.0-0, Node 22 running node-gyp): all fourteen of the list's versions built, each an AArch64 shared object with 16 KB-aligned segments, needing `libnode.so` and `libc++_shared.so`, both in the APK; a second run with that index built nothing again.
        - **To check on a device:** with part 2, an App Store plugin that needs serialport or better-sqlite3 installs and loads its addon.
-    2. Putting the builds in place on the phone (§9.2) **in review** (`runtime-tools/npm`: `npm-launch.js`, `prebuilds.js`, tested with `node --test` in runtime-tools; `NodeRuntime` runs every npm through it):
+    2. Putting the builds in place on the phone (§9.2) **Done** (#44) (`runtime-tools/npm`: `npm-launch.js`, `prebuilds.js`, tested with `node --test` in runtime-tools; `NodeRuntime` runs every npm through it):
        - **Decision (by the owner, 2026-10-28): after npm, not a node-gyp shim.** Signal K's App Store installs with `--ignore-scripts`, so a shim would never run for a plugin; nothing is exec'd by name either, so the W^X question of §15 does not arise for addons.
        - **Decisions (not made by the plan).**
          - **`build/Release` only.** Both `bindings` and `node-gyp-build` look there first, so a second copy in `prebuilds/android-arm64` would only double the space.
@@ -602,6 +603,17 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **Installs from before this step** get their builds at the next install in that tree (any plugin's), not at the server's start, which would put the network on every start's path.
        - **Tried before review** (2026-10-28, desktop Node 22 and npm 10): `npm-launch.js` ran `npm --version` in its own process and an install of bufferutil 4.1.0 and better-sqlite3 12.11.1 as a child; `prebuilds.place` with the phone's platform then put both builds in place from the real Release, AArch64 shared objects, and a second run fetched only the index.
        - **To check on a device:** an App Store install of a plugin that needs serialport or better-sqlite3 logs the build put in place, and the plugin loads its addon after a restart; `npm --version` at the server's start still answers.
+
+12. 1.0 (§13: §10–12), in parts, one each. Chosen by the owner after M6 (2026-10-29), starting with the app's own update.
+    1. App self-update (§10) **in review** (`fi.pocketsk.update`: `AppRelease` pure and tested, `AppUpdater`, `UpdateReceiver`; the Dock's App update card; `REQUEST_INSTALL_PACKAGES`):
+       - **What it does.** Looks for a newer build of the app on this repository's GitHub Releases, downloads it, checks it and hands it to Android's installer, which asks the owner; §10's As built says how.
+       - **Decisions (not made by the plan).**
+         - **"Daily, configurable" is the Dock's look, a day's cache, and a switch.** The Dock looks when it comes to the front and GitHub's answer is kept a day (sixty unauthenticated requests an hour per address); "Check for updates" on the Updates card asks again now, for the server and the app together. The switch "Look for a newer app every day" turns the daily look off; no background job looks while the Dock is closed, so nothing runs on a schedule and no dependency (WorkManager) is added.
+         - **The arm64 APK on an arm64 phone**, whichever one was installed: both carry the same versionCode and signer, and the split is a third of the size.
+         - **Checked before Android sees it**: the published SHA-256, the package and a higher versionCode, the signer. The installer enforces the last two itself; checking first turns a doomed confirmation into a line on the card.
+         - **A failure keeps the release on offer**, the reason on the card, and the owner's cancel in the installer puts it back without one.
+         - **Hidden where a store installed the app**: F-Droid clients (whose builds F-Droid signs, so this repository's APK could not replace them anyway) and Play.
+       - **To check on a device:** with a build older than the latest release installed from GitHub, the Dock offers the update; Update opens Android's "install unknown apps" setting the first time, then downloads and shows Android's confirmation; after it the app is the new build and a server that ran is running again. A cancelled confirmation leaves the update on offer.
 
 ## 17. Reuse from Crew Radio
 
