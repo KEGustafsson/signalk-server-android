@@ -1,6 +1,7 @@
 package fi.pocketsk.node
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -38,6 +39,27 @@ class NodeOptionsTest {
         assertEquals(NodeRuntime.NPM_TOOL_ASSETS.sorted(), dir.list()!!.sorted())
         // The two directories share the assets' root and files/runtime: no name may be in both.
         assertTrue(NodeRuntime.PRELOAD_ASSETS.none { it in NodeRuntime.NPM_TOOL_ASSETS })
+    }
+
+    @Test
+    fun nodeOptionsAreSplitAsNodeSplitsThem() {
+        assertEquals(listOf("--max-old-space-size=512", "--require=/a b/c.js", "-r", "x"), NodeRuntime.optionArgs("--max-old-space-size=512  --require=\"/a b/c.js\" -r x"))
+        assertEquals(listOf("--title=a \"b\""), NodeRuntime.optionArgs("--title=\"a \\\"b\\\"\""))
+        assertEquals(emptyList<String>(), NodeRuntime.optionArgs("   "))
+    }
+
+    @Test
+    fun onlyARequireOfTheFileLoadsIt() {
+        val preload = File("/data/user/0/fi.pocketsk/files/runtime/loopback.js")
+        val built = NodeRuntime.nodeOptions(512, NodeRuntime.PRELOAD_ASSETS.map { File(preload.parentFile, it) })
+        assertTrue(NodeRuntime.requires(built, preload))
+        assertTrue(NodeRuntime.requires("-r ${preload.absolutePath}", preload))
+        assertTrue(NodeRuntime.requires("--require ${preload.absolutePath}", preload))
+        // Named, but as another option's value: Node loads nothing.
+        assertFalse(NodeRuntime.requires("--title=${preload.absolutePath}", preload))
+        assertFalse(NodeRuntime.requires("--title=\"--require=${preload.absolutePath}\"", preload))
+        assertFalse(NodeRuntime.requires("--require=${preload.absolutePath}.old", preload))
+        assertFalse(NodeRuntime.requires("", preload))
     }
 
     @Test

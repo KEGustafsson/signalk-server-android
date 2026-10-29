@@ -250,7 +250,7 @@ class NodeRuntime(context: Context) {
         ensureLayout()
         val environment = env() + extraEnv
         if (environment[LOOPBACK_ENV] == LOOPBACK_ON &&
-            !(loopbackPreload.isFile && environment["NODE_OPTIONS"].orEmpty().contains(loopbackPreload.absolutePath))
+            !(loopbackPreload.isFile && requires(environment["NODE_OPTIONS"].orEmpty(), loopbackPreload))
         ) {
             throw IOException("$loopbackPreload would not be loaded, so the server could not be kept to this phone")
         }
@@ -340,6 +340,50 @@ class NodeRuntime(context: Context) {
             append("--max-old-space-size=").append(heapMb)
             for (p in preloads) append(" --require=\"").append(p.absolutePath).append('"')
         }
+
+        /**
+         * Whether [nodeOptions], read as Node reads `NODE_OPTIONS`, loads [preload]: one of its
+         * arguments is `--require=<path>`, or `--require` or `-r` followed by the path. A mention of
+         * the path anywhere else (another option's value) loads nothing, so it does not count.
+         */
+        fun requires(nodeOptions: String, preload: File): Boolean {
+            val args = optionArgs(nodeOptions)
+            val path = preload.absolutePath
+            return args.indices.any { i ->
+                args[i] == "--require=$path" || (args[i] in REQUIRE_FLAGS && args.getOrNull(i + 1) == path)
+            }
+        }
+
+        /**
+         * `NODE_OPTIONS` split into its arguments the way Node splits it: at whitespace outside
+         * double quotes, the quotes removed, a backslash inside them taking the next character as
+         * it is.
+         */
+        fun optionArgs(nodeOptions: String): List<String> {
+            val args = mutableListOf<String>()
+            val arg = StringBuilder()
+            var quoted = false
+            var any = false
+            var i = 0
+            while (i < nodeOptions.length) {
+                val c = nodeOptions[i]
+                when {
+                    quoted && c == '\\' && i + 1 < nodeOptions.length -> arg.append(nodeOptions[++i])
+                    c == '"' -> { quoted = !quoted; any = true }
+                    !quoted && c.isWhitespace() -> {
+                        if (any) args += arg.toString()
+                        arg.clear()
+                        any = false
+                    }
+                    else -> { arg.append(c); any = true }
+                }
+                i++
+            }
+            if (any) args += arg.toString()
+            return args
+        }
+
+        private val REQUIRE_FLAGS = setOf("--require", "-r")
 
         /** Written last into an unpacked npm: what was unpacked, so the next start can tell. */
         private const val STAMP = ".pocketsk-extracted"
