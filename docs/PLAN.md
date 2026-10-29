@@ -605,7 +605,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
        - **To check on a device:** an App Store install of a plugin that needs serialport or better-sqlite3 logs the build put in place, and the plugin loads its addon after a restart; `npm --version` at the server's start still answers.
 
 12. 1.0 (§13: §10–12), in parts, one each. Chosen by the owner after M6 (2026-10-29), starting with the app's own update.
-    1. App self-update (§10) **in review** (`fi.pocketsk.update`: `AppRelease` pure and tested, `AppUpdater`, `UpdateReceiver`; the Dock's App update card; `REQUEST_INSTALL_PACKAGES`):
+    1. App self-update (§10) **Done** (#45) (`fi.pocketsk.update`: `AppRelease` pure and tested, `AppUpdater`, `UpdateReceiver`; the Dock's App update card; `REQUEST_INSTALL_PACKAGES`):
        - **What it does.** Looks for a newer build of the app on this repository's GitHub Releases, downloads it, checks it and hands it to Android's installer, which asks the owner; §10's As built says how.
        - **Decisions (not made by the plan).**
          - **"Daily, configurable" is the Dock's look, a day's cache, and a switch.** The Dock looks when it comes to the front and GitHub's answer is kept a day (sixty unauthenticated requests an hour per address); "Check for updates" on the Updates card asks again now, for the server and the app together. The switch "Look for a newer app every day" turns the daily look off; no background job looks while the Dock is closed, so nothing runs on a schedule and no dependency (WorkManager) is added.
@@ -614,6 +614,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **A failure keeps the release on offer**, the reason on the card, and the owner's cancel in the installer puts it back without one.
          - **Hidden where a store installed the app**: F-Droid clients (whose builds F-Droid signs, so this repository's APK could not replace them anyway) and Play.
        - **To check on a device:** with a build older than the latest release installed from GitHub, the Dock offers the update; Update opens Android's "install unknown apps" setting the first time, then downloads and shows Android's confirmation; after it the app is the new build and a server that ran is running again. A cancelled confirmation leaves the update on offer.
+    2. The README for 1.0 **in review**: rewritten for boat owners (install from Releases and which APK, the first run, the Dock card by card, instruments and the phone's sensors, alarms, charts and the USB folder, backups, what to know), the "Skeleton" status replaced. Chosen by the owner (2026-10-29) as the part that needs no phone to check.
 
 ## 17. Reuse from Crew Radio
 
