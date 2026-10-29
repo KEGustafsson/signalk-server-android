@@ -57,6 +57,11 @@ test("every form of listen that opens a TCP port gets the loopback", () => {
   assert.deepEqual(m.loopbackArgs([{ port: 3000 }, cb]), [{ port: 3000, host: "127.0.0.1" }, cb]);
   assert.deepEqual(m.loopbackArgs([{ port: 3000, host: "::", ipv6Only: true }]), [{ port: 3000, host: "127.0.0.1" }]);
   assert.deepEqual(m.loopbackArgs([{ port: 3000, host: "127.0.0.1" }]), [{ port: 3000, host: "127.0.0.1" }]);
+  assert.deepEqual(
+    m.loopbackArgs([{ port: 3000, path: "/data/x.sock" }]),
+    [{ port: 3000, path: "/data/x.sock", host: "127.0.0.1" }],
+    "Node listens on the port when both are given",
+  );
 });
 
 test("Unix sockets, handles and descriptors are left alone", () => {
@@ -76,12 +81,12 @@ test("Unix sockets, handles and descriptors are left alone", () => {
 test("a server started with the variable listens on 127.0.0.1 only, and without it everywhere", async () => {
   const script = `
     const http = require("node:http"), net = require("node:net");
-    const a = http.createServer(), b = net.createServer();
-    a.listen(0, () => b.listen({ port: 0 }, () => {
-      console.log(JSON.stringify([a.address().address, b.address().address]));
-      a.close(); b.close();
-    }));`;
-  assert.deepEqual(JSON.parse(await run(script, { loopback: true })), ["127.0.0.1", "127.0.0.1"]);
+    const a = http.createServer(), b = net.createServer(), c = net.createServer();
+    a.listen(0, () => b.listen({ port: 0 }, () => c.listen({ port: 0, path: ${JSON.stringify(path.join(os.tmpdir(), "pocketsk-unused.sock"))} }, () => {
+      console.log(JSON.stringify([a.address().address, b.address().address, c.address().address]));
+      a.close(); b.close(); c.close();
+    })));`;
+  assert.deepEqual(JSON.parse(await run(script, { loopback: true })), ["127.0.0.1", "127.0.0.1", "127.0.0.1"]);
   const open = JSON.parse(await run(script, { loopback: false }));
   for (const address of open) assert.ok(address === "::" || address === "0.0.0.0", address);
 });

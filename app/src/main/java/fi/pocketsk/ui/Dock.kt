@@ -550,7 +550,10 @@ private fun StatusCard(model: AppModel, actions: AppActions) {
             if (running.lan) model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:${running.port}")) }
             Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(running.port)))
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().toggleable(value = model.lanAccess, role = Role.Switch, onValueChange = actions::setLanAccess),
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.dock_lan_access))
                 Text(
@@ -558,7 +561,7 @@ private fun StatusCard(model: AppModel, actions: AppActions) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Switch(checked = model.lanAccess, onCheckedChange = actions::setLanAccess)
+            Switch(checked = model.lanAccess, onCheckedChange = null)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.isActive) {

@@ -75,8 +75,10 @@ function loopbackArgs(args) {
     return [first, LOOPBACK, ...args.slice(1)];
   }
   if (typeof first === "object") {
-    // A handle, or an options object for one, a Unix socket or a descriptor: not on the network.
-    if (first._handle !== undefined || first.handle != null || first.path != null || first.fd != null) return args;
+    // A handle, or an options object for one or a descriptor: not on the network.
+    if (first._handle !== undefined || first.handle != null || first.fd != null) return args;
+    // A Unix socket, unless a port is given too: Node takes the port over the path then.
+    if (first.path != null && first.port == null) return args;
     if (isLoopback(first.host)) return args;
     // ipv6Only is about "::"; beside an IPv4 address it has nothing to mean.
     const options = { ...first, host: LOOPBACK };

@@ -242,13 +242,17 @@ class NodeRuntime(context: Context) {
      * something else (the installer's smoke test: another config directory, other ports). Throws
      * [java.io.IOException] when the executable cannot be run, which on Android reads as
      * "Permission denied" (EACCES) rather than "not found" when SELinux refuses the exec, and
-     * when [extraEnv] asks for the loopback ([LOOPBACK_ENV]) and loopback.js is not in place: the
+     * when [extraEnv] asks for the loopback ([LOOPBACK_ENV]) but the node would not load
+     * loopback.js (the file is not in place, or [extraEnv] sets a NODE_OPTIONS without it): the
      * process would listen on every interface while the Dock says only this phone reaches it.
      */
     fun spawn(vararg args: String, cwd: File = home, extraEnv: Map<String, String> = emptyMap()): NodeProcess {
         ensureLayout()
-        if (extraEnv[LOOPBACK_ENV] == LOOPBACK_ON && !loopbackPreload.isFile) {
-            throw IOException("$loopbackPreload is missing, so the server could not be kept to this phone")
+        val environment = env() + extraEnv
+        if (environment[LOOPBACK_ENV] == LOOPBACK_ON &&
+            !(loopbackPreload.isFile && environment["NODE_OPTIONS"].orEmpty().contains(loopbackPreload.absolutePath))
+        ) {
+            throw IOException("$loopbackPreload would not be loaded, so the server could not be kept to this phone")
         }
         val groupFile = File(groups, "${System.nanoTime()}-${SPAWNS.incrementAndGet()}")
         val pb = ProcessBuilder(listOf(executable.absolutePath) + args)
@@ -258,8 +262,7 @@ class NodeRuntime(context: Context) {
         // one runs join its group rather than leading their own.
         pb.environment().apply {
             clear()
-            putAll(env())
-            putAll(extraEnv)
+            putAll(environment)
             put(GROUP_FILE_ENV, groupFile.absolutePath)
         }
         return NodeProcess(pb.start(), groupFile)
