@@ -42,24 +42,13 @@ class NodeOptionsTest {
     }
 
     @Test
-    fun nodeOptionsAreSplitAsNodeSplitsThem() {
-        assertEquals(listOf("--max-old-space-size=512", "--require=/a b/c.js", "-r", "x"), NodeRuntime.optionArgs("--max-old-space-size=512  --require=\"/a b/c.js\" -r x"))
-        assertEquals(listOf("--title=a \"b\""), NodeRuntime.optionArgs("--title=\"a \\\"b\\\"\""))
-        assertEquals(emptyList<String>(), NodeRuntime.optionArgs("   "))
-    }
-
-    @Test
-    fun onlyARequireOfTheFileLoadsIt() {
-        val preload = File("/data/user/0/fi.pocketsk/files/runtime/loopback.js")
-        val built = NodeRuntime.nodeOptions(512, NodeRuntime.PRELOAD_ASSETS.map { File(preload.parentFile, it) })
-        assertTrue(NodeRuntime.requires(built, preload))
-        assertTrue(NodeRuntime.requires("-r ${preload.absolutePath}", preload))
-        assertTrue(NodeRuntime.requires("--require ${preload.absolutePath}", preload))
-        // Named, but as another option's value: Node loads nothing.
-        assertFalse(NodeRuntime.requires("--title=${preload.absolutePath}", preload))
-        assertFalse(NodeRuntime.requires("--title=\"--require=${preload.absolutePath}\"", preload))
-        assertFalse(NodeRuntime.requires("--require=${preload.absolutePath}.old", preload))
-        assertFalse(NodeRuntime.requires("", preload))
+    fun aLoopbackSpawnTakesOnlyTheRuntimesOwnNodeOptions() {
+        val loopback = mapOf(NodeRuntime.LOOPBACK_ENV to NodeRuntime.LOOPBACK_ON)
+        assertFalse(NodeRuntime.loopbackRefused(loopback, preloadInPlace = true))
+        assertTrue("loopback.js missing", NodeRuntime.loopbackRefused(loopback, preloadInPlace = false))
+        // Even one that names the file: a tab or a --title can hide it from Node.
+        assertTrue(NodeRuntime.loopbackRefused(loopback + ("NODE_OPTIONS" to "--title=local\t--require=/x/loopback.js"), preloadInPlace = true))
+        assertFalse("no loopback asked for", NodeRuntime.loopbackRefused(mapOf("NODE_OPTIONS" to "--inspect"), preloadInPlace = false))
     }
 
     @Test

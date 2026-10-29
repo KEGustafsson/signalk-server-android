@@ -221,7 +221,7 @@ class NodeRuntime(context: Context) {
             "PATH" to "${binDir.absolutePath}:/system/bin",
             "LD_LIBRARY_PATH" to nativeLibraryDir.absolutePath,
             "SIGNALK_NODE_CONFIG_DIR" to configDir.absolutePath,
-            "NODE_OPTIONS" to nodeOptions(heapMb, preloads.filter { it.isFile }),
+            NODE_OPTIONS to nodeOptions(heapMb, preloads.filter { it.isFile }),
             NPM_CLI_ENV to npmEntry().absolutePath,
             NPM_ENV to npmCli.absolutePath,
             PREBUILDS_ENV to prebuilds.absolutePath,
@@ -242,16 +242,14 @@ class NodeRuntime(context: Context) {
      * something else (the installer's smoke test: another config directory, other ports). Throws
      * [java.io.IOException] when the executable cannot be run, which on Android reads as
      * "Permission denied" (EACCES) rather than "not found" when SELinux refuses the exec, and
-     * when [extraEnv] asks for the loopback ([LOOPBACK_ENV]) but the node would not load
-     * loopback.js (the file is not in place, or [extraEnv] sets a NODE_OPTIONS without it): the
-     * process would listen on every interface while the Dock says only this phone reaches it.
+     * when [extraEnv] asks for the loopback but the node might not load loopback.js
+     * ([loopbackRefused]): the process would listen on every interface while the Dock says only
+     * this phone reaches it.
      */
     fun spawn(vararg args: String, cwd: File = home, extraEnv: Map<String, String> = emptyMap()): NodeProcess {
         ensureLayout()
         val environment = env() + extraEnv
-        if (environment[LOOPBACK_ENV] == LOOPBACK_ON &&
-            !(loopbackPreload.isFile && requires(environment["NODE_OPTIONS"].orEmpty(), loopbackPreload))
-        ) {
+        if (loopbackRefused(extraEnv, loopbackPreload.isFile)) {
             throw IOException("$loopbackPreload would not be loaded, so the server could not be kept to this phone")
         }
         val groupFile = File(groups, "${System.nanoTime()}-${SPAWNS.incrementAndGet()}")
@@ -326,6 +324,18 @@ class NodeRuntime(context: Context) {
 
         private const val LOOPBACK_ASSET = "loopback.js"
 
+        private const val NODE_OPTIONS = "NODE_OPTIONS"
+
+        /**
+         * Whether a spawn with [extraEnv] that asks for the loopback ([LOOPBACK_ENV]) must be
+         * refused: loopback.js is not in place ([preloadInPlace] false), or [extraEnv] sets a
+         * NODE_OPTIONS of its own. Only the one [env] builds is trusted, which names every preload in
+         * place, loopback.js first; telling whether another loads it would take a parser kept in
+         * step with Node's (it splits at spaces alone, takes quotes and escapes), for no caller.
+         */
+        fun loopbackRefused(extraEnv: Map<String, String>, preloadInPlace: Boolean): Boolean =
+            extraEnv[LOOPBACK_ENV] == LOOPBACK_ON && (!preloadInPlace || NODE_OPTIONS in extraEnv)
+
         /** runtime-tools/preload's files, which this module's build adds to the APK's assets, in the order they load. */
         val PRELOAD_ASSETS = listOf(LOOPBACK_ASSET, "mdns-lookup.js", "node-ble.js")
 
@@ -340,50 +350,6 @@ class NodeRuntime(context: Context) {
             append("--max-old-space-size=").append(heapMb)
             for (p in preloads) append(" --require=\"").append(p.absolutePath).append('"')
         }
-
-        /**
-         * Whether [nodeOptions], read as Node reads `NODE_OPTIONS`, loads [preload]: one of its
-         * arguments is `--require=<path>`, or `--require` or `-r` followed by the path. A mention of
-         * the path anywhere else (another option's value) loads nothing, so it does not count.
-         */
-        fun requires(nodeOptions: String, preload: File): Boolean {
-            val args = optionArgs(nodeOptions)
-            val path = preload.absolutePath
-            return args.indices.any { i ->
-                args[i] == "--require=$path" || (args[i] in REQUIRE_FLAGS && args.getOrNull(i + 1) == path)
-            }
-        }
-
-        /**
-         * `NODE_OPTIONS` split into its arguments the way Node splits it: at whitespace outside
-         * double quotes, the quotes removed, a backslash inside them taking the next character as
-         * it is.
-         */
-        fun optionArgs(nodeOptions: String): List<String> {
-            val args = mutableListOf<String>()
-            val arg = StringBuilder()
-            var quoted = false
-            var any = false
-            var i = 0
-            while (i < nodeOptions.length) {
-                val c = nodeOptions[i]
-                when {
-                    quoted && c == '\\' && i + 1 < nodeOptions.length -> arg.append(nodeOptions[++i])
-                    c == '"' -> { quoted = !quoted; any = true }
-                    !quoted && c.isWhitespace() -> {
-                        if (any) args += arg.toString()
-                        arg.clear()
-                        any = false
-                    }
-                    else -> { arg.append(c); any = true }
-                }
-                i++
-            }
-            if (any) args += arg.toString()
-            return args
-        }
-
-        private val REQUIRE_FLAGS = setOf("--require", "-r")
 
         /** Written last into an unpacked npm: what was unpacked, so the next start can tell. */
         private const val STAMP = ".pocketsk-extracted"
