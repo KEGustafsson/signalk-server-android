@@ -22,6 +22,14 @@
  * its own and replaces it when the index names another (a C++ API build for a new runtime);
  * an addon the package brought or built itself is never touched.
  *
+ * What is left without a build is recorded too, in [MISSING_DIR] in the cache directory, one file
+ * for each tree an install went into: the Dock reads them to name those packages and offer to
+ * request their build (docs/PLAN.md §16 12.4), since the App Store's log, where [report]'s lines
+ * go, is gone once the install is over. Each run replaces its own tree's file, so a build placed
+ * later, or a tree with nothing missing any more, clears its own, and two installs into different
+ * trees (the App Store's and the app's own update of the server) never write the same file; the
+ * Dock checks each package is still there.
+ *
  * Plain CommonJS with no dependencies, like the preloads. Nothing here throws out of [place]:
  * whatever fails is reported, and npm's own result stands.
  */
@@ -42,6 +50,10 @@ const NAPI = "napi";
 
 /** Left beside a placed build: the asset it came from and that asset's SHA-256. */
 const MARKER = ".pocketsk-prebuild";
+
+/** Where the records of packages left without a build go, in the cache directory; MissingBuilds names it too. */
+const MISSING_DIR = "missing";
+const MISSING_FORMAT = 1;
 
 /** The only files a build may hold: addons straight under build/Release. */
 const ADDON_FILE = /^build\/Release\/[A-Za-z0-9_.+-]+\.node$/;
@@ -236,7 +248,8 @@ const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex"
 /** Writes [bytes] to [file] beside it first, then renamed, so a reader sees the old file or the new one. */
 function writeWhole(file, bytes) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const partial = path.join(path.dirname(file), `.${path.basename(file)}.part`);
+  // A name of its own for each writer: two at once never write into, or rename, the other's.
+  const partial = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.part`);
   fs.writeFileSync(partial, bytes);
   fs.renameSync(partial, file);
 }
@@ -300,11 +313,37 @@ function unpack(dir, entry, tarball) {
   writeWhole(marker, JSON.stringify(stamp) + "\n");
 }
 
+/** [root]'s record of packages left without a build: a file of its own, named after it. */
+function missingFile(cacheDir, root) {
+  return path.join(cacheDir, MISSING_DIR, `${sha256(Buffer.from(root, "utf8")).slice(0, 32)}.json`);
+}
+
+/**
+ * Records [absent], the packages under [root] left without a build (`name`, `version`, `dir`), in
+ * [root]'s own file ([missingFile]) in place of what an earlier run recorded there; a root left with
+ * none has no file, and the file is written only when it changes. No other root's record is read
+ * or written, so installs into different trees cannot undo each other.
+ */
+function remember(cacheDir, root, absent) {
+  const file = missingFile(cacheDir, root);
+  if (absent.length === 0) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  const text = JSON.stringify({ format: MISSING_FORMAT, root, missing: absent }) + "\n";
+  try {
+    if (fs.readFileSync(file, "utf8") === text) return;
+  } catch {
+    // none yet
+  }
+  writeWhole(file, text);
+}
+
 /**
  * Puts in place, under [root], every build the index has for a package installed without its
- * addon. Returns what it did: `placed` and `missing` (no build for this phone) as
- * `name@version`, `failed` with the reason. [options] are for tests: `baseUrl`, `cacheDir`,
- * `fetch`, `platform`, `arch`, `abi`.
+ * addon, and records the packages it has none for ([remember]). Returns what it did: `placed`
+ * and `missing` (no build for this phone) as `name@version`, `failed` with the reason.
+ * [options] are for tests: `baseUrl`, `cacheDir`, `fetch`, `platform`, `arch`, `abi`.
  */
 async function place(root, options = {}) {
   const o = {
@@ -320,8 +359,20 @@ async function place(root, options = {}) {
     result.failed.push("POCKETSK_PREBUILDS is not set");
     return result;
   }
+  const absent = [];
+  const record = () => {
+    try {
+      remember(o.cacheDir, root, absent);
+    } catch (e) {
+      result.failed.push(`the list of packages without a build could not be written: ${e.message}`);
+    }
+  };
   const wanting = findAddons(root).filter((a) => !hasOwnBuild(a.dir, o.platform, o.arch));
-  if (wanting.length === 0) return result;
+  if (wanting.length === 0) {
+    record();
+    return result;
+  }
+  // Without an index nothing is known about what is missing, so the record stands as it was.
   const index = await loadIndex(o, result.failed);
   if (!index) return result;
   for (const a of wanting) {
@@ -329,6 +380,7 @@ async function place(root, options = {}) {
     const entry = pick(index, a.name, a.version, o.platform, o.arch, o.abi);
     if (!entry) {
       if (!result.missing.includes(what)) result.missing.push(what);
+      absent.push({ name: a.name, version: a.version, dir: a.dir });
       continue;
     }
     if (placed(a.dir, entry)) continue;
@@ -339,6 +391,7 @@ async function place(root, options = {}) {
       result.failed.push(`${what}: ${e.message}`);
     }
   }
+  record();
   return result;
 }
 
@@ -356,4 +409,4 @@ function report(result) {
   };
 }
 
-module.exports = { RELEASE_URL, MARKER, INSTALL_COMMANDS, installRoot, loadsUnder, runtimeAbi, checkIndex, pick, findAddons, hasOwnBuild, untar, place, report };
+module.exports = { RELEASE_URL, MARKER, MISSING_DIR, missingFile, INSTALL_COMMANDS, installRoot, loadsUnder, runtimeAbi, checkIndex, pick, findAddons, hasOwnBuild, untar, place, report };

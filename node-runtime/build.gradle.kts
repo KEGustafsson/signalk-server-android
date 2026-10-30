@@ -164,6 +164,8 @@ android {
         // What NodeRuntime stamps an unpacked npm with, so it can tell when the APK carries another.
         buildConfigField("String", "NPM_VERSION", "\"$npmVersion\"")
         buildConfigField("String", "NPM_SHA256", "\"$npmSha256\"")
+        // The runtime a request for a native addon's Android build names (the Dock's Missing builds).
+        buildConfigField("String", "NODEJS_MOBILE_VERSION", "\"$nodejsMobileVersion\"")
         // The three ABIs nodejs-mobile's zip ships: the two phone ABIs, and x86_64 for the
         // emulator and ChromeOS. Written out here, not in a variable, so Lint can see x86_64.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }

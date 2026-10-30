@@ -51,6 +51,7 @@ import fi.pocketsk.R
 import fi.pocketsk.ServerActions
 import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
@@ -90,6 +91,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
             Section(stringResource(R.string.dock_alarms_title)) { AlarmRows(model.alarms, actions::silenceAlarm) }
         }
         StatusCard(model, actions)
+        if (model.missingBuilds.isNotEmpty()) MissingBuildsCard(model.missingBuilds, actions)
         WebappsCard(model, actions)
         HelmCard(model, actions)
         PowerCard(model, actions)
@@ -105,6 +107,25 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
             stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/**
+ * Native addons installed without an Android build ([MissingBuilds], docs/PLAN.md §16 12.4): the
+ * plugins that need them do not load, which the server's log only says when it loads them. Each
+ * can be asked for, and is put in place at the next install once the Release has it.
+ */
+@Composable
+private fun MissingBuildsCard(missing: List<MissingBuilds.Missing>, actions: AppActions) {
+    Section(stringResource(R.string.dock_missing_title)) {
+        Text(stringResource(R.string.dock_missing_text))
+        for (m in missing) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.dock_missing_package, m.name, m.version), modifier = Modifier.weight(1f))
+                TextButton(onClick = { actions.requestBuild(m) }) { Text(stringResource(R.string.dock_missing_request)) }
+            }
+        }
+        Text(stringResource(R.string.dock_missing_after), style = MaterialTheme.typography.bodySmall)
     }
 }
 

@@ -38,6 +38,7 @@ import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotesSource
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
@@ -166,7 +167,11 @@ class MainActivity : ComponentActivity() {
         runOnUiThread {
             model.install = state
             model.installing = running
-            if (!running) refreshSlots()
+            if (!running) {
+                refreshSlots()
+                // Its npm may have left a native addon without an Android build.
+                refreshMissingBuilds()
+            }
         }
     }
 
@@ -200,8 +205,11 @@ class MainActivity : ComponentActivity() {
     private val backupObserver = BackupJob.Observer { state ->
         runOnUiThread {
             model.backup = state
-            // The plugins npm put back may be webapps.
-            if (state is BackupJob.State.Restored) refreshWebapps()
+            // The plugins npm put back may be webapps, or need an addon that has no Android build.
+            if (state is BackupJob.State.Restored) {
+                refreshWebapps()
+                refreshMissingBuilds()
+            }
         }
     }
 
@@ -297,8 +305,10 @@ class MainActivity : ComponentActivity() {
         refreshAddress()
         // A card put in or taken out while the app was in the background.
         refreshStorage()
-        // A webapp installed from the admin UI's App Store while the browser was in front.
+        // A webapp installed from the admin UI's App Store while the browser was in front, and any
+        // native addon that install left without an Android build.
         refreshWebapps()
+        refreshMissingBuilds()
         // Back from the setting that lets the app install apps, or a day since the last look.
         refreshAppUpdate()
         // With the app in front a running server may take location, which it could not when it
@@ -397,6 +407,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The number of the latest [refreshMissingBuilds], main thread: like [webappScan], since the end
+     * of an install, a restore and a resume can each start one while another is still reading.
+     */
+    private var missingScan = 0
+
+    /** The native addons left without an Android build ([MissingBuilds]), read on a worker thread. */
+    private fun refreshMissingBuilds() {
+        val scan = ++missingScan
+        transportThread("dock-missing-builds", onError = {}) {
+            val missing = MissingBuilds.read(File(runtime.prebuilds, MissingBuilds.DIR))
+            runOnUiThread { if (scan == missingScan) model.missingBuilds = missing }
+        }
+    }
+
+    /** A new issue on GitHub asking for [missing]'s Android build, in the browser. */
+    private fun requestBuild(missing: MissingBuilds.Missing) {
+        val url = MissingBuilds.requestUrl(missing, BuildConfig.VERSION_NAME, fi.pocketsk.node.BuildConfig.NODEJS_MOBILE_VERSION)
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.no_browser, url), Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun pinWebapp(name: String) {
         val found = webappFiles[name] ?: return
         if (!WebappShortcuts.pin(this, found)) Toast.makeText(this, R.string.dock_webapps_pin_none, Toast.LENGTH_LONG).show()
@@ -459,6 +494,7 @@ class MainActivity : ComponentActivity() {
         override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
 
         override fun takeInbox() = this@MainActivity.takeInbox()
+        override fun requestBuild(missing: MissingBuilds.Missing) = this@MainActivity.requestBuild(missing)
 
         override fun saveBackup(passphrase: CharArray) {
             holdPassphrase(passphrase)
