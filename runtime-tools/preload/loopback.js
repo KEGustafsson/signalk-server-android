@@ -10,10 +10,16 @@
  *
  * signalk-server has no setting for the address it listens on: its HTTP server, its Signal K
  * over TCP (8375) and its NMEA 0183 over TCP (10110) all call `listen(port)`, which is every
- * interface, and a plugin may open listeners of its own. So `net.Server.prototype.listen`, which
- * `http`, `https`, `tls` and `http2` servers inherit, is wrapped: a listener on a TCP port gets
- * 127.0.0.1 as its address unless it asked for a loopback one already. A Unix socket, a handle
- * or a file descriptor is left alone; none of them is reachable from the network.
+ * interface, and a plugin may open listeners of its own. `listen` takes a dozen forms of
+ * arguments (a port, a host, an options object, an options object inside `handle`, ...), and
+ * reading them the way Node does proved a parser to keep in step with Node's: each form missed
+ * was a listener left open. So the address is moved where Node has already read them all:
+ * `net.Server.prototype._listen2`, which every TCP listener of an `http`, `https`, `tls`, `http2`
+ * or plain `net` server goes through with the address it is about to bind (a host name already
+ * looked up), and which Node keeps under that name for wrappers like this one ("to avoid breaking
+ * code that wraps this method", lib/net.js, Node 22 and 24). A TCP listener whose address is not
+ * a loopback one gets 127.0.0.1. A Unix socket, a file descriptor or a handle already bound is
+ * left alone: none of them is reached through an address the server binds here.
  *
  * UDP is left alone too. A UDP socket the server opens is an input the owner set up (NMEA 0183
  * from a Wi-Fi multiplexer, the discovery of such devices), not a way into the server, and the
@@ -23,9 +29,10 @@
  * which is what that module itself returns with mDNS switched off in the server's settings.
  *
  * Plain CommonJS with no dependencies. Unlike the other preloads it fails closed: a process asked
- * to stay on the loopback that cannot be kept there says so and exits, rather than run on every
- * interface while the Dock says only this phone reaches it. Without the variable it does nothing,
- * so npm and every other node the app starts are never in its way.
+ * to stay on the loopback that cannot be kept there (a Node without `_listen2`) says so and
+ * exits, rather than run on every interface while the Dock says only this phone reaches it.
+ * Without the variable it does nothing, so npm and every other node the app starts are never in
+ * its way.
  */
 
 const Module = require("node:module");
@@ -45,49 +52,18 @@ function isLoopback(host) {
   return net.isIPv4(h) && h.startsWith("127.");
 }
 
-/** [host] if it is loopback already, else [LOOPBACK]. */
-function loopbackHost(host) {
-  return isLoopback(host) ? host : LOOPBACK;
-}
-
-/** Whether [value] is what `listen` takes for a TCP port: a number, or a string of one. */
-function isPort(value) {
-  if (typeof value === "number") return true;
-  return typeof value === "string" && /^\s*\d+\s*$/.test(value);
-}
-
 /**
- * `listen`'s arguments with a TCP listener's address moved to the loopback, the rest as given.
- * Every form Node takes: `(port, host, backlog, cb)` and its shorter forms, `(options, cb)`,
- * `(path, ...)`, `(handle, ...)`, `(cb)` and `()`, the last two a random port on every interface.
+ * The address and family `_listen2(address, port, addressType, backlog, fd, flags)` binds with,
+ * moved to the loopback when it would bind a TCP port beyond it. Node calls it with a port from 0
+ * up for a TCP listener (`address` null for every interface, else the address looked up), with
+ * port -1 for a Unix socket (`address` its path) and a handle given, and with a number in `fd`
+ * for a descriptor; [hasHandle] is a server whose handle is already bound (one passed in, or a
+ * cluster primary's), which `_listen2` does not bind again.
  */
-function loopbackArgs(args) {
-  const first = args[0];
-  if (args.length === 0 || first === undefined || first === null || typeof first === "function") {
-    // No port: Node picks one, on every interface. The callback, if any, stays last.
-    return [0, LOOPBACK, ...args.slice(first === undefined || first === null ? 1 : 0)];
-  }
-  if (isPort(first)) {
-    const second = args[1];
-    if (typeof second === "string") return [first, loopbackHost(second), ...args.slice(2)];
-    if (second === undefined || second === null) return [first, LOOPBACK, ...args.slice(2)];
-    // A backlog or a callback: the address goes in before it.
-    return [first, LOOPBACK, ...args.slice(1)];
-  }
-  if (typeof first === "object") {
-    // A handle or a descriptor, which Node listens on before it looks at a port: not on the
-    // network. Only as Node takes them, though: a null handle or a negative fd is no handle.
-    if (first._handle || first.handle || (typeof first.fd === "number" && first.fd >= 0)) return args;
-    // A Unix socket, unless a port is given too: Node takes the port over the path then.
-    if (first.path != null && first.port == null) return args;
-    if (isLoopback(first.host)) return args;
-    // ipv6Only is about "::"; beside an IPv4 address it has nothing to mean.
-    const options = { ...first, host: LOOPBACK };
-    delete options.ipv6Only;
-    return [options, ...args.slice(1)];
-  }
-  // A string that is no port is a Unix socket's path.
-  return args;
+function loopbackAddress(address, port, addressType, fd, hasHandle) {
+  const tcp = !hasHandle && typeof port === "number" && port >= 0 && typeof fd !== "number";
+  if (!tcp || isLoopback(address)) return { address, addressType };
+  return { address: LOOPBACK, addressType: 4 };
 }
 
 /** What replaces signalk-server's `./mdns`: the module's own answer with mDNS off, nothing. */
@@ -95,14 +71,17 @@ function noAdvertisement() {
   return undefined;
 }
 
-/** Wraps `net.Server.prototype.listen` and stops the server's mDNS advertisement, once. */
+/** Wraps `net.Server.prototype._listen2` and stops the server's mDNS advertisement, once. */
 function install() {
-  if (net.Server.prototype[INSTALLED]) return false;
-  const listen = net.Server.prototype.listen;
-  net.Server.prototype.listen = function (...args) {
-    return listen.apply(this, loopbackArgs(args));
+  const proto = net.Server.prototype;
+  if (proto[INSTALLED]) return false;
+  const listen2 = proto._listen2;
+  if (typeof listen2 !== "function") throw new Error("this Node has no net.Server.prototype._listen2");
+  proto._listen2 = function (address, port, addressType, backlog, fd, flags) {
+    const to = loopbackAddress(address, port, addressType, fd, Boolean(this._handle));
+    return listen2.call(this, to.address, port, to.addressType, backlog, fd, flags);
   };
-  net.Server.prototype[INSTALLED] = true;
+  proto[INSTALLED] = true;
   const load = Module._load;
   Module._load = function (request, parent, ...rest) {
     if (request === "./mdns" && parent && typeof parent.filename === "string" && SIGNALK_INDEX.test(parent.filename)) {
@@ -122,4 +101,4 @@ if (process.env[ENV] === "1") {
   }
 }
 
-module.exports = { isLoopback, loopbackHost, loopbackArgs, noAdvertisement, install, ENV, LOOPBACK };
+module.exports = { isLoopback, loopbackAddress, noAdvertisement, install, ENV, LOOPBACK };
