@@ -167,7 +167,11 @@ class MainActivity : ComponentActivity() {
         runOnUiThread {
             model.install = state
             model.installing = running
-            if (!running) refreshSlots()
+            if (!running) {
+                refreshSlots()
+                // Its npm may have left a native addon without an Android build.
+                refreshMissingBuilds()
+            }
         }
     }
 
@@ -201,8 +205,11 @@ class MainActivity : ComponentActivity() {
     private val backupObserver = BackupJob.Observer { state ->
         runOnUiThread {
             model.backup = state
-            // The plugins npm put back may be webapps.
-            if (state is BackupJob.State.Restored) refreshWebapps()
+            // The plugins npm put back may be webapps, or need an addon that has no Android build.
+            if (state is BackupJob.State.Restored) {
+                refreshWebapps()
+                refreshMissingBuilds()
+            }
         }
     }
 

@@ -13,8 +13,9 @@ import java.net.URLEncoder
  * the install is over, and the plugin that needs the addon only fails when the server loads it.
  *
  * The record says what an install found; the Dock shows what is still so. A package removed since,
- * installed again in another version, or given an addon (its own build, or one placed by a later
- * install now that the Release has it) is no longer missing ([stillMissing]).
+ * installed again in another version, or that built an addon of its own is no longer missing
+ * ([stillMissing]); one whose build a later install placed, now that the Release has it, drops
+ * out because that install rewrites its tree's record.
  *
  * [parse] and [requestUrl] are pure and tested; [read] looks at the files.
  */
@@ -47,8 +48,12 @@ internal object MissingBuilds {
 
     /**
      * Whether the package recorded as [m] is installed in [m]'s directory still, in that version,
-     * without an addon: none in `build/Release`, which a placed build or the package's own build
-     * fills, nor in `prebuilds/android-arm64`, where node-gyp-build looks too.
+     * without an addon of its own: none in `build/Release`, which the package's own build fills,
+     * nor in `prebuilds/android-arm64`, where node-gyp-build looks too. A build the launcher put
+     * in `build/Release` ([MARKER] beside it) does not count: the launcher records a package only
+     * after it has looked for its build, so a marked build still there is one for another runtime
+     * (a nodejs-mobile update changed the C++ API ABI), and a fresh one placed since rewrites the
+     * record without the package anyway.
      */
     fun stillMissing(m: Missing): Boolean {
         val dir = File(m.dir)
@@ -61,7 +66,9 @@ internal object MissingBuilds {
         }
         if (version != m.version) return false
         fun hasAddon(d: File) = d.listFiles()?.any { it.isFile && it.name.endsWith(".node") } == true
-        return !hasAddon(File(dir, "build/Release")) && !hasAddon(File(dir, "prebuilds/android-arm64"))
+        val release = File(dir, "build/Release")
+        val ownBuild = hasAddon(release) && !File(release, MARKER).exists()
+        return !ownBuild && !hasAddon(File(dir, "prebuilds/android-arm64"))
     }
 
     /**
@@ -105,6 +112,9 @@ internal object MissingBuilds {
 
     /** The records' directory in the prebuilds directory, as prebuilds.js writes them. */
     const val DIR = "missing"
+
+    /** What prebuilds.js leaves in `build/Release` beside a build it put there. */
+    const val MARKER = ".pocketsk-prebuild"
 
     private const val FORMAT = 1.0
 

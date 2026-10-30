@@ -51,10 +51,13 @@ class MissingBuildsTest {
     fun aPackageIsMissingOnlyWhileItIsThereInThatVersionWithoutAnAddon() {
         assertTrue(MissingBuilds.stillMissing(pkg("usb", "2.9.0")))
         assertFalse("another version installed since", MissingBuilds.stillMissing(pkg("serial", "2.0.0").copy(version = "1.0.0")))
-        assertFalse("its own build, or one placed later", MissingBuilds.stillMissing(pkg("sqlite3", "5.1.6", addon = "build/Release/node_sqlite3.node")))
+        assertFalse("its own build", MissingBuilds.stillMissing(pkg("sqlite3", "5.1.6", addon = "build/Release/node_sqlite3.node")))
         assertFalse("node-gyp-build's place", MissingBuilds.stillMissing(pkg("bufferutil", "4.1.0", addon = "prebuilds/android-arm64/bufferutil.node")))
         assertFalse("removed", MissingBuilds.stillMissing(MissingBuilds.Missing("gone", "1.0.0", File(tmp.root, "gone").path)))
         assertTrue("another platform's build does not count", MissingBuilds.stillMissing(pkg("noble", "1.9.2", addon = "prebuilds/linux-x64/noble.node")))
+        val stale = pkg("better-sqlite3", "12.11.1", addon = "build/Release/better_sqlite3.node")
+        File(stale.dir, "build/Release/${MissingBuilds.MARKER}").writeText("""{"file":"better-sqlite3@12.11.1-android-arm64-node137.tar.gz"}""")
+        assertTrue("a build the launcher placed for another runtime does not count", MissingBuilds.stillMissing(stale))
     }
 
     @Test
@@ -87,6 +90,8 @@ class MissingBuildsTest {
     fun theDirectoryIsTheOnePrebuildsJsWrites() {
         // runtime-tools/npm/prebuilds.js: `const MISSING_DIR = "missing";`
         val dir = File(System.getProperty("pocketsk.npmToolsDir") ?: error("pocketsk.npmToolsDir not set by the build"))
-        assertTrue(File(dir, "prebuilds.js").readText().contains("const MISSING_DIR = \"${MissingBuilds.DIR}\";"))
+        val js = File(dir, "prebuilds.js").readText()
+        assertTrue(js.contains("const MISSING_DIR = \"${MissingBuilds.DIR}\";"))
+        assertTrue(js.contains("const MARKER = \"${MissingBuilds.MARKER}\";"))
     }
 }
