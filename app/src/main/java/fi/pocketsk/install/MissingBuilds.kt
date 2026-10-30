@@ -29,11 +29,12 @@ internal object MissingBuilds {
      * that is not a package is skipped.
      */
     fun parse(json: String): List<Missing> {
-        val record = try {
-            Json.parse(json) as? Map<*, *>
+        val parsed = try {
+            Json.parse(json)
         } catch (_: Json.ParseException) {
-            null
-        } ?: return emptyList()
+            return emptyList()
+        }
+        val record = parsed as? Map<*, *> ?: return emptyList()
         if ((record["format"] as? Double) != FORMAT) return emptyList()
         val roots = record["roots"] as? Map<*, *> ?: return emptyList()
         return roots.values.flatMap { (it as? List<*>).orEmpty() }.mapNotNull { e ->
