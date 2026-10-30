@@ -167,13 +167,15 @@ test("silence is silenced on the server; an emergency, or one silenced, is ackno
   assert.equal(a.silence("unknown"), null);
 });
 
-test("a silence the server refuses is reported, not thrown", () => {
+test("a silence the server refuses is reported, not thrown, and the action still returned", () => {
   const debugs = [];
-  const api = { silence() { throw new Error("Alarm already silenced or acknowledged!"); }, acknowledge() {} };
-  const { a } = alarms({ api, debug: (s) => debugs.push(s) });
+  const refuse = () => { throw new Error("Alarm already silenced or acknowledged!"); };
+  const { a } = alarms({ api: { silence: refuse, acknowledge: refuse }, debug: (s) => debugs.push(s) });
   a.update("notifications.navigation.anchor", anchor());
-  assert.equal(a.silence(ID), null);
+  assert.equal(a.silence(ID), "silence", "the boat's main server may still silence it");
   assert.match(debugs[0], /could not silence notifications\.navigation\.anchor/);
+  a.update("notifications.navigation.anchor", anchor({ state: "emergency" }));
+  assert.equal(a.silence(ID), "acknowledge", "an emergency stays an acknowledge");
 });
 
 test("rank orders the states and knows no others", () => {

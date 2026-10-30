@@ -92,8 +92,9 @@ class Alarms {
 
   /**
    * The phone's Silence for the alarm `id`: silenced or acknowledged through the server, as it
-   * allows. Returns what was done (`silence`, `acknowledge`), or null when nothing could be,
-   * which the phone already knew from the action it was sent.
+   * allows. Returns the alarm's action (`silence`, `acknowledge`) whether or not this server could
+   * do it, since the boat's main server may still (index.js); null when it has none, which the
+   * phone already knew from the action it was sent.
    */
   silence(id) {
     for (const [path, value] of this.byPath) {
@@ -107,8 +108,9 @@ class Alarms {
         return action;
       } catch (err) {
         // Silenced elsewhere in the meantime, or gone: the server's next delta says how it stands.
+        // signalk-server with manageNotifications off has the API, and it throws.
         this.debug(`could not ${action} ${path}: ${err.message}`);
-        return null;
+        return action;
       }
     }
     return null;
