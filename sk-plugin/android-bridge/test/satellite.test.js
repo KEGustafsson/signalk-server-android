@@ -119,6 +119,35 @@ test("the main server's vessel becomes this one's, other vessels keep theirs, an
   s.stop();
 });
 
+test("the main server's own android.* sources move under its label, elsewhere they stay", () => {
+  const { s, app, WebSocket } = setup();
+  s.follow("http://192.168.1.9:3000", "a.b.c");
+  const ws = WebSocket.made[0];
+  ws.hello();
+  const sog = [{ path: "navigation.speedOverGround", value: 3 }];
+  ws.send({
+    context: "vessels.urn:mrn:signalk:uuid:main",
+    updates: [
+      { $source: "android.gnss", values: sog },
+      { source: { label: "android.usb-1a86-7523", talker: "GP", sentence: "RMC" }, values: sog },
+      { source: { label: "android.bt-00-11" }, values: sog },
+      { $source: "androidish.x", values: sog },
+    ],
+  });
+  ws.send({ context: "vessels.urn:mrn:imo:mmsi:230000001", updates: [{ $source: "android.gnss", values: sog }] });
+  const [[, self], [, other]] = app.deltas;
+  const label = `${LABEL}.192.168.1.9:3000`;
+  assert.deepEqual(self.updates.map((u) => u.$source), [
+    `${label}.android.gnss`,
+    `${label}.android.usb-1a86-7523.GP`,
+    `${label}.android.bt-00-11`,
+    "androidish.x",
+  ]);
+  assert.deepEqual(self.updates[1].source, { label: "android.usb-1a86-7523", talker: "GP", sentence: "RMC" }, "the source object stays");
+  assert.equal(other.updates[0].$source, "android.gnss", "another vessel's sources are not this phone's");
+  s.stop();
+});
+
 test("a delta the server throws on costs that delta, and the stream goes on", () => {
   const debugs = [];
   const { s, app, WebSocket } = setup({ debug: (line) => debugs.push(line) });

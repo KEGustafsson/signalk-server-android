@@ -15,6 +15,8 @@ const LABEL = "pocketsk-satellite";
 const STATES = ["off", "connecting", "connected", "unauthorized", "unreachable"];
 /** What the link says when the main server does not let this phone read. */
 const REFUSED = "the main server does not accept this phone's token";
+/** This bridge's own source names (lib/protocol.js, lib/serial.js). */
+const BRIDGE = /^android\./;
 
 /**
  * Satellite mode's link (docs/PLAN.md §8.4, §16 13.1): this phone's server follows the boat's main
@@ -219,14 +221,23 @@ class Satellite {
     }
   }
 
-  /** The delta as this server takes it: the main server's vessel as self, sources named. */
+  /**
+   * The delta as this server takes it: the main server's vessel as self, sources named, and a
+   * source of the main server's self under this bridge's own names (`android.*`: another phone's
+   * bridge feeding the main server, or this phone's own data coming back once 13.2 sends it there)
+   * moved under the main server's label, so it never takes the place of this phone's own reading
+   * of the same path. The source object stays as it came.
+   */
   local(msg) {
     const label = `${LABEL}.${hostPort(this.target?.url)}`;
+    const self = msg.context === this.remoteSelf || msg.context === "vessels.self";
     const updates = [];
     for (const u of msg.updates) {
       if (!u || typeof u !== "object") continue;
       const update = { ...u };
-      if (!named(update)) update.$source = label;
+      const ours = self && bridgeSource(update);
+      if (ours) update.$source = `${label}.${ours}`;
+      else if (!named(update)) update.$source = label;
       if (Array.isArray(update.values)) {
         update.values = update.values.map((v) =>
           v && v.path === "" && v.value && typeof v.value === "object" && "uuid" in v.value ? { ...v, value: withoutUuid(v.value) } : v,
@@ -300,6 +311,17 @@ function named(update) {
     s.src !== undefined ||
     (typeof s.talker === "string" && s.talker.length > 0) ||
     (typeof s.label === "string" && s.label.length > 0);
+}
+
+/**
+ * The update's source as this bridge names its own (`android.*`: the phone's sensors as `$source`,
+ * its serial devices as `source.label`, the talker after it), else null.
+ */
+function bridgeSource(update) {
+  if (typeof update.$source === "string" && update.$source.length > 0) return BRIDGE.test(update.$source) ? update.$source : null;
+  const s = update.source;
+  if (!s || typeof s !== "object" || typeof s.label !== "string" || !BRIDGE.test(s.label)) return null;
+  return typeof s.talker === "string" && s.talker.length > 0 ? `${s.label}.${s.talker}` : s.label;
 }
 
 function withoutUuid(value) {
