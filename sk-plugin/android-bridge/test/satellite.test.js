@@ -119,6 +119,27 @@ test("the main server's vessel becomes this one's, other vessels keep theirs, an
   s.stop();
 });
 
+test("a delta the server throws on costs that delta, and the stream goes on", () => {
+  const debugs = [];
+  const { s, app, WebSocket } = setup({ debug: (line) => debugs.push(line) });
+  let calls = 0;
+  app.handleMessage = (id, delta) => {
+    calls++;
+    if (calls === 1) throw new Error("bad delta");
+    app.deltas.push([id, delta]);
+  };
+  s.follow("http://192.168.1.9:3000", "a.b.c");
+  const ws = WebSocket.made[0];
+  ws.hello();
+  const delta = { context: "vessels.urn:mrn:signalk:uuid:main", updates: [{ $source: "gps.GP", values: [{ path: "navigation.speedOverGround", value: 3 }] }] };
+  assert.doesNotThrow(() => ws.send(delta));
+  ws.send(delta);
+  assert.equal(app.deltas.length, 1);
+  assert.ok(debugs.some((line) => line.includes("refused a delta from 192.168.1.9:3000: bad delta")));
+  assert.equal(s.status().state, "connected");
+  s.stop();
+});
+
 test("a token the main server does not take ends the stream as unauthorized, and it is tried again later", async (t) => {
   const { s, states, WebSocket } = setup({ status: { status: "notLoggedIn", authenticationRequired: true } });
   t.after(() => s.stop());

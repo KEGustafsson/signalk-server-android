@@ -210,7 +210,13 @@ class Satellite {
     const delta = this.local(msg);
     if (!delta) return;
     this.deltas++;
-    this.app.handleMessage(this.pluginId, delta);
+    // Thrown inside a WebSocket listener, an error is the process's uncaught exception: one delta
+    // the server will not take (a shape no other provider sends it) costs that delta, not the server.
+    try {
+      this.app.handleMessage(this.pluginId, delta);
+    } catch (e) {
+      this.debug(`satellite: the server refused a delta from ${hostPort(this.target?.url)}: ${e?.message ?? e}`);
+    }
   }
 
   /** The delta as this server takes it: the main server's vessel as self, sources named. */
