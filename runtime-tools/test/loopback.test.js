@@ -72,21 +72,28 @@ test("Unix sockets, handles and descriptors are left alone", () => {
     args({ path: "/data/x.sock" }),
     args({ fd: 3 }),
     args({ handle: {} }),
-    args({ _handle: null }, cb),
+    args({ _handle: {} }, cb),
+    args({ port: 3000, fd: 3 }),
   ]) {
     assert.deepEqual(m.loopbackArgs(a), a);
+  }
+});
+
+test("a handle or descriptor Node would not take leaves the port on the loopback", () => {
+  for (const extra of [{ _handle: null }, { handle: null }, { fd: -1 }, { fd: null }]) {
+    assert.deepEqual(m.loopbackArgs([{ port: 3000, ...extra }]), [{ port: 3000, ...extra, host: "127.0.0.1" }], JSON.stringify(extra));
   }
 });
 
 test("a server started with the variable listens on 127.0.0.1 only, and without it everywhere", async () => {
   const script = `
     const http = require("node:http"), net = require("node:net");
-    const a = http.createServer(), b = net.createServer(), c = net.createServer();
-    a.listen(0, () => b.listen({ port: 0 }, () => c.listen({ port: 0, path: ${JSON.stringify(path.join(os.tmpdir(), "pocketsk-unused.sock"))} }, () => {
-      console.log(JSON.stringify([a.address().address, b.address().address, c.address().address]));
-      a.close(); b.close(); c.close();
-    })));`;
-  assert.deepEqual(JSON.parse(await run(script, { loopback: true })), ["127.0.0.1", "127.0.0.1", "127.0.0.1"]);
+    const a = http.createServer(), b = net.createServer(), c = net.createServer(), d = net.createServer();
+    a.listen(0, () => b.listen({ port: 0 }, () => c.listen({ port: 0, path: ${JSON.stringify(path.join(os.tmpdir(), "pocketsk-unused.sock"))} }, () => d.listen({ port: 0, _handle: null }, () => {
+      console.log(JSON.stringify([a.address().address, b.address().address, c.address().address, d.address().address]));
+      a.close(); b.close(); c.close(); d.close();
+    }))));`;
+  assert.deepEqual(JSON.parse(await run(script, { loopback: true })), ["127.0.0.1", "127.0.0.1", "127.0.0.1", "127.0.0.1"]);
   const open = JSON.parse(await run(script, { loopback: false }));
   for (const address of open) assert.ok(address === "::" || address === "0.0.0.0", address);
 });

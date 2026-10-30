@@ -483,9 +483,15 @@ class SignalKService : Service() {
             if (ServerStatus.state.isActive) send(context, ACTION_STOP)
         }
 
-        /** Restarts a running server; nothing to do when none runs. */
+        /**
+         * Restarts a running server; nothing to do when none runs. A server being started counts
+         * as running ([ServerPrefs.running] is set before the supervisor's loop starts, while the
+         * state reads Stopped until it publishes Starting): a run that has read its settings (LAN
+         * access, the data's place) but not yet spawned must still be told, or it keeps the old
+         * ones for its whole life. A restart that finds no supervisor in the service does nothing.
+         */
         fun restart(context: Context) {
-            if (ServerStatus.state.isActive) send(context, ACTION_RESTART)
+            if (ServerStatus.state.isActive || ServerPrefs(context).running) send(context, ACTION_RESTART)
         }
 
         /**

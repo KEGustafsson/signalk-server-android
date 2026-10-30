@@ -75,8 +75,9 @@ function loopbackArgs(args) {
     return [first, LOOPBACK, ...args.slice(1)];
   }
   if (typeof first === "object") {
-    // A handle, or an options object for one or a descriptor: not on the network.
-    if (first._handle !== undefined || first.handle != null || first.fd != null) return args;
+    // A handle or a descriptor, which Node listens on before it looks at a port: not on the
+    // network. Only as Node takes them, though: a null handle or a negative fd is no handle.
+    if (first._handle || first.handle || (typeof first.fd === "number" && first.fd >= 0)) return args;
     // A Unix socket, unless a port is given too: Node takes the port over the path then.
     if (first.path != null && first.port == null) return args;
     if (isLoopback(first.host)) return args;
