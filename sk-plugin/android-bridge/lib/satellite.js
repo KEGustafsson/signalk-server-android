@@ -1,0 +1,308 @@
+// SPDX-License-Identifier: EUPL-1.2
+"use strict";
+
+const FIRST_DELAY_MS = 1000;
+const MAX_DELAY_MS = 30000;
+/**
+ * A stream that says nothing this long is taken as dead and opened again: a boat's server sends
+ * its GNSS at least once a second, and a Wi-Fi gone under a TCP connection is otherwise noticed
+ * only after minutes of retransmission.
+ */
+const SILENT_MS = 60000;
+/** Where a delta whose source has no name of its own is said to come from (lib/satellite.js). */
+const LABEL = "pocketsk-satellite";
+
+const STATES = ["off", "connecting", "connected", "unauthorized", "unreachable"];
+/** What the link says when the main server does not let this phone read. */
+const REFUSED = "the main server does not accept this phone's token";
+
+/**
+ * Satellite mode's link (docs/PLAN.md §8.4, §16 13.1): this phone's server follows the boat's main
+ * Signal K server. The app finds the server, gets its admin's approval for a device token, and
+ * hands the address and the token over the bridge ({t: "satellite"}); this opens the main
+ * server's delta stream with the token in the Authorization header, and gives every delta to this
+ * server, the main server's own vessel as this one's `vessels.self`.
+ *
+ * Not signalk-server's own Signal K connection (@signalk/streams' mdns-ws): in 2.35.1 that opens
+ * the stream without the token and sends it as a message the server's WebSocket interface does
+ * not read, so a main server with security on gives it nothing. Here the token also never lands
+ * in `settings.json`, which the phone copies to the folder a computer sees over USB.
+ *
+ * Sources: an update that names its own (`$source`, or a `source` with a label, a talker, a src
+ * or a CAN name) keeps it, as signalk-server's remote connections do, so a device seen on the main
+ * server is the same device here; one that does not is stamped `pocketsk-satellite.<host:port>`.
+ * The main server's vessel identity comes with its other values but for `uuid`, which stays this
+ * server's own.
+ *
+ * Whether the main server takes the token is asked of its `/skServer/loginStatus`, with the token,
+ * whenever the stream could not tell: after the hello, which it says to anyone, and after a
+ * connection that failed, since Node's WebSocket reports a refused upgrade with no status.
+ *
+ * Options: app (the plugin API), pluginId, WebSocket and fetch (Node's own, by default),
+ * onState(state, detail) when the link changes (STATES), debug, and timing for tests.
+ */
+class Satellite {
+  constructor({
+    app,
+    pluginId,
+    WebSocket = globalThis.WebSocket,
+    fetch = globalThis.fetch,
+    onState = () => {},
+    debug = () => {},
+    firstDelayMs = FIRST_DELAY_MS,
+    maxDelayMs = MAX_DELAY_MS,
+    silentMs = SILENT_MS,
+  }) {
+    this.app = app;
+    this.pluginId = pluginId;
+    this.WebSocket = WebSocket;
+    this.fetch = fetch;
+    this.onState = onState;
+    this.debug = debug;
+    this.firstDelayMs = firstDelayMs;
+    this.maxDelayMs = maxDelayMs;
+    this.silentMs = silentMs;
+    this.delayMs = firstDelayMs;
+    this.target = null;
+    this.socket = null;
+    this.timer = null;
+    this.watchdog = null;
+    this.remoteSelf = null;
+    this.current = { state: "off", detail: null };
+    this.deltas = 0;
+  }
+
+  /**
+   * Follows the server at `url` (`http://host:port`) with `token` (null: it runs without
+   * security), or nothing when `url` is null. The same target again changes nothing.
+   */
+  follow(url, token) {
+    const next = url ? { url, token: token || null } : null;
+    if (next && this.target && next.url === this.target.url && next.token === this.target.token) return;
+    this.close();
+    this.target = next;
+    this.delayMs = this.firstDelayMs;
+    if (!next) {
+      this.report("off", null);
+      return;
+    }
+    this.connect();
+  }
+
+  stop() {
+    this.close();
+    this.target = null;
+  }
+
+  /** Where the link stands, for the plugin's status and the app. */
+  status() {
+    return { ...this.current, url: this.target?.url ?? null, deltas: this.deltas };
+  }
+
+  close() {
+    clearTimeout(this.timer);
+    this.timer = null;
+    clearTimeout(this.watchdog);
+    this.watchdog = null;
+    const socket = this.socket;
+    this.socket = null;
+    this.remoteSelf = null;
+    if (socket) {
+      try {
+        socket.close();
+      } catch {
+        // Not open yet, or closed already: nothing to end.
+      }
+    }
+  }
+
+  connect() {
+    const target = this.target;
+    if (!target) return;
+    if (typeof this.WebSocket !== "function") {
+      this.report("unreachable", "this Node has no WebSocket");
+      return;
+    }
+    this.report("connecting", null);
+    const stream = `${target.url.replace(/^http/, "ws")}/signalk/v1/stream?subscribe=all`;
+    let socket;
+    try {
+      socket = new this.WebSocket(stream, target.token ? { headers: { Authorization: `Bearer ${target.token}` } } : undefined);
+    } catch (e) {
+      this.lost(`cannot connect: ${e.message}`);
+      return;
+    }
+    this.socket = socket;
+    this.listen();
+    socket.onmessage = (event) => {
+      if (this.socket !== socket) return;
+      this.listen();
+      this.message(event.data);
+    };
+    // Node's WebSocket fires error alone on an upgrade the server refuses, with no close after it:
+    // either one is the end of this connection, and whichever comes second finds it gone.
+    socket.onerror = (event) => {
+      const message = event?.message || event?.error?.message || "error";
+      socket.lastError = message;
+      if (this.socket !== socket) return;
+      this.socket = null;
+      try {
+        // Closing a socket still connecting fires one more error, which finds it gone.
+        socket.close();
+      } catch {
+        // Never opened: nothing to close.
+      }
+      this.lost(message);
+    };
+    socket.onclose = (event) => {
+      if (this.socket !== socket) return;
+      this.socket = null;
+      this.lost(socket.lastError || `closed (${event?.code ?? "?"})`);
+    };
+  }
+
+  /** Arms the silence watchdog again: a message has just come. */
+  listen() {
+    clearTimeout(this.watchdog);
+    this.watchdog = setTimeout(() => {
+      this.watchdog = null;
+      const socket = this.socket;
+      if (!socket) return;
+      this.socket = null;
+      try {
+        socket.close();
+      } catch {
+        // Gone already.
+      }
+      this.lost(`silent for ${Math.round(this.silentMs / 1000)} s`);
+    }, this.silentMs);
+    this.watchdog.unref?.();
+  }
+
+  message(data) {
+    let msg;
+    try {
+      msg = JSON.parse(typeof data === "string" ? data : Buffer.from(data).toString("utf8"));
+    } catch {
+      return;
+    }
+    if (!msg || typeof msg !== "object") return;
+    if (typeof msg.self === "string" && msg.updates === undefined) {
+      // The hello. A main server with security on says it to a client without a token too, and
+      // then nothing; a token it refuses fails the connection itself.
+      this.remoteSelf = msg.self;
+      this.delayMs = this.firstDelayMs;
+      this.report("connected", null);
+      const socket = this.socket;
+      this.allowed().then((ok) => {
+        if (ok !== false || this.socket !== socket) return;
+        this.socket = null;
+        try {
+          socket.close();
+        } catch {
+          // Gone already.
+        }
+        this.lost(REFUSED);
+      });
+      return;
+    }
+    if (!Array.isArray(msg.updates)) return;
+    const delta = this.local(msg);
+    if (!delta) return;
+    this.deltas++;
+    this.app.handleMessage(this.pluginId, delta);
+  }
+
+  /** The delta as this server takes it: the main server's vessel as self, sources named. */
+  local(msg) {
+    const label = `${LABEL}.${hostPort(this.target?.url)}`;
+    const updates = [];
+    for (const u of msg.updates) {
+      if (!u || typeof u !== "object") continue;
+      const update = { ...u };
+      if (!named(update)) update.$source = label;
+      if (Array.isArray(update.values)) {
+        update.values = update.values.map((v) =>
+          v && v.path === "" && v.value && typeof v.value === "object" && "uuid" in v.value ? { ...v, value: withoutUuid(v.value) } : v,
+        );
+      }
+      updates.push(update);
+    }
+    if (updates.length === 0) return null;
+    const delta = { ...msg, updates };
+    if (delta.context === this.remoteSelf || delta.context === "vessels.self") delete delta.context;
+    return delta;
+  }
+
+  lost(detail) {
+    clearTimeout(this.watchdog);
+    this.watchdog = null;
+    this.remoteSelf = null;
+    const target = this.target;
+    if (!target) return;
+    this.report(detail === REFUSED ? "unauthorized" : "unreachable", detail);
+    if (detail !== REFUSED) {
+      // A refused token fails the upgrade as any network error does: the server says which it was.
+      this.allowed().then((ok) => {
+        if (ok === false && this.target === target && !this.socket) this.report("unauthorized", REFUSED);
+      });
+    }
+    const delay = this.delayMs;
+    this.delayMs = Math.min(this.delayMs * 2, this.maxDelayMs);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.connect();
+    }, delay);
+    this.timer.unref?.();
+  }
+
+  /**
+   * Whether the main server lets this phone read: true or false as its login status says, null
+   * when it cannot be asked (unreachable, not a Signal K server, no fetch).
+   */
+  async allowed() {
+    const target = this.target;
+    if (!target || typeof this.fetch !== "function") return null;
+    try {
+      const res = await this.fetch(`${target.url}/skServer/loginStatus`, {
+        headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return null;
+      const s = await res.json();
+      if (!s || typeof s !== "object") return null;
+      return !s.authenticationRequired || s.status === "loggedIn" || s.readOnlyAccess === true;
+    } catch {
+      return null;
+    }
+  }
+
+  report(state, detail) {
+    if (this.current.state === state && this.current.detail === detail) return;
+    this.current = { state, detail };
+    this.debug(`satellite: ${state}${detail ? ` (${detail})` : ""}`);
+    this.onState(state, detail);
+  }
+}
+
+/** Whether an update says where it comes from, as signalk-server's remote-deltas reads it. */
+function named(update) {
+  if (typeof update.$source === "string" && update.$source.length > 0) return true;
+  const s = update.source;
+  if (!s || typeof s !== "object") return false;
+  return (typeof s.canName === "string" && s.canName.length > 0) ||
+    s.src !== undefined ||
+    (typeof s.talker === "string" && s.talker.length > 0) ||
+    (typeof s.label === "string" && s.label.length > 0);
+}
+
+function withoutUuid(value) {
+  const { uuid, ...rest } = value;
+  return rest;
+}
+
+function hostPort(url) {
+  return String(url ?? "").replace(/^https?:\/\//, "");
+}
+
+module.exports = { Satellite, STATES, LABEL, FIRST_DELAY_MS, MAX_DELAY_MS, SILENT_MS };

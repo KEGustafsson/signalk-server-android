@@ -11,13 +11,14 @@ import java.util.Base64
  * numbers, a short text or a yes or no; null when there is no reading now), `devices` whenever the
  * serial devices plugged into the phone change, `serial` lines with the bytes each one sent,
  * `adv` lines with each Bluetooth LE advertisement the phone heard, `silence` when the owner
- * silences an alarm on the phone, and `glance` on or off, whether the home-screen widget wants the
- * boat's readings.
+ * silences an alarm on the phone, `glance` on or off, whether the home-screen widget wants the
+ * boat's readings, and `satellite`, the boat's main server to follow and its device token, or none.
  * Plugin to app: `subscribe`, which names the sensors it wants and how often, whether and at
  * which baud rates to read the serial devices, and whether to scan for Bluetooth LE devices and
  * which to keep hearing, `alarms`, the boat's alarms whenever they change, `stats`, the
- * server's own delta rate, for the Dock, and `glance`, the boat's depth, speed and wind for the
- * widget while it is asked for. Pure, so it is unit-tested.
+ * server's own delta rate, for the Dock, `glance`, the boat's depth, speed and wind for the
+ * widget while it is asked for, and `satellite`, how the link to the main server stands. Pure, so
+ * it is unit-tested.
  */
 internal object BridgeProtocol {
     const val VERSION = 1
@@ -182,6 +183,9 @@ internal object BridgeProtocol {
     /** Longest alarm message kept, as the plugin cuts it. */
     private const val MAX_MESSAGE = 200
 
+    /** The plugin cuts a satellite detail to this; one longer is cut here too. */
+    private const val MAX_DETAIL = 200
+
     /**
      * An alarm's id: the server's notification id (a UUID), or its path where the server gives
      * none. A path may carry a colon: a closest-approach alarm names the other vessel by its URN
@@ -224,6 +228,8 @@ internal object BridgeProtocol {
         /** The deltas a second the server took in, as its own statistics count them. */
         data class Stats(val deltaRate: Double) : Incoming
         data class Glance(val glance: BridgeProtocol.Glance) : Incoming
+        /** How satellite mode's link to the main server stands ([SatelliteLink]), with a short [detail]. */
+        data class Satellite(val state: SatelliteLink, val detail: String?) : Incoming
         data class Dropped(val reason: String) : Incoming
     }
 
@@ -239,6 +245,24 @@ internal object BridgeProtocol {
         companion object {
             val NONE = Glance(null, null, null, null)
         }
+    }
+
+    /** Satellite mode's link as the plugin reports it: its lib/satellite.js STATES. */
+    enum class SatelliteLink(val wire: String) {
+        OFF("off"),
+        CONNECTING("connecting"),
+        CONNECTED("connected"),
+        UNAUTHORIZED("unauthorized"),
+        UNREACHABLE("unreachable"),
+    }
+
+    /**
+     * The main server for the plugin to follow, `http://host:port`, with its device token (none
+     * when it runs without security), or nothing to follow when [link] is null.
+     */
+    fun satellite(link: fi.pocketsk.satellite.Satellite.Link?): String = when {
+        link == null -> """{"t":"satellite"}"""
+        else -> """{"t":"satellite","url":${Json.quote(link.url)},"token":${link.token?.let(Json::quote) ?: "null"}}"""
     }
 
     /** Whether the plugin is to send [Glance]s, every 2 s, for a widget on a screen that is on. */
@@ -337,6 +361,9 @@ internal object BridgeProtocol {
                     awa = reading(msg["awa"], -2 * Math.PI, 2 * Math.PI),
                 ),
             )
+            "satellite" -> SatelliteLink.entries.firstOrNull { it.wire == msg["state"] }
+                ?.let { Incoming.Satellite(it, (msg["detail"] as? String)?.take(MAX_DETAIL)) }
+                ?: Incoming.Dropped("satellite without a state")
             else -> Incoming.Dropped("unknown type ${(t as? String)?.take(32) ?: t}")
         }
     }

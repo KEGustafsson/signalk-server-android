@@ -82,6 +82,7 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
   assert.deepEqual(p.statusNow(), {
     connected: true, app: "1.200", sensors: 1, dropped: 1, devices: [], serial: {}, alarms: [],
     ble: { heard: 0, devices: 0, provider: false, standIn: false },
+    satellite: { state: "off", detail: null, url: null, deltas: 0 },
   });
   conn.destroy();
   await until(() => app.status.at(-1).startsWith("Waiting for the phone"));
@@ -460,4 +461,46 @@ test("the file routes say so when the server's folder is not known, and log what
   await broken.routes["PUT /files/:folder/:name"](fakeReq({ folder: "charts", name: "x" }, { offset: "0", total: "1" }, "x"), res);
   assert.equal(res.statusCode, 500);
   assert.ok(app.debugs.some((d) => d.startsWith("files: ")));
+});
+
+test("the app's satellite message follows the main server, and the link's state goes back to the app", async (t) => {
+  const sock = socketPath();
+  let received = "";
+  let conn = null;
+  const made = [];
+  class FakeSocket {
+    constructor(url, options) {
+      this.url = url;
+      this.options = options;
+      made.push(this);
+    }
+    close() {}
+  }
+  const server = await listen(sock, (c) => {
+    conn = c;
+    c.setEncoding("utf8");
+    c.on("data", (d) => (received += d));
+  });
+  const app = fakeApp();
+  const fetch = async () => ({ ok: true, json: async () => ({ status: "loggedIn", authenticationRequired: true }) });
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, WebSocket: FakeSocket, fetch });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  p.start({});
+  await until(() => conn !== null && received.includes('"t":"satellite"'));
+  const lines = () => received.split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.t === "satellite");
+  assert.deepEqual(lines()[0], { t: "satellite", state: "off", detail: null }, "the link's state at connect");
+  conn.write('{"t":"satellite","url":"http://192.168.1.9:3000","token":"a.b.c"}\n');
+  await until(() => made.length === 1);
+  assert.deepEqual(made[0].options, { headers: { Authorization: "Bearer a.b.c" } });
+  made[0].onmessage({ data: JSON.stringify({ self: "vessels.urn:mrn:signalk:uuid:main" }) });
+  made[0].onmessage({ data: JSON.stringify({ context: "vessels.urn:mrn:signalk:uuid:main", updates: [{ $source: "gps.GP", values: [{ path: "navigation.speedOverGround", value: 3 }] }] }) });
+  await until(() => lines().some((m) => m.state === "connected") && app.deltas.length === 1);
+  assert.equal("context" in app.deltas[0][1], false);
+  assert.ok(app.status.at(-1).endsWith("following 192.168.1.9:3000 (connected)"), app.status.at(-1));
+  assert.deepEqual(p.statusNow().satellite, { state: "connected", detail: null, url: "http://192.168.1.9:3000", deltas: 1 });
+  conn.write('{"t":"satellite"}\n');
+  await until(() => lines().at(-1).state === "off");
 });

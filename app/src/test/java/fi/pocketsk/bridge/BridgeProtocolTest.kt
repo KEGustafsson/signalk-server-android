@@ -2,6 +2,7 @@ package fi.pocketsk.bridge
 
 import fi.pocketsk.bridge.BridgeProtocol.Incoming
 import fi.pocketsk.bridge.BridgeProtocol.Subscription
+import fi.pocketsk.satellite.Satellite
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -286,6 +287,29 @@ class BridgeProtocolTest {
     @Test
     fun aSilenceNamesTheAlarm() {
         assertEquals("""{"t":"silence","id":"notifications.mob"}""", BridgeProtocol.silence("notifications.mob"))
+    }
+
+    @Test
+    fun satelliteModeNamesTheMainServerAndHearsHowTheLinkStands() {
+        // sk-plugin/android-bridge/lib/protocol.js parses exactly these (its satellite test).
+        assertEquals(
+            """{"t":"satellite","url":"http://192.168.1.9:3000","token":"a.b.c"}""",
+            BridgeProtocol.satellite(Satellite.Link("http://192.168.1.9:3000", "a.b.c")),
+        )
+        assertEquals("""{"t":"satellite","url":"http://pi.local:3000","token":null}""", BridgeProtocol.satellite(Satellite.Link("http://pi.local:3000", null)))
+        assertEquals("""{"t":"satellite"}""", BridgeProtocol.satellite(null))
+        assertEquals(
+            Incoming.Satellite(BridgeProtocol.SatelliteLink.CONNECTED, null),
+            BridgeProtocol.parse("""{"t":"satellite","state":"connected","detail":null}"""),
+        )
+        assertEquals(
+            Incoming.Satellite(BridgeProtocol.SatelliteLink.UNREACHABLE, "x".repeat(200)),
+            BridgeProtocol.parse("""{"t":"satellite","state":"unreachable","detail":"${"x".repeat(300)}"}"""),
+        )
+        for (state in listOf("off", "connecting", "connected", "unauthorized", "unreachable")) {
+            assertTrue(state, BridgeProtocol.parse("""{"t":"satellite","state":"$state"}""") is Incoming.Satellite)
+        }
+        assertEquals(Incoming.Dropped("satellite without a state"), BridgeProtocol.parse("""{"t":"satellite","state":"up"}"""))
     }
 
     @Test

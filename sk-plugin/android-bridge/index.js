@@ -24,13 +24,18 @@
  * server's Bluetooth LE API and to plugins written for BlueZ, through the node-ble stand-in the
  * app preloads, which also says when such a plugin wants a scan.
  *
+ * Satellite mode (lib/satellite.js): when the app says so, this server follows the boat's main
+ * Signal K server, the main server's data coming in under its own sources, with the device token
+ * its admin approved for this phone, which the app hands over the socket.
+ *
  * Its web page (public/index.html, a Signal K webapp) uploads files into the server's data folders,
  * charts above all, through the routes in registerWithRouter (lib/files.js). Those work on any
  * server, phone or not.
  */
 
 const { Link } = require("./lib/link");
-const { parseLine, toDelta, subscribeMessage, statsMessage, glanceMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
+const { parseLine, toDelta, subscribeMessage, statsMessage, glanceMessage, satelliteMessage, VERSION, BAUD_RATES, DEFAULT_BAUD } = require("./lib/protocol");
+const { Satellite } = require("./lib/satellite");
 const { SerialInput, loadNmeaParser } = require("./lib/serial");
 const { Alarms, LEVELS } = require("./lib/alarms");
 const { Ble } = require("./lib/ble");
@@ -48,8 +53,9 @@ const GLANCE_MS = 2000;
  * `deps.Parser` an NMEA 0183 parser (null for none) in place of the server's, `deps.statsMs`
  * how often the server's delta rate is sent, `deps.glanceMs` how often the widget's glance is,
  * `deps.bleHub` the node-ble stand-in's hub (null for none) in place of the one the app
- * preloads, and `deps.configDir` the server's
- * `.signalk` for the file routes in place of the server's own
+ * preloads, `deps.configDir` the server's
+ * `.signalk` for the file routes in place of the server's own, and `deps.WebSocket` and
+ * `deps.fetch` satellite mode's in place of Node's own
  */
 module.exports = function androidBridge(app, deps = {}) {
   const env = deps.env ?? process.env;
@@ -66,6 +72,8 @@ module.exports = function androidBridge(app, deps = {}) {
   let statsTimer = null;
   let glanceTimer = null;
   let ble = null;
+  let satellite = null;
+  let linkDetail = "";
 
   const plugin = {
     id: "pocketsk-android-bridge",
@@ -260,6 +268,17 @@ module.exports = function androidBridge(app, deps = {}) {
         },
         debug: (s) => app.debug(s),
       });
+      satellite = new Satellite({
+        app,
+        pluginId: plugin.id,
+        ...("WebSocket" in deps ? { WebSocket: deps.WebSocket } : {}),
+        ...("fetch" in deps ? { fetch: deps.fetch } : {}),
+        onState: (state, detail) => {
+          if (link?.connected) link.send(satelliteMessage(state, detail));
+          showStatus();
+        },
+        debug: (s) => app.debug(s),
+      });
       link = new Link(socketPath, { onLine, onState });
       link.start();
       // Read from the server's own last statistics, not a listener of ours: a listener a plugin
@@ -285,6 +304,8 @@ module.exports = function androidBridge(app, deps = {}) {
       alarms = null;
       ble?.stop();
       ble = null;
+      satellite?.stop();
+      satellite = null;
     },
 
     /**
@@ -322,6 +343,7 @@ module.exports = function androidBridge(app, deps = {}) {
       serial: input?.stats() ?? {},
       alarms: alarms?.list() ?? [],
       ble: ble?.stats() ?? null,
+      satellite: satellite?.status() ?? null,
     }),
   };
 
@@ -423,14 +445,22 @@ module.exports = function androidBridge(app, deps = {}) {
       link.send(subscribeMessage(options, ble?.demand()));
       alarms?.resend();
       sendStats();
+      if (satellite) {
+        const s = satellite.status();
+        link.send(satelliteMessage(s.state, s.detail));
+      }
     }
     showStatus(detail);
   }
 
-  /** The status line: the link, then each USB device and how it stands. */
+  /**
+   * The status line: the link, then each USB device and how it stands, then satellite mode's link.
+   * Without a [detail] the last one the link gave is kept.
+   */
   function showStatus(detail) {
+    if (detail !== undefined) linkDetail = detail;
     if (!connected) {
-      app.setPluginStatus(`Waiting for the phone (${detail})`);
+      app.setPluginStatus(`Waiting for the phone (${linkDetail})`);
       return;
     }
     const parts = devices.map((d) => {
@@ -449,7 +479,9 @@ module.exports = function androidBridge(app, deps = {}) {
       }
     });
     const parser = devices.length > 0 && !Parser ? "; the server's NMEA 0183 parser was not found, so sentences are not parsed" : "";
-    app.setPluginStatus(parts.length > 0 ? `Connected to the phone; serial: ${parts.join(", ")}${parser}` : "Connected to the phone");
+    const s = satellite?.status();
+    const following = s?.url ? `; following ${s.url.replace(/^http:\/\//, "")} (${s.state}${s.detail ? `: ${s.detail}` : ""})` : "";
+    app.setPluginStatus(`${parts.length > 0 ? `Connected to the phone; serial: ${parts.join(", ")}${parser}` : "Connected to the phone"}${following}`);
   }
 
   function onLine(line) {
@@ -482,6 +514,10 @@ module.exports = function androidBridge(app, deps = {}) {
     }
     if (msg.t === "glance") {
       glance(msg.on);
+      return;
+    }
+    if (msg.t === "satellite") {
+      satellite?.follow(msg.url, msg.token);
       return;
     }
     if (msg.t === "silence") {

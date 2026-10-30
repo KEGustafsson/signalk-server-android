@@ -3,7 +3,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseLine, toDelta, subscribeMessage, statsMessage, glanceMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
+const { parseLine, toDelta, subscribeMessage, statsMessage, glanceMessage, satelliteMessage, MAX_LINE, MAX_DEVICES } = require("../lib/protocol");
 
 test("a sensor line becomes a message", () => {
   const r = parseLine('{"t":"sensor","path":"environment.outside.pressure","value":101325,"src":"android.baro","ts":1760000000000}');
@@ -259,4 +259,29 @@ test("a glance takes the first path with a number, its time, and null for what t
     if (p.startsWith("environment.depth")) throw new Error("no such path");
     return { value: 1, timestamp: ts };
   }).depth, null);
+});
+
+test("the app names the main server to follow, plain http with a token or none, and nothing else passes for it", () => {
+  const token = "eyJhbGciOiJIUzI1NiJ9.eyJkZXZpY2UiOiJ4In0.MKeAYTq9ooTT56zw";
+  assert.deepEqual(parseLine(JSON.stringify({ t: "satellite", url: "http://192.168.1.9:3000", token })), {
+    ok: true,
+    msg: { t: "satellite", url: "http://192.168.1.9:3000", token },
+  });
+  for (const url of ["http://pi.local:3000", "http://[fe80::1]:3000"]) {
+    assert.deepEqual(parseLine(JSON.stringify({ t: "satellite", url, token: null })), { ok: true, msg: { t: "satellite", url, token: null } });
+  }
+  assert.deepEqual(parseLine('{"t":"satellite"}'), { ok: true, msg: { t: "satellite", url: null, token: null } });
+  assert.deepEqual(parseLine('{"t":"satellite","url":null,"token":"a.b.c"}'), { ok: true, msg: { t: "satellite", url: null, token: null } });
+  for (const url of ["https://192.168.1.9:3443", "http://192.168.1.9", "http://192.168.1.9:3000/admin", "http://a b:3000", "http://x:70000", 3000]) {
+    assert.deepEqual(parseLine(JSON.stringify({ t: "satellite", url })), { ok: false, reason: "satellite with a bad url" }, String(url));
+  }
+  for (const bad of ["not a token", "a.b", 42, "a.b.c".repeat(1000)]) {
+    assert.deepEqual(parseLine(JSON.stringify({ t: "satellite", url: "http://192.168.1.9:3000", token: bad })), { ok: false, reason: "satellite with a bad token" });
+  }
+});
+
+test("the link's state goes to the app with a short detail", () => {
+  assert.deepEqual(satelliteMessage("connected", null), { t: "satellite", state: "connected", detail: null });
+  assert.deepEqual(satelliteMessage("unreachable", "ECONNREFUSED\n"), { t: "satellite", state: "unreachable", detail: "ECONNREFUSED" });
+  assert.equal(satelliteMessage("unreachable", "x".repeat(500)).detail.length, 200);
 });

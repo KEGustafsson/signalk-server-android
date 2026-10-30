@@ -36,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -57,12 +58,15 @@ import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
 import fi.pocketsk.night.NightSettings
 import fi.pocketsk.power.PowerProfile
+import fi.pocketsk.satellite.Satellite
+import fi.pocketsk.satellite.SatelliteJob
 import fi.pocketsk.server.Backup
 import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerUsage
+import fi.pocketsk.signalk.SignalKUrl
 import fi.pocketsk.update.AppRelease
 import fi.pocketsk.update.AppUpdater
 import java.text.DateFormat
@@ -92,6 +96,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         }
         StatusCard(model, actions)
         if (model.missingBuilds.isNotEmpty()) MissingBuildsCard(model.missingBuilds, actions)
+        SatelliteCard(model, actions)
         WebappsCard(model, actions)
         HelmCard(model, actions)
         PowerCard(model, actions)
@@ -127,6 +132,90 @@ private fun MissingBuildsCard(missing: List<MissingBuilds.Missing>, actions: App
         }
         Text(stringResource(R.string.dock_missing_after), style = MaterialTheme.typography.bodySmall)
     }
+}
+
+/**
+ * Satellite mode (docs/PLAN.md §8.4, §16 13.1): the boat's main Signal K server, found over mDNS
+ * while the Dock is in front or typed, followed by this phone's server once its admin approves the
+ * access request ([SatelliteJob]), and how the bridge's plugin says its stream stands.
+ */
+@Composable
+private fun SatelliteCard(model: AppModel, actions: AppActions) {
+    Section(stringResource(R.string.dock_satellite_title)) {
+        when (val s = model.satellite) {
+            is SatelliteJob.State.Following -> {
+                Text(stringResource(R.string.dock_satellite_following, s.name, SignalKUrl.describe(s.url)))
+                Text(
+                    when (s.link) {
+                        BridgeProtocol.SatelliteLink.CONNECTED -> stringResource(R.string.dock_satellite_connected)
+                        BridgeProtocol.SatelliteLink.CONNECTING -> stringResource(R.string.dock_satellite_connecting)
+                        BridgeProtocol.SatelliteLink.UNAUTHORIZED -> stringResource(R.string.dock_satellite_unauthorized)
+                        BridgeProtocol.SatelliteLink.UNREACHABLE -> stringResource(R.string.dock_satellite_unreachable, s.detail.orEmpty())
+                        BridgeProtocol.SatelliteLink.OFF, null -> stringResource(R.string.dock_satellite_waiting)
+                    },
+                    color = if (s.link == BridgeProtocol.SatelliteLink.UNAUTHORIZED) MaterialTheme.colorScheme.error else Color.Unspecified,
+                )
+                if (!s.secured) Text(stringResource(R.string.dock_satellite_open), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = actions::stopFollowing) { Text(stringResource(R.string.dock_satellite_stop)) }
+            }
+            is SatelliteJob.State.Asking -> {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Text(
+                        stringResource(if (s.reached) R.string.dock_satellite_asked else R.string.dock_satellite_reaching, s.name),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                s.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                OutlinedButton(onClick = actions::stopFollowing) { Text(stringResource(R.string.dock_satellite_cancel)) }
+            }
+            SatelliteJob.State.Off, is SatelliteJob.State.Ended -> {
+                (s as? SatelliteJob.State.Ended)?.let { Text(stringResource(endedText(it), it.name), color = MaterialTheme.colorScheme.error) }
+                Text(stringResource(R.string.dock_satellite_why), style = MaterialTheme.typography.bodySmall)
+                if (model.satelliteFound.isEmpty()) {
+                    Text(stringResource(R.string.dock_satellite_none), style = MaterialTheme.typography.bodySmall)
+                }
+                for (found in model.satelliteFound) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(found.name)
+                            Text(SignalKUrl.describe(found.url), style = MaterialTheme.typography.bodySmall)
+                        }
+                        TextButton(onClick = { actions.followServer(found.url, found.name) }) { Text(stringResource(R.string.dock_satellite_follow)) }
+                    }
+                }
+                var typed by rememberSaveable { mutableStateOf("") }
+                val url = SignalKUrl.normalise(typed)?.takeIf { Satellite.target(it) != null }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = typed,
+                        onValueChange = { typed = it },
+                        label = { Text(stringResource(R.string.dock_satellite_address)) },
+                        isError = typed.isNotBlank() && url == null,
+                        supportingText = if (typed.isNotBlank() && url == null) {
+                            { Text(stringResource(R.string.dock_satellite_bad_address)) }
+                        } else {
+                            null
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { url?.let { actions.followServer(it, SignalKUrl.describe(it)) } }, enabled = url != null) {
+                        Text(stringResource(R.string.dock_satellite_follow))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun endedText(s: SatelliteJob.State.Ended): Int = when {
+    s.denied -> R.string.dock_satellite_denied
+    s.why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_no_requests
+    s.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_already
+    s.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_expired
+    else -> R.string.dock_satellite_not_signalk
 }
 
 /**
