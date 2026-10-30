@@ -7,6 +7,7 @@ import fi.pocketsk.bridge.AlarmBook
 import fi.pocketsk.bridge.BridgeProtocol
 import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.night.NightSettings
@@ -64,6 +65,9 @@ internal class AppModel {
 
     /** Where the server's data is and where it could go; null until first read, off the main thread. */
     var storage by mutableStateOf<StorageView?>(null)
+
+    /** Native addons installed without an Android build ([fi.pocketsk.install.MissingBuilds]), read off the main thread. */
+    var missingBuilds by mutableStateOf<List<MissingBuilds.Missing>>(emptyList())
 
     /** The webapps installed, by title; null until first read, off the main thread. */
     var webapps by mutableStateOf<List<Webapps.Webapp>?>(null)
@@ -199,6 +203,9 @@ internal interface AppActions {
 
     /** Restores a backup the owner picks, opened with [passphrase]; [passphrase] is wiped once used. */
     fun restoreBackup(passphrase: CharArray)
+
+    /** Opens a new issue on GitHub asking for [missing]'s Android build. */
+    fun requestBuild(missing: MissingBuilds.Missing)
 
     /** Takes what waits in the USB inbox into the server's data folders now. */
     fun takeInbox()

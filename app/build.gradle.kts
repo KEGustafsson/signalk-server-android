@@ -187,11 +187,15 @@ androidComponents {
     onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(bridgePluginAsset, BridgePluginAsset::outputDir) }
 }
 
-// BridgePluginTarTest unpacks the very tar the APK carries with the app's own reader.
+// BridgePluginTarTest unpacks the very tar the APK carries with the app's own reader, and
+// MissingBuildsTest reads the npm launcher's record name from the prebuilds.js the APK carries.
+val npmToolsDir = rootProject.file("runtime-tools/npm")
 tasks.withType<Test>().configureEach {
     val tarball = bridgePluginTar.flatMap { it.archiveFile }
     inputs.file(tarball)
+    inputs.dir(npmToolsDir)
     doFirst { systemProperty("pocketsk.bridgeTar", tarball.get().asFile.absolutePath) }
+    systemProperty("pocketsk.npmToolsDir", npmToolsDir.absolutePath)
 }
 
 /** Hex SHA-256 of a file, for the SBOM. */

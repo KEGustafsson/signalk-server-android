@@ -38,6 +38,7 @@ import fi.pocketsk.bridge.SerialPrefs
 import fi.pocketsk.bridge.UsbSerial
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
+import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotesSource
 import fi.pocketsk.install.Slots
 import fi.pocketsk.net.transportThread
@@ -297,8 +298,10 @@ class MainActivity : ComponentActivity() {
         refreshAddress()
         // A card put in or taken out while the app was in the background.
         refreshStorage()
-        // A webapp installed from the admin UI's App Store while the browser was in front.
+        // A webapp installed from the admin UI's App Store while the browser was in front, and any
+        // native addon that install left without an Android build.
         refreshWebapps()
+        refreshMissingBuilds()
         // Back from the setting that lets the app install apps, or a day since the last look.
         refreshAppUpdate()
         // With the app in front a running server may take location, which it could not when it
@@ -397,6 +400,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The native addons left without an Android build ([MissingBuilds]), read on a worker thread. */
+    private fun refreshMissingBuilds() {
+        transportThread("dock-missing-builds", onError = {}) {
+            val missing = MissingBuilds.read(File(runtime.prebuilds, MissingBuilds.FILE))
+            runOnUiThread { model.missingBuilds = missing }
+        }
+    }
+
+    /** A new issue on GitHub asking for [missing]'s Android build, in the browser. */
+    private fun requestBuild(missing: MissingBuilds.Missing) {
+        val url = MissingBuilds.requestUrl(missing, BuildConfig.VERSION_NAME, fi.pocketsk.node.BuildConfig.NODEJS_MOBILE_VERSION)
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.no_browser, url), Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun pinWebapp(name: String) {
         val found = webappFiles[name] ?: return
         if (!WebappShortcuts.pin(this, found)) Toast.makeText(this, R.string.dock_webapps_pin_none, Toast.LENGTH_LONG).show()
@@ -459,6 +480,7 @@ class MainActivity : ComponentActivity() {
         override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
 
         override fun takeInbox() = this@MainActivity.takeInbox()
+        override fun requestBuild(missing: MissingBuilds.Missing) = this@MainActivity.requestBuild(missing)
 
         override fun saveBackup(passphrase: CharArray) {
             holdPassphrase(passphrase)

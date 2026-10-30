@@ -22,6 +22,12 @@
  * its own and replaces it when the index names another (a C++ API build for a new runtime);
  * an addon the package brought or built itself is never touched.
  *
+ * What is left without a build is recorded too, in [MISSING_FILE] in the cache directory, by the
+ * tree it was installed into: the Dock reads it to name those packages and offer to request their
+ * build (docs/PLAN.md §16 12.4), since the App Store's log, where [report]'s lines go, is gone
+ * once the install is over. Each run replaces its tree's list, so a build placed later, or a tree
+ * with nothing missing any more, clears its own; the Dock checks each package is still there.
+ *
  * Plain CommonJS with no dependencies, like the preloads. Nothing here throws out of [place]:
  * whatever fails is reported, and npm's own result stands.
  */
@@ -42,6 +48,10 @@ const NAPI = "napi";
 
 /** Left beside a placed build: the asset it came from and that asset's SHA-256. */
 const MARKER = ".pocketsk-prebuild";
+
+/** The record of packages left without a build, in the cache directory; NodeRuntime names it too. */
+const MISSING_FILE = "missing.json";
+const MISSING_FORMAT = 1;
 
 /** The only files a build may hold: addons straight under build/Release. */
 const ADDON_FILE = /^build\/Release\/[A-Za-z0-9_.+-]+\.node$/;
@@ -301,10 +311,29 @@ function unpack(dir, entry, tarball) {
 }
 
 /**
+ * Records [absent], the packages under [root] left without a build (`name`, `version`, `dir`), in
+ * [MISSING_FILE] in [cacheDir] in place of what an earlier run recorded for [root]: a root left
+ * with none is dropped, and the file is written only when that changes something (so a phone
+ * with nothing missing has no file). Another root's entries are left as they were; a file that is
+ * no record at all is started again.
+ */
+function remember(cacheDir, root, absent) {
+  const file = path.join(cacheDir, MISSING_FILE);
+  const old = readJson(file);
+  const roots = old?.format === MISSING_FORMAT && old.roots && typeof old.roots === "object" && !Array.isArray(old.roots) ? { ...old.roots } : {};
+  const before = JSON.stringify(roots[root] ?? []);
+  if (absent.length === 0) delete roots[root];
+  else roots[root] = absent;
+  const valid = old?.format === MISSING_FORMAT;
+  if (JSON.stringify(roots[root] ?? []) === before && (valid || Object.keys(roots).length === 0)) return;
+  writeWhole(file, JSON.stringify({ format: MISSING_FORMAT, roots }) + "\n");
+}
+
+/**
  * Puts in place, under [root], every build the index has for a package installed without its
- * addon. Returns what it did: `placed` and `missing` (no build for this phone) as
- * `name@version`, `failed` with the reason. [options] are for tests: `baseUrl`, `cacheDir`,
- * `fetch`, `platform`, `arch`, `abi`.
+ * addon, and records the packages it has none for ([remember]). Returns what it did: `placed`
+ * and `missing` (no build for this phone) as `name@version`, `failed` with the reason.
+ * [options] are for tests: `baseUrl`, `cacheDir`, `fetch`, `platform`, `arch`, `abi`.
  */
 async function place(root, options = {}) {
   const o = {
@@ -320,8 +349,20 @@ async function place(root, options = {}) {
     result.failed.push("POCKETSK_PREBUILDS is not set");
     return result;
   }
+  const absent = [];
+  const record = () => {
+    try {
+      remember(o.cacheDir, root, absent);
+    } catch (e) {
+      result.failed.push(`the list of packages without a build could not be written: ${e.message}`);
+    }
+  };
   const wanting = findAddons(root).filter((a) => !hasOwnBuild(a.dir, o.platform, o.arch));
-  if (wanting.length === 0) return result;
+  if (wanting.length === 0) {
+    record();
+    return result;
+  }
+  // Without an index nothing is known about what is missing, so the record stands as it was.
   const index = await loadIndex(o, result.failed);
   if (!index) return result;
   for (const a of wanting) {
@@ -329,6 +370,7 @@ async function place(root, options = {}) {
     const entry = pick(index, a.name, a.version, o.platform, o.arch, o.abi);
     if (!entry) {
       if (!result.missing.includes(what)) result.missing.push(what);
+      absent.push({ name: a.name, version: a.version, dir: a.dir });
       continue;
     }
     if (placed(a.dir, entry)) continue;
@@ -339,6 +381,7 @@ async function place(root, options = {}) {
       result.failed.push(`${what}: ${e.message}`);
     }
   }
+  record();
   return result;
 }
 
@@ -356,4 +399,4 @@ function report(result) {
   };
 }
 
-module.exports = { RELEASE_URL, MARKER, INSTALL_COMMANDS, installRoot, loadsUnder, runtimeAbi, checkIndex, pick, findAddons, hasOwnBuild, untar, place, report };
+module.exports = { RELEASE_URL, MARKER, MISSING_FILE, INSTALL_COMMANDS, installRoot, loadsUnder, runtimeAbi, checkIndex, pick, findAddons, hasOwnBuild, untar, place, report };
