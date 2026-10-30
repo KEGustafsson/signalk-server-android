@@ -44,7 +44,7 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 | Hardware I/O | Kotlin bridge exposing USB serial, BT SPP and phone sensors over a Unix domain socket to a small Signal K provider plugin | No `/dev/tty*` without root |
 | UI | Native Compose "Dock" for anything that must work when the server is down; the admin UI and webapps in a browser, the phone's own or any device's on the boat's network (§8.2) | Don't reimplement Signal K's UI, or wrap it: it already works in any browser |
 | Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.8, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
-| Distribution | GitHub Releases + F-Droid first (with in-app self-updater); Play Store later | Play's "downloaded executable code" policy is a gray area for plugins |
+| Distribution | GitHub Releases with the in-app self-updater (F-Droid and IzzyOnDroid dropped, §12); Play Store later | Play's "downloaded executable code" policy is a gray area for plugins |
 
 ## 2. Repository layout
 
@@ -366,7 +366,7 @@ The index's checks mirror `prebuilds/lib.js`'s, so a build is fetched only on th
 
 - Check GitHub Releases API daily (configurable); show in Dock.
 - Download APK to `cache/`, verify signature matches installed app (`PackageManager.getPackageArchiveInfo` + signing cert compare), launch `PackageInstaller` session. Standard Obtainium-style flow.
-- F-Droid users get updates via F-Droid; detect installer package name and hide self-update there.
+- An F-Droid client updates only a build someone else publishes there (this project publishes none, §12); detect the installer package name and hide self-update there.
 - **As built** (§16 step 12.1): `update/AppRelease` (pure, tested) and `AppUpdater`, `UpdateReceiver`, the Dock's App update card. The Dock looks at `releases/latest` of this repository when it comes to the front, the answer kept a day (`prebuilds` is never marked latest), and offers a release whose `v1.<count>` is above the installed versionCode. It downloads the APK this phone takes (the arm64 split where the phone runs arm64 code, else the universal one) and the `.sha256` beside it, and hands the file to a `PackageInstaller` session only when the checksum matches, Android reads it as `fi.pocketsk` with a higher versionCode, and every certificate it is signed with is one the installed app has (`hasSigningCertificate`); a phone that gives no signer for an archive leaves that to the installer, which refuses another key anyway. The installer's confirmation is started from the session's status broadcast. Android asks once whether the app may install apps; the Dock opens that setting. A server that ran comes back after the update through `BootReceiver`'s package-replaced start. Hidden when an F-Droid client or Play installed the app.
 - **Pipeline**: copy Crew Radio's `build.yml` whole. Version = `1.<commit count>` from git, shallow-clone guard, keystore from `POCKETSK_*` secrets, split `build` / `release` (read-only token, signs, verifies cert SHA-256, attests) / `publish` (only write token, no checkout, `gh release create`). Add: `nodejs-mobile` zip download pinned by SHA-256 in `verification-metadata`-style, SBOM including `libnode.so` provenance, and the APK's `.sha256` + CycloneDX SBOM as release assets. Add `prebuilds.yml` (§9) and reuse `signalk-ci.yml` for `sk-plugin/android-bridge`.
 
@@ -383,7 +383,7 @@ The index's checks mirror `prebuilds/lib.js`'s, so a build is fetched only on th
 ## 12. Distribution and policy
 
 1. **GitHub Releases** (signed APK + self-updater) from day one.
-2. **F-Droid** via the main repo (requires reproducible build of nodejs-mobile or shipping it as a documented binary blob — check F-Droid's policy; `IzzyOnDroid` as fallback, it accepts prebuilt binaries).
+2. ~~**F-Droid** via the main repo (requires reproducible build of nodejs-mobile or shipping it as a documented binary blob — check F-Droid's policy; `IzzyOnDroid` as fallback, it accepts prebuilt binaries).~~ Dropped by the owner (2026-10-30, §16 12.5). IzzyOnDroid, the fallback, refuses code written with generative AI tools, which this app's is ([App Inclusion Policy, AI policy](https://izzyondroid.org/docs/general/AppInclusionPolicy/#ai-policy), read 2026-10-30: "the code itself should be free of it"), and keeps single APKs under 30 MB, which the arm64 split (30,035,781 bytes) is not. The F-Droid main repository would have to build nodejs-mobile from source in its recipe. 1.0 ships on GitHub Releases alone; [Obtainium](https://github.com/ImranR98/Obtainium) follows them for an owner who wants a store-like updater, and the app's own updater stays on beside it (`AppRelease.selfUpdates`). The F-Droid clients stay in `AppRelease.STORES`, which costs nothing and covers a build someone else publishes.
 3. **Play Store**: attempt after 1.0. Risks: policy on downloaded executable code (JS plugins — argue interpreter content; native `.node` prebuilds are the hard part). Possible Play-only variant that fetches no native addons (§9.2) and ships a curated prebuild set inside the APK.
 
 ## 13. Milestones
@@ -397,7 +397,7 @@ The index's checks mirror `prebuilds/lib.js`'s, so a build is fetched only on th
 | M4 Bridge | §7 | USB CH340 NMEA 0183 → data in Signal K; phone GNSS shows in Freeboard; anchor alarm wakes a locked phone |
 | M5 UI | §8.1–8.3 | Dock complete, kiosk mode, 1 widget |
 | M6 Prebuilds | §9 | serialport-based plugins and `signalk-to-influxdb`-class plugins with sqlite install from the App Store |
-| 1.0 | §10–12 | GitHub release, F-Droid submission, docs |
+| 1.0 | §10–12 | GitHub release, docs |
 | 1.x | §8.4 | Satellite mode |
 
 Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈ 4 weeks, M6 ≈ 1–2 weeks plus ongoing.
@@ -415,7 +415,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
 - R3's expected result, from the same install on desktop Linux (Node 22, signalk-server 2.33.0, 2026-10-17): 758 packages, six with install scripts. Four run `node …` (core-js, es5-ext, storage-engine, @scarf/scarf), which should work, `node` being the symlink into `nativeLibraryDir`. `@canboat/canboatjs` runs `node-gyp rebuild || echo …`, harmless if node-gyp cannot be exec'd. `@serialport/bindings-cpp` runs `node-gyp-build`, i.e. `node_modules/.bin/node-gyp-build`, a shebang script in app storage: the one W^X is expected to break, and a failed install script fails the install. If the phone shows that, the candidates are `script-shell` pointed at a launcher in `nativeLibraryDir` that runs shebang scripts as `node <script>`, or `--ignore-scripts` with §9's prebuilds put in place by the installer itself.
 - The same crawl answers the W^X question of §4.2: which of those scripts exec something by name from the app's data directory (`node_modules/.bin/*`, `node-gyp`, `prebuild-install`)? If many do, npm's `script-shell` can point at a small launcher in `nativeLibraryDir` that runs a shebang script as `node <script>`.
 - Memory ceiling on 3–4 GB phones with Freeboard + 10 plugins; choose `--max-old-space-size` policy.
-- F-Droid reproducibility of nodejs-mobile; if not feasible, IzzyOnDroid.
+- ~~F-Droid reproducibility of nodejs-mobile; if not feasible, IzzyOnDroid.~~ Neither, as decided in §12 (2026-10-30).
 
 ## 16. First tasks for the coding agent
 
@@ -627,7 +627,7 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **Nearby devices is not asked for at a start with LAN access off**, and still is from the Settings card: the server's connections out to a gateway on the boat's network need it on Android 17.
        - **Tried before review** (2026-10-29, signalk-server 2.35.1 on desktop Node 22, with sample data): with the variable, HTTP, Signal K over TCP and NMEA 0183 over TCP listened on 127.0.0.1 only, the machine's own network address was refused and no mDNS advertisement was made; without it, all three listened on 0.0.0.0 and answered on that address.
        - **To check on a device:** with LAN access off a tablet on the boat's Wi-Fi cannot open the admin UI or find the server in KIP's or the app's discovery, while the phone's browser and the bridge's plugin carry on; switching it on restarts the server and the tablet reaches it again; the trial run of an update works with either.
-    4. The missing-build message (M6 follow-up, §9.2) **in review** (`runtime-tools/npm/prebuilds.js` records, `install/MissingBuilds` pure and tested, the Dock's Missing Android builds card). Chosen by the owner (2026-10-30) after the LAN access switch.
+    4. ~~The missing-build message (M6 follow-up, §9.2)~~ **Done** (#48) (`runtime-tools/npm/prebuilds.js` records, `install/MissingBuilds` pure and tested, the Dock's Missing Android builds card). Chosen by the owner (2026-10-30) after the LAN access switch.
        - **What it does.** When an install leaves a native addon without an Android build (the `prebuilds` Release has none for it), the Dock says so in a **Missing Android builds** card under Server: each package by name and version, with **Request it**, which opens a new issue on this repository with the title and text filled in (the package, the app's version, nodejs-mobile's). The card is gone once nothing is missing.
        - **How.** The npm launcher records, after every install it puts builds in place for, the packages it found none for, one file for each tree they were installed into (`files/prebuilds/missing/<first 32 hex of the tree's SHA-256>.json`, format 1: `root` and `missing`, a list of `name`, `version`, `dir`); each run replaces its own tree's file and removes it when nothing is missing there, so installs into different trees (the App Store's and the app's own update of the server, which can run at once) never read or write the same file, and every file is staged under a name of its writer's own before it is renamed in. The Dock reads it when it comes to the front and shows only what is still so: a package removed, installed in another version, or with an addon in `build/Release` (its own build, or one put in place later) drops out.
        - **Decisions (not made by the plan).**
@@ -638,6 +638,9 @@ Rough effort for one experienced developer: M0–M3 ≈ 3–4 weeks, M4–M5 ≈
          - **A failed download is not listed.** It is the network, not a missing build; the install's log says so, and the next install tries again.
        - **Tried before review** (2026-10-30, desktop Node 22 and npm 10): `npm-launch.js install` of a local package with a `binding.gyp`, against the real `prebuilds` index, logged the missing build and wrote the record with its tree, name, version and folder.
        - **To check on a device:** an App Store install of a plugin whose native addon is not in `prebuilds/packages.json` shows the card when the Dock comes back to the front; **Request it** opens the issue form filled in; removing the plugin, or a build placed by a later install, makes the card go.
+    5. Distribution (§12) **in review**: GitHub Releases alone. Chosen by the owner (2026-10-30) after the missing-build message, when IzzyOnDroid, the plan's fallback store, turned out to refuse code written with generative AI tools (§12 quotes its policy); nothing is built for a store.
+       - **What changes.** §1, §12, §13 and §15 say so; the README names Obtainium for an owner who wants a store-like updater. The app is unchanged: its updater already offers itself beside Obtainium and stays hidden under an F-Droid client or Play.
+       - **What that leaves of 1.0.** The GitHub release with its updater (12.1) and the docs (12.2) are in place; what is left is what only a phone can prove, listed under "To check on a device" in each step.
 
 ## 17. Reuse from Crew Radio
 
