@@ -27,9 +27,11 @@
  *     response, base64; conn and at where Android tells; lib/ble.js parses it)
  *   {"t":"glance","on":true}
  *     (the app's home-screen widget is on a screen that is on: send the glance every 2 s until off)
- *   {"t":"satellite","url":"http://192.168.1.9:3000","token":"eyJ..."}
+ *   {"t":"satellite","url":"http://192.168.1.9:3000","token":"eyJ...","label":"pocketsk.0b1c2d3e",
+ *    "push":{"sensors":true,"serial":false}}
  *     (satellite mode: follow the boat's main server there with that device token, null when it
- *     runs without security; no url: follow nothing; lib/satellite.js)
+ *     runs without security, and send it the groups of this phone's own data push names, under
+ *     label; no url: follow nothing; lib/satellite.js)
  * Plugin to app:
  *   {"t":"subscribe","sensors":["battery","baro","gnss","attitude","environment","cellular"],
  *    "rateHz":{"baro":0.1,"gnss":1,"attitude":1,"environment":0.1,"cellular":0.0333},"bowOffsetDeg":0,
@@ -47,9 +49,10 @@
  *    "aws":{"v":5.1,"ts":1760000000000},"awa":{"v":-0.52,"ts":1760000000000}}
  *     (the boat at a glance for the widget, from the server's own data, in SI units: metres,
  *     m/s, radians; null for one the server has no number for)
- *   {"t":"satellite","state":"connected","detail":null}
+ *   {"t":"satellite","state":"connected","detail":null,"write":true}
  *     (how the link to the main server stands: off, connecting, connected, unauthorized or
- *     unreachable, with a short detail)
+ *     unreachable, with a short detail, and whether the main server lets this phone write, null
+ *     until it has said)
  *
  * The app is this phone's own process (the socket lives in its private directory), yet every
  * line is still checked before it becomes a delta: a path or a source the server would store
@@ -88,6 +91,8 @@ const SATELLITE_URL = /^http:\/\/(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+):[0-9]{1,5}$
 /** A JWT, which is what signalk-server's device tokens are: three base64url parts. */
 const TOKEN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const MAX_TOKEN = 4096;
+/** The label this phone's data goes under on the main server: its client id's first 8 hex. */
+const SATELLITE_LABEL = /^pocketsk\.[0-9a-f]{8}$/;
 /** Longest advertising data in an adv line: an extended advertisement and its scan response. */
 const MAX_ADV_BYTES = 2 * 1650;
 /** Most addresses a subscribe asks the app to keep hearing: Android's hardware filters are few. */
@@ -187,9 +192,14 @@ function parseAdv(msg) {
 }
 
 /** A string for the status line: no control characters, at most `max` long. */
-/** The main server to follow, or none; a token only with a server, and only one shaped as a token. */
+/**
+ * The main server to follow, or none; a token only with a server, and only one shaped as a token.
+ * What is sent there: a label shaped as the app makes them, and push's groups, each on only when
+ * it is true; without a label nothing is.
+ */
 function parseSatellite(msg) {
-  if (msg.url === undefined || msg.url === null) return { ok: true, msg: { t: "satellite", url: null, token: null } };
+  const off = { t: "satellite", url: null, token: null, label: null, push: { sensors: false, serial: false } };
+  if (msg.url === undefined || msg.url === null) return { ok: true, msg: off };
   if (typeof msg.url !== "string" || !SATELLITE_URL.test(msg.url) || Number(msg.url.slice(msg.url.lastIndexOf(":") + 1)) > 65535) {
     return { ok: false, reason: "satellite with a bad url" };
   }
@@ -197,12 +207,23 @@ function parseSatellite(msg) {
   if (token !== null && (typeof token !== "string" || token.length > MAX_TOKEN || !TOKEN.test(token))) {
     return { ok: false, reason: "satellite with a bad token" };
   }
-  return { ok: true, msg: { t: "satellite", url: msg.url, token } };
+  const label = typeof msg.label === "string" && SATELLITE_LABEL.test(msg.label) ? msg.label : null;
+  const push = msg.push && typeof msg.push === "object" ? msg.push : {};
+  return {
+    ok: true,
+    msg: {
+      t: "satellite",
+      url: msg.url,
+      token,
+      label,
+      push: { sensors: label !== null && push.sensors === true, serial: label !== null && push.serial === true },
+    },
+  };
 }
 
-/** How satellite mode's link stands, for the app (lib/satellite.js's STATES). */
-function satelliteMessage(state, detail) {
-  return { t: "satellite", state, detail: detail ? text(String(detail), 200) : null };
+/** How satellite mode's link stands, for the app (lib/satellite.js's STATES), and whether it may write. */
+function satelliteMessage(state, detail, write = null) {
+  return { t: "satellite", state, detail: detail ? text(String(detail), 200) : null, write: typeof write === "boolean" ? write : null };
 }
 
 function text(value, max) {

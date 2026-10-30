@@ -22,6 +22,12 @@ import java.util.concurrent.CopyOnWriteArraySet
  * when the process comes back ([observe]); the main server keeps it in memory and forgets it when
  * it restarts, which the poll then says. How the plugin's stream stands comes back over the
  * bridge ([linked]).
+ *
+ * The push (§16 13.2): what of the phone's own the plugin sends the main server is the Dock's
+ * choice ([setPush]), and needs the main server to let this phone write, which the plugin hears
+ * from it and says ([linked]). A token that may only read is asked again ([askWrite]): a second
+ * access request naming read/write, while the link goes on reading, the new token taking the old
+ * one's place once approved.
  */
 internal object SatelliteJob {
 
@@ -46,10 +52,25 @@ internal object SatelliteJob {
             val secured: Boolean,
             val link: BridgeProtocol.SatelliteLink? = null,
             val detail: String? = null,
+            /** Whether the main server lets this phone write, null until the plugin has heard. */
+            val write: Boolean? = null,
+            /** What of the phone's own is sent there. */
+            val push: Satellite.Push = Satellite.Push.NONE,
+            /** A request for read/write under way or ended, null when none was asked. */
+            val upgrade: Upgrade? = null,
         ) : State
 
         /** The request ended without access: [denied] by the admin, or refused for [why]. */
         data class Ended(val url: String, val name: String, val denied: Boolean, val why: Satellite.Why? = null) : State
+    }
+
+    /** The request for read/write while following ([askWrite]). */
+    sealed interface Upgrade {
+        /** Waiting for the admin ([reached]) or for the main server to answer at all. */
+        data class Asking(val reached: Boolean, val detail: String? = null) : Upgrade
+
+        /** Ended without read/write: [denied] by the admin, or refused for [why]. */
+        data class Ended(val denied: Boolean, val why: Satellite.Why? = null) : Upgrade
     }
 
     /** A screen's view of the job. Called on the job's thread, or the observing one at first. */
@@ -81,7 +102,7 @@ internal object SatelliteJob {
         val prefs = SatellitePrefs(app)
         val url = prefs.url ?: return State.Off
         val name = prefs.name ?: url
-        if (prefs.following) return State.Following(url, name, prefs.link()?.token != null, link.first, link.second)
+        if (prefs.following) return following(prefs, url, name)
         if (prefs.href == null || prefs.askedOf != url) return State.Off.also { prefs.off() }
         start(app, url, name)
         return State.Asking(url, name, reached = true)
@@ -92,13 +113,48 @@ internal object SatelliteJob {
      * plugin has gone; shown while following.
      */
     @Synchronized
-    fun linked(state: BridgeProtocol.SatelliteLink?, detail: String?) {
-        link = state to detail
-        (latest as? State.Following)?.let { publish(it.copy(link = state, detail = detail)) }
+    fun linked(state: BridgeProtocol.SatelliteLink?, detail: String?, write: Boolean?) {
+        heard = Heard(state, detail, write)
+        (latest as? State.Following)?.let { publish(it.copy(link = state, detail = detail, write = write)) }
     }
 
     /** The plugin's last word, for a [State.Following] published after it. */
-    private var link: Pair<BridgeProtocol.SatelliteLink?, String?> = null to null
+    private data class Heard(val link: BridgeProtocol.SatelliteLink?, val detail: String?, val write: Boolean?)
+
+    private var heard = Heard(null, null, null)
+
+    /** The following state as the preferences and the plugin's last word make it. */
+    private fun following(prefs: SatellitePrefs, url: String, name: String, upgrade: Upgrade? = null) =
+        State.Following(url, name, prefs.link()?.token != null, heard.link, heard.detail, heard.write, prefs.push, upgrade)
+
+    /** What of the phone's own goes to the main server, as the Dock chose; the plugin hears at once. */
+    @Synchronized
+    fun setPush(context: Context, push: Satellite.Push) {
+        val app = context.applicationContext
+        SatellitePrefs(app).push = push
+        (latest as? State.Following)?.let { publish(it.copy(push = push)) }
+        SignalKService.satelliteChanged(app)
+    }
+
+    /**
+     * Asks the main server followed for read/write, the link reading on meanwhile: a new access
+     * request naming the permission, or the one already made of it polled.
+     */
+    @Synchronized
+    fun askWrite(context: Context) {
+        val f = latest as? State.Following ?: return
+        publish(f.copy(upgrade = Upgrade.Asking(reached = false)))
+        start(context.applicationContext, f.url, f.name, write = true)
+    }
+
+    /** No longer waits for read/write; the link stays as it is. */
+    @Synchronized
+    fun cancelWrite() {
+        generation++
+        worker?.interrupt()
+        worker = null
+        (latest as? State.Following)?.let { publish(it.copy(upgrade = null)) }
+    }
 
     /** Asks [url] (named [name]) for access, or polls the request already made of it. */
     @Synchronized
@@ -126,19 +182,29 @@ internal object SatelliteJob {
         if (wasFollowing) SignalKService.satelliteChanged(app)
     }
 
-    private fun start(app: Context, url: String, name: String) {
+    private fun start(app: Context, url: String, name: String, write: Boolean = false) {
         val gen = ++generation
         worker?.interrupt()
         worker = transportThread("satellite-access", onError = { e ->
             // Nothing the loop expects (an address the platform refuses, say): ended rather than
             // left asking with nobody asking.
-            if (settle(gen) { SatellitePrefs(app).off(); State.Ended(url, name, denied = false, why = Satellite.Why.NOT_SIGNAL_K) }) {
-                ServerStatus.log(app).note("satellite: the access request to $url failed: ${e.message ?: e}")
+            val ended = settle(gen) {
+                if (write) {
+                    following(SatellitePrefs(app), url, name, Upgrade.Ended(denied = false, why = Satellite.Why.NOT_SIGNAL_K))
+                } else {
+                    SatellitePrefs(app).off()
+                    State.Ended(url, name, denied = false, why = Satellite.Why.NOT_SIGNAL_K)
+                }
             }
-        }) { run(app, gen, url, name) }
+            if (ended) ServerStatus.log(app).note("satellite: the access request to $url failed: ${e.message ?: e}")
+        }) { run(app, gen, url, name, write) }
     }
 
-    private fun run(app: Context, gen: Int, url: String, name: String) {
+    /**
+     * One access request to [url] and its polls, to follow it or, with [write], for read/write
+     * while following it already: then an ending leaves the link as it is.
+     */
+    private fun run(app: Context, gen: Int, url: String, name: String, write: Boolean) {
         val prefs = SatellitePrefs(app)
         val client = SignalKClient(app, url, null)
         val backoff = Backoff(RETRY_FIRST_MS, RETRY_MAX_MS)
@@ -147,45 +213,62 @@ internal object SatelliteJob {
         // this run did not make is then asked again, rather than reported as lapsed.
         var resumed = href != null
         val log = ServerStatus.log(app)
+        val what = if (write) "read/write" else "access"
+        fun asking(reached: Boolean, detail: String? = null): State =
+            if (write) following(prefs, url, name, Upgrade.Asking(reached, detail)) else State.Asking(url, name, reached, detail)
+        fun ended(denied: Boolean, why: Satellite.Why? = null): State {
+            prefs.forgetRequest()
+            if (write) return following(prefs, url, name, Upgrade.Ended(denied, why))
+            prefs.off()
+            return State.Ended(url, name, denied, why)
+        }
         while (true) {
             val outcome = href?.let { Satellite.afterPoll(it, client.pollAccess(it)) }
-                ?: Satellite.afterRequest(client.requestAccess(prefs.clientId, description(app)))
+                ?: Satellite.afterRequest(client.requestAccess(prefs.clientId, description(app), if (write) READ_WRITE else null))
             when (outcome) {
                 is Satellite.Outcome.Pending -> {
                     if (href == null) {
-                        if (!settle(gen) { prefs.asking(url, name, outcome.href); State.Asking(url, name, reached = true) }) return
-                        log.note("satellite: asked $url for access; its admin approves it under Security, Access Requests")
-                    } else if (!settle(gen) { State.Asking(url, name, reached = true) }) return
+                        if (!settle(gen) { prefs.asking(url, name, outcome.href, keepFollowing = write); asking(true) }) return
+                        log.note("satellite: asked $url for $what; its admin approves it under Security, Access Requests")
+                    } else if (!settle(gen) { asking(true) }) return
                     href = outcome.href
                     backoff.reset()
                     if (!sleepQuietly(POLL_MS)) return
                 }
                 is Satellite.Outcome.Approved -> {
-                    if (!settle(gen) { prefs.follow(url, name, outcome.token); State.Following(url, name, outcome.token != null) }) return
-                    log.note("satellite: following $url" + if (outcome.token == null) " (it runs without security)" else ", access approved")
+                    val done = settle(gen) {
+                        if (write) {
+                            // A server without security answers as for the first request: the token stays.
+                            outcome.token?.let { prefs.token(it) } ?: prefs.forgetRequest()
+                            following(prefs, url, name)
+                        } else {
+                            prefs.follow(url, name, outcome.token)
+                            following(prefs, url, name)
+                        }
+                    }
+                    if (!done) return
+                    log.note("satellite: " + if (write) "$url approved read/write" else "following $url" + if (outcome.token == null) " (it runs without security)" else ", access approved")
                     SignalKService.satelliteChanged(app)
                     return
                 }
                 Satellite.Outcome.Denied -> {
-                    if (settle(gen) { prefs.forgetRequest(); prefs.off(); State.Ended(url, name, denied = true) }) {
-                        log.note("satellite: $url denied access")
-                    }
+                    if (settle(gen) { ended(denied = true) }) log.note("satellite: $url denied $what")
                     return
                 }
                 is Satellite.Outcome.Refused -> {
                     if (outcome.why == Satellite.Why.EXPIRED && resumed) {
                         resumed = false
                         href = null
-                        if (!settle(gen) { prefs.forgetRequest(); State.Asking(url, name, reached = false) }) return
+                        if (!settle(gen) { prefs.forgetRequest(); asking(false) }) return
                         continue
                     }
-                    if (settle(gen) { prefs.forgetRequest(); prefs.off(); State.Ended(url, name, denied = false, why = outcome.why) }) {
-                        log.note("satellite: $url refused the access request (${outcome.why})")
+                    if (settle(gen) { ended(denied = false, why = outcome.why) }) {
+                        log.note("satellite: $url refused the request for $what (${outcome.why})")
                     }
                     return
                 }
                 is Satellite.Outcome.Retry -> {
-                    if (!settle(gen) { State.Asking(url, name, reached = false, detail = outcome.detail) }) return
+                    if (!settle(gen) { asking(false, outcome.detail) }) return
                     if (!sleepQuietly(backoff.next())) return
                 }
             }
@@ -218,6 +301,9 @@ internal object SatelliteJob {
 
     /** How often a waiting request is polled: the admin is approving it on another screen now. */
     private const val POLL_MS = 3_000L
+
+    /** The permission a request for writing names (signalk-server's own word for it). */
+    private const val READ_WRITE = "readwrite"
     private const val RETRY_FIRST_MS = 2_000L
     private const val RETRY_MAX_MS = 30_000L
 }

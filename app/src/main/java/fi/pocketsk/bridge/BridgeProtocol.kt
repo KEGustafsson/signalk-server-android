@@ -228,8 +228,11 @@ internal object BridgeProtocol {
         /** The deltas a second the server took in, as its own statistics count them. */
         data class Stats(val deltaRate: Double) : Incoming
         data class Glance(val glance: BridgeProtocol.Glance) : Incoming
-        /** How satellite mode's link to the main server stands ([SatelliteLink]), with a short [detail]. */
-        data class Satellite(val state: SatelliteLink, val detail: String?) : Incoming
+        /**
+         * How satellite mode's link to the main server stands ([SatelliteLink]), with a short
+         * [detail], and whether the main server lets this phone write (null until it has said).
+         */
+        data class Satellite(val state: SatelliteLink, val detail: String?, val write: Boolean?) : Incoming
         data class Dropped(val reason: String) : Incoming
     }
 
@@ -258,11 +261,13 @@ internal object BridgeProtocol {
 
     /**
      * The main server for the plugin to follow, `http://host:port`, with its device token (none
-     * when it runs without security), or nothing to follow when [link] is null.
+     * when it runs without security), the label this phone's data goes there under and which of
+     * it, or nothing to follow when [link] is null.
      */
     fun satellite(link: fi.pocketsk.satellite.Satellite.Link?): String = when {
         link == null -> """{"t":"satellite"}"""
-        else -> """{"t":"satellite","url":${Json.quote(link.url)},"token":${link.token?.let(Json::quote) ?: "null"}}"""
+        else -> """{"t":"satellite","url":${Json.quote(link.url)},"token":${link.token?.let(Json::quote) ?: "null"},""" +
+            """"label":${Json.quote(link.label)},"push":{"sensors":${link.push.sensors},"serial":${link.push.serial}}}"""
     }
 
     /** Whether the plugin is to send [Glance]s, every 2 s, for a widget on a screen that is on. */
@@ -362,7 +367,7 @@ internal object BridgeProtocol {
                 ),
             )
             "satellite" -> SatelliteLink.entries.firstOrNull { it.wire == msg["state"] }
-                ?.let { Incoming.Satellite(it, (msg["detail"] as? String)?.take(MAX_DETAIL)) }
+                ?.let { Incoming.Satellite(it, (msg["detail"] as? String)?.take(MAX_DETAIL), msg["write"] as? Boolean) }
                 ?: Incoming.Dropped("satellite without a state")
             else -> Incoming.Dropped("unknown type ${(t as? String)?.take(32) ?: t}")
         }

@@ -82,7 +82,7 @@ test("on the phone it subscribes and turns sensor lines into deltas", async (t) 
   assert.deepEqual(p.statusNow(), {
     connected: true, app: "1.200", sensors: 1, dropped: 1, devices: [], serial: {}, alarms: [],
     ble: { heard: 0, devices: 0, provider: false, standIn: false },
-    satellite: { state: "off", detail: null, url: null, deltas: 0 },
+    satellite: { state: "off", detail: null, url: null, deltas: 0, write: null, pushed: 0 },
   });
   conn.destroy();
   await until(() => app.status.at(-1).startsWith("Waiting for the phone"));
@@ -491,16 +491,72 @@ test("the app's satellite message follows the main server, and the link's state 
   p.start({});
   await until(() => conn !== null && received.includes('"t":"satellite"'));
   const lines = () => received.split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((m) => m.t === "satellite");
-  assert.deepEqual(lines()[0], { t: "satellite", state: "off", detail: null }, "the link's state at connect");
+  assert.deepEqual(lines()[0], { t: "satellite", state: "off", detail: null, write: null }, "the link's state at connect");
   conn.write('{"t":"satellite","url":"http://192.168.1.9:3000","token":"a.b.c"}\n');
   await until(() => made.length === 1);
   assert.deepEqual(made[0].options, { headers: { Authorization: "Bearer a.b.c" } });
   made[0].onmessage({ data: JSON.stringify({ self: "vessels.urn:mrn:signalk:uuid:main" }) });
   made[0].onmessage({ data: JSON.stringify({ context: "vessels.urn:mrn:signalk:uuid:main", updates: [{ $source: "gps.GP", values: [{ path: "navigation.speedOverGround", value: 3 }] }] }) });
-  await until(() => lines().some((m) => m.state === "connected") && app.deltas.length === 1);
+  await until(() => lines().some((m) => m.state === "connected" && m.write === false) && app.deltas.length === 1);
   assert.equal("context" in app.deltas[0][1], false);
-  assert.ok(app.status.at(-1).endsWith("following 192.168.1.9:3000 (connected)"), app.status.at(-1));
-  assert.deepEqual(p.statusNow().satellite, { state: "connected", detail: null, url: "http://192.168.1.9:3000", deltas: 1 });
+  assert.ok(app.status.at(-1).endsWith("following 192.168.1.9:3000 (connected, read only)"), app.status.at(-1));
+  assert.deepEqual(p.statusNow().satellite, { state: "connected", detail: null, url: "http://192.168.1.9:3000", deltas: 1, write: false, pushed: 0 });
   conn.write('{"t":"satellite"}\n');
   await until(() => lines().at(-1).state === "off");
+});
+
+test("satellite mode sends the phone's sensors and serial sentences to the main server, and its Silence", async (t) => {
+  const sock = socketPath();
+  let conn = null;
+  const made = [];
+  const posts = [];
+  class FakeSocket {
+    constructor(url, options) {
+      this.url = url;
+      this.options = options;
+      this.sent = [];
+      made.push(this);
+    }
+    send(msg) {
+      this.sent.push(JSON.parse(msg));
+    }
+    close() {}
+  }
+  const fetch = async (url, init) => {
+    if (init?.method === "POST") {
+      posts.push(url);
+      return { ok: true };
+    }
+    return { ok: true, json: async () => ({ status: "loggedIn", authenticationRequired: true, userLevel: "readwrite" }) };
+  };
+  const server = await listen(sock, (c) => {
+    conn = c;
+    c.setEncoding("utf8");
+  });
+  const app = fakeApp();
+  app.notifications = { silence() {}, acknowledge() {} };
+  app.subscriptionmanager = { subscribe() {} };
+  const Parser = class {
+    parse(line) {
+      return line.startsWith("$GPRMC") ? { updates: [{ source: { talker: "GP", sentence: "RMC" }, values: [{ path: "navigation.speedOverGround", value: 2 }] }] } : null;
+    }
+  };
+  const p = plugin(app, { env: { POCKETSK_BRIDGE: sock }, WebSocket: FakeSocket, fetch, Parser });
+  t.after(async () => {
+    p.stop();
+    await server.closeAll();
+  });
+  p.start({});
+  await until(() => conn !== null);
+  conn.write('{"t":"satellite","url":"http://192.168.1.9:3000","token":"a.b.c","label":"pocketsk.0b1c2d3e","push":{"sensors":true,"serial":true}}\n');
+  await until(() => made.length === 1);
+  made[0].onmessage({ data: JSON.stringify({ self: "vessels.urn:mrn:signalk:uuid:main" }) });
+  await until(() => p.statusNow().satellite.write === true);
+  conn.write('{"t":"sensor","path":"environment.outside.pressure","value":101000,"src":"android.baro","ts":0}\n');
+  conn.write('{"t":"devices","list":[{"id":"usb-1a86-7523","kind":"usb","name":"USB Serial","baud":4800,"state":"open"}]}\n');
+  conn.write(`{"t":"serial","id":"usb-1a86-7523","data":"${Buffer.from("$GPRMC,1*00\r\n").toString("base64")}"}\n`);
+  await until(() => made[0].sent.length === 2);
+  assert.equal(made[0].sent[0].updates[0].$source, "pocketsk.0b1c2d3e.android.baro");
+  assert.equal(made[0].sent[1].updates[0].source.label, "pocketsk.0b1c2d3e.android.usb-1a86-7523");
+  assert.ok(app.status.at(-1).includes("(connected, read/write)"), app.status.at(-1));
 });

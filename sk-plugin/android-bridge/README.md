@@ -86,7 +86,9 @@ When the app's Dock follows the boat's main Signal K server (a Raspberry Pi, say
 holds the link: it opens the main server's delta stream with the device token its admin approved
 for the phone, and gives every delta to this server, the main server's vessel as this one's own.
 The plugin's status line says how the link stands. The token stays in the app, which hands it to
-the plugin over its socket.
+the plugin over its socket. With read/write access, the phone's own sensors and serial devices go
+to the main server too, as the app's Dock chose them, under the phone's own name there
+(`pocketsk.<id>.android.*`), and the phone's Silence silences the main server's alarm.
 
 ## Files
 

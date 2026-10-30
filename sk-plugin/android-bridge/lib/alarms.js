@@ -107,6 +107,12 @@ class Alarms {
     return null;
   }
 
+  /** The path of the alarm the phone knows as `id`, null for none it was told of. */
+  pathOf(id) {
+    for (const [path, value] of this.byPath) if (idOf(path, value) === id) return path;
+    return null;
+  }
+
   /** What the server allows done to `value` from here: `silence`, `acknowledge` or null. */
   actionOf(value) {
     if (!this.api || typeof value.id !== "string" || !UUID.test(value.id)) return null;

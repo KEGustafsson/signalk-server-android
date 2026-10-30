@@ -179,3 +179,12 @@ test("rank orders the states and knows no others", () => {
   assert.equal(rank("constructor"), 0);
   assert.equal(rank(undefined), 0);
 });
+
+test("an alarm's path is found by the id the phone knows it by", () => {
+  const { a } = alarms({ api: fakeApi() });
+  a.update("notifications.navigation.anchor", anchor());
+  a.update("notifications.mob", anchor({ id: undefined, state: "emergency" }));
+  assert.equal(a.pathOf(ID), "notifications.navigation.anchor");
+  assert.equal(a.pathOf("notifications.mob"), "notifications.mob", "one without a server id is known by its path");
+  assert.equal(a.pathOf(ID2), null);
+});

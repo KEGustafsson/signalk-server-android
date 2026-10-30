@@ -41,21 +41,40 @@ internal class SatellitePrefs(context: Context) {
     val clientId: String
         @Synchronized get() = p.getString(CLIENT_ID, null) ?: UUID.randomUUID().toString().also { p.edit { putString(CLIENT_ID, it) } }
 
+    /** What of the phone's own goes to the main server (§16 13.2): none until the Dock says. */
+    var push: Satellite.Push
+        get() = Satellite.Push(sensors = p.getBoolean(PUSH_SENSORS, false), serial = p.getBoolean(PUSH_SERIAL, false))
+        set(value) = p.edit {
+            putBoolean(PUSH_SENSORS, value.sensors)
+            putBoolean(PUSH_SERIAL, value.serial)
+        }
+
     /** What the bridge's plugin is to follow, or null when not following. */
     fun link(): Satellite.Link? {
         if (!following) return null
         val url = url?.takeIf { Satellite.target(it) != null } ?: return null
-        return Satellite.Link(url, p.getString(TOKEN, null))
+        return Satellite.Link(url, p.getString(TOKEN, null), Satellite.label(clientId), push)
     }
 
-    /** An access request asked of [url] (named [name]), waiting at [href]. */
-    fun asking(url: String, name: String, href: String) = p.edit {
-        putString(URL, url)
-        putString(NAME, name)
+    /**
+     * An access request asked of [url] (named [name]), waiting at [href]; [keepFollowing] when it
+     * asks for read/write while the link goes on with the token it has.
+     */
+    fun asking(url: String, name: String, href: String, keepFollowing: Boolean = false) = p.edit {
         putString(HREF, href)
         putString(ASKED_OF, url)
+        if (keepFollowing) return@edit
+        putString(URL, url)
+        putString(NAME, name)
         putBoolean(FOLLOWING, false)
         remove(TOKEN)
+    }
+
+    /** The token a request for read/write was approved with, in the old one's place. */
+    fun token(token: String) = p.edit {
+        putString(TOKEN, token)
+        remove(HREF)
+        remove(ASKED_OF)
     }
 
     /** [url] asked of again: what to poll, if anything (see [href]). */
@@ -106,5 +125,7 @@ internal class SatellitePrefs(context: Context) {
         const val TOKEN = "token"
         const val FOLLOWING = "following"
         const val CLIENT_ID = "client_id"
+        const val PUSH_SENSORS = "push_sensors"
+        const val PUSH_SERIAL = "push_serial"
     }
 }
