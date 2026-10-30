@@ -311,7 +311,10 @@ class SignalKService : Service() {
         val now = LanAddress.ofThisPhone()
         if (now != address) {
             address = now
-            log.note(now?.let { "reachable on the boat's network at $it" } ?: "no LAN address")
+            log.note(
+                now?.let { if (prefs.lanAccess) "reachable on the boat's network at $it" else "on the boat's network at $it, LAN access off" }
+                    ?: "no LAN address",
+            )
             postNotification()
         }
     }
@@ -343,7 +346,8 @@ class SignalKService : Service() {
         val (title, text) = when (state) {
             is ServerState.Starting -> getString(R.string.server_title, state.version) to getString(R.string.server_starting)
             is ServerState.Running -> getString(R.string.server_title, state.version) to
-                "http://${address ?: "127.0.0.1"}:${state.port}".let { url ->
+                // With LAN access off the phone's address would name a server nobody else reaches.
+                "http://${address.takeIf { state.lan } ?: "127.0.0.1"}:${state.port}".let { url ->
                     when {
                         !state.answering -> getString(R.string.server_not_answering, url)
                         state.onTrial -> getString(R.string.server_on_trial, url)
@@ -479,9 +483,15 @@ class SignalKService : Service() {
             if (ServerStatus.state.isActive) send(context, ACTION_STOP)
         }
 
-        /** Restarts a running server; nothing to do when none runs. */
+        /**
+         * Restarts a running server; nothing to do when none runs. A server being started counts
+         * as running ([ServerPrefs.running] is set before the supervisor's loop starts, while the
+         * state reads Stopped until it publishes Starting): a run that has read its settings (LAN
+         * access, the data's place) but not yet spawned must still be told, or it keeps the old
+         * ones for its whole life. A restart that finds no supervisor in the service does nothing.
+         */
         fun restart(context: Context) {
-            if (ServerStatus.state.isActive) send(context, ACTION_RESTART)
+            if (ServerStatus.state.isActive || ServerPrefs(context).running) send(context, ACTION_RESTART)
         }
 
         /**

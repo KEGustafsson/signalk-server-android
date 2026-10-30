@@ -531,21 +531,37 @@ private fun deviceText(d: BridgeProtocol.Device): String {
 
 /**
  * Running or not, which version from which slot, for how long and at what cost (CPU, memory),
- * where the boat reaches it; Start, Stop, Restart, admin UI.
+ * where the boat reaches it, and whether it may (LAN access, docs/PLAN.md §11); Start, Stop,
+ * Restart, admin UI.
  */
 @Composable
 private fun StatusCard(model: AppModel, actions: AppActions) {
     val state = model.server
-    val port = (state as? ServerState.Running)?.port
+    val running = state as? ServerState.Running
+    val port = running?.port
     Section(stringResource(R.string.dock_status_title)) {
         Text(serverStateText(state, ServerActions.localUrl(port ?: ServerActions.port())))
         if (state is ServerState.Running) {
             model.usage?.let { Text(usageText(it), style = MaterialTheme.typography.bodySmall) }
             model.deltaRate?.let { Text(stringResource(R.string.dock_delta_rate, deltaRateText(it)), style = MaterialTheme.typography.bodySmall) }
         }
-        if (port != null) {
-            model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:$port")) }
-            Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(port)))
+        if (running != null) {
+            // The run's own, not the switch's: a change takes effect with the restart it asks for.
+            if (running.lan) model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:${running.port}")) }
+            Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(running.port)))
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().toggleable(value = model.lanAccess, role = Role.Switch, onValueChange = actions::setLanAccess),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.dock_lan_access))
+                Text(
+                    stringResource(if (model.lanAccess) R.string.dock_lan_access_on else R.string.dock_lan_access_off),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = model.lanAccess, onCheckedChange = null)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.isActive) {

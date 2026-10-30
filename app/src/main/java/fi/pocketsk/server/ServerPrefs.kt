@@ -63,6 +63,15 @@ internal class ServerPrefs(context: Context) {
         get() = prefs.getBoolean(APP_UPDATE_CHECKS, true)
         set(value) = prefs.edit { putBoolean(APP_UPDATE_CHECKS, value) }
 
+    /**
+     * Other devices on the boat's network reach the server (docs/PLAN.md §11): on by default, a
+     * server is a hub. Off, every node the supervisor starts listens on 127.0.0.1 alone
+     * ([fi.pocketsk.node.NodeRuntime.LOOPBACK_ENV]), from the next start.
+     */
+    var lanAccess: Boolean
+        get() = prefs.getBoolean(LAN_ACCESS, true)
+        set(value) = prefs.edit { putBoolean(LAN_ACCESS, value) }
+
     /** Start the server when the phone has booted. */
     var autostart: Boolean
         get() = prefs.getBoolean(AUTOSTART, false)
@@ -96,6 +105,7 @@ internal class ServerPrefs(context: Context) {
         const val FILE = "server"
         const val RUNNING = "running"
         const val AUTOSTART = "autostart"
+        const val LAN_ACCESS = "lan_access"
         const val APP_UPDATE_CHECKS = "app_update_checks"
         const val SETUP_DONE = "setup_done"
         const val LOCATION_ASKED = "location_asked"

@@ -69,13 +69,17 @@ class NodeRuntime(context: Context) {
 
     /**
      * runtime-tools/preload's files, which every node this runtime starts loads before its own
-     * code ([nodeOptions]), in [PRELOAD_ASSETS]' order: mdns-lookup.js, since Android has no
-     * resolver for `.local` names in native code and Signal K connects to other servers by the
-     * names their mDNS advertisements give, and node-ble.js, the Bluetooth LE that plugins written
-     * for BlueZ expect, fed by the phone's own scanner. The APK carries them as assets;
-     * [ensureLayout] puts them here.
+     * code ([nodeOptions]), in [PRELOAD_ASSETS]' order: loopback.js, which keeps a process
+     * started with [LOOPBACK_ENV] from listening beyond the phone and does nothing otherwise;
+     * mdns-lookup.js, since Android has no resolver for `.local` names in native code and Signal K
+     * connects to other servers by the names their mDNS advertisements give; and node-ble.js, the
+     * Bluetooth LE that plugins written for BlueZ expect, fed by the phone's own scanner. The APK
+     * carries them as assets; [ensureLayout] puts them here.
      */
     val preloads: List<File> = PRELOAD_ASSETS.map { File(runtimeDir, it) }
+
+    /** loopback.js among the [preloads], which [spawn] insists on for a process given [LOOPBACK_ENV]. */
+    private val loopbackPreload = File(runtimeDir, LOOPBACK_ASSET)
 
     /**
      * runtime-tools/npm's npm-launch.js, which every npm on the phone runs instead of npm-cli.js
@@ -217,7 +221,7 @@ class NodeRuntime(context: Context) {
             "PATH" to "${binDir.absolutePath}:/system/bin",
             "LD_LIBRARY_PATH" to nativeLibraryDir.absolutePath,
             "SIGNALK_NODE_CONFIG_DIR" to configDir.absolutePath,
-            "NODE_OPTIONS" to nodeOptions(heapMb, preloads.filter { it.isFile }),
+            NODE_OPTIONS to nodeOptions(heapMb, preloads.filter { it.isFile }),
             NPM_CLI_ENV to npmEntry().absolutePath,
             NPM_ENV to npmCli.absolutePath,
             PREBUILDS_ENV to prebuilds.absolutePath,
@@ -237,10 +241,17 @@ class NodeRuntime(context: Context) {
      * [NodeProcess.reap] once it has ended. [extraEnv] is laid over [env], for a run that needs
      * something else (the installer's smoke test: another config directory, other ports). Throws
      * [java.io.IOException] when the executable cannot be run, which on Android reads as
-     * "Permission denied" (EACCES) rather than "not found" when SELinux refuses the exec.
+     * "Permission denied" (EACCES) rather than "not found" when SELinux refuses the exec, and
+     * when [extraEnv] asks for the loopback but the node might not load loopback.js
+     * ([loopbackRefused]): the process would listen on every interface while the Dock says only
+     * this phone reaches it.
      */
     fun spawn(vararg args: String, cwd: File = home, extraEnv: Map<String, String> = emptyMap()): NodeProcess {
         ensureLayout()
+        val environment = env() + extraEnv
+        if (loopbackRefused(extraEnv, loopbackPreload.isFile)) {
+            throw IOException("$loopbackPreload would not be loaded, so the server could not be kept to this phone")
+        }
         val groupFile = File(groups, "${System.nanoTime()}-${SPAWNS.incrementAndGet()}")
         val pb = ProcessBuilder(listOf(executable.absolutePath) + args)
             .directory(cwd)
@@ -249,8 +260,7 @@ class NodeRuntime(context: Context) {
         // one runs join its group rather than leading their own.
         pb.environment().apply {
             clear()
-            putAll(env())
-            putAll(extraEnv)
+            putAll(environment)
             put(GROUP_FILE_ENV, groupFile.absolutePath)
         }
         return NodeProcess(pb.start(), groupFile)
@@ -305,8 +315,29 @@ class NodeRuntime(context: Context) {
         /** npm's registry tarball, put into the APK's assets by this module's build. */
         const val NPM_ASSET = "npm.tgz"
 
+        /**
+         * Set to [LOOPBACK_ON] in [spawn]'s extraEnv, a node and every node it starts listen on
+         * 127.0.0.1 alone (runtime-tools/preload/loopback.js): the Dock's LAN access switch off.
+         */
+        const val LOOPBACK_ENV = "POCKETSK_LOOPBACK"
+        const val LOOPBACK_ON = "1"
+
+        private const val LOOPBACK_ASSET = "loopback.js"
+
+        private const val NODE_OPTIONS = "NODE_OPTIONS"
+
+        /**
+         * Whether a spawn with [extraEnv] that asks for the loopback ([LOOPBACK_ENV]) must be
+         * refused: loopback.js is not in place ([preloadInPlace] false), or [extraEnv] sets a
+         * NODE_OPTIONS of its own. Only the one [env] builds is trusted, which names every preload in
+         * place, loopback.js first; telling whether another loads it would take a parser kept in
+         * step with Node's (it splits at spaces alone, takes quotes and escapes), for no caller.
+         */
+        fun loopbackRefused(extraEnv: Map<String, String>, preloadInPlace: Boolean): Boolean =
+            extraEnv[LOOPBACK_ENV] == LOOPBACK_ON && (!preloadInPlace || NODE_OPTIONS in extraEnv)
+
         /** runtime-tools/preload's files, which this module's build adds to the APK's assets, in the order they load. */
-        val PRELOAD_ASSETS = listOf("mdns-lookup.js", "node-ble.js")
+        val PRELOAD_ASSETS = listOf(LOOPBACK_ASSET, "mdns-lookup.js", "node-ble.js")
 
         /** runtime-tools/npm's files, which this module's build adds to the APK's assets: the launcher first, then what it requires. */
         val NPM_TOOL_ASSETS = listOf("npm-launch.js", "prebuilds.js")

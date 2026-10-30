@@ -50,6 +50,8 @@ internal class AppModel {
     /** Android lets the app ask to install apps, which its own update needs. */
     var appInstallsAllowed by mutableStateOf(false)
     var lanAddress by mutableStateOf<String?>(null)
+    /** [fi.pocketsk.server.ServerPrefs.lanAccess]: the boat's network reaches the server, or this phone alone. */
+    var lanAccess by mutableStateOf(true)
     var permissions by mutableStateOf(PermissionsView())
     var devices by mutableStateOf<List<BridgeProtocol.Device>>(emptyList())
     var alarms by mutableStateOf(AlarmBook.View.NONE)
@@ -169,6 +171,8 @@ internal interface AppActions {
     fun askLocation()
     fun openBatterySettings()
     fun setAutostart(on: Boolean)
+    /** Lets the boat's network reach the server, or this phone alone; a running server restarts. */
+    fun setLanAccess(on: Boolean)
     fun finishSetup(startServer: Boolean)
     fun openRuntimeChecks()
     fun levelAttitude()

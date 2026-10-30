@@ -82,6 +82,9 @@
     <string name="dock_failed">Stopped: %1$s</string>
     <string name="dock_url_lan">On the boat\'s network: %1$s</string>
     <string name="dock_url_phone">On this phone: %1$s</string>
+    <string name="dock_lan_access">LAN access</string>
+    <string name="dock_lan_access_on">Tablets and plotters on the boat\'s network reach the server.</string>
+    <string name="dock_lan_access_off">Only this phone reaches the server.</string>
     <string name="dock_start">Start</string>
     <string name="dock_open_admin">Open the admin UI</string>
     <string name="dock_updates_title">Updates</string>

@@ -51,7 +51,7 @@ A short wizard:
 
 The app's one screen. From the top:
 
-- **Server**: running or stopped, Start/Stop/Restart, the address the boat's network reaches it on (`http://<phone's address>:3000`), its uptime, CPU and memory, and how many updates a second it takes in.
+- **Server**: running or stopped, Start/Stop/Restart, the address the boat's network reaches it on (`http://<phone's address>:3000`), its uptime, CPU and memory, and how many updates a second it takes in. **LAN access**, on unless you turn it off, lets tablets and plotters on the boat's network reach the server; off, only this phone does (the server restarts to change it).
 - **Webapps**: each installed webapp opens in the browser, and can be pinned to the home screen, where one tap starts a stopped server and opens it.
 - **Helm screen**: a red night filter, dimming and keeping the screen on, over every app. A Quick Settings tile, **Night filter**, turns the filter on and off.
 - **Power**: **Harbor** (everything), **Passage** (the screen dimmed to the helm screen's brightness) and **Battery saver** (the phone's own sensors stop, except the GNSS at once a second and the battery). Instruments on USB and Bluetooth carry on in all three.
@@ -99,6 +99,7 @@ The **Backup** card saves the server's settings, its users and passwords and the
 - **GPS after an automatic start.** A server started at boot or from the tile gets no location from Android until it is started again from the app's screen; the **Sensors** card offers that.
 - **Plugins with native code.** Android builds of the common native addons (serialport, better-sqlite3, sqlite3, bufferutil, utf-8-validate) are fetched by the app when a plugin needs one. A plugin whose addon has no Android build yet installs, but says so in the install log and will not load.
 - **Uninstalling the app deletes the server's data folder** on the phone and the card, as Android does with every app's own folder. Save a backup, and copy the charts off over USB, first.
+- **Security.** Anyone on the boat's network can reach the server, as on a Pi: set up an admin user in the admin UI, or turn **LAN access** off when this phone is the only screen. With it off the server still takes NMEA 0183 over UDP from a Wi-Fi gateway.
 - **Secrets.** The server's `security.json` is in the USB folder, so anyone who can open the phone's files over USB can read it. The diagnostics bundle leaves the server's settings and security out.
 
 ## Build it yourself

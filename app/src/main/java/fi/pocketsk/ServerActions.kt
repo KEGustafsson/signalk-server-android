@@ -27,11 +27,15 @@ internal object ServerActions {
      * (Android 13+), without which it runs unseen, and Android 17's local network access, without
      * which only the phone itself reaches it ([LocalNetwork]). The server starts whatever the
      * answers: without the second, the phone's own browser and the plugins still reach it on the
-     * loopback, which for a phone that is the boat's only screen is all there is.
+     * loopback, which for a phone that is the boat's only screen is all there is. A start with
+     * [lanAccess] off ([fi.pocketsk.server.ServerPrefs.lanAccess]) does not ask for the second:
+     * nobody else is to reach the server then. Asked for from the Settings card, it is asked for
+     * all the same, since the server's own connections out to the boat's network (an NMEA 0183
+     * gateway at 192.168.x.x) need it too.
      */
-    fun missingPermissions(context: Context): List<String> = buildList {
+    fun missingPermissions(context: Context, lanAccess: Boolean = true): List<String> = buildList {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
-        if (LocalNetwork.forServer(Build.VERSION.SDK_INT, lanAccess = true) == LocalNetwork.Need.REQUIRED) add(LocalNetwork.PERMISSION)
+        if (LocalNetwork.forServer(Build.VERSION.SDK_INT, lanAccess) == LocalNetwork.Need.REQUIRED) add(LocalNetwork.PERMISSION)
     }.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
 
     /** Says in the server's log what was refused, so a tablet that cannot connect has its reason on screen. */

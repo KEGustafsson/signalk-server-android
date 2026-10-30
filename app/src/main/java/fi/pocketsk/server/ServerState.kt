@@ -13,7 +13,8 @@ internal sealed interface ServerState {
      * result; [onTrial] is true while a freshly promoted version is still inside its health gate
      * and may yet be rolled back. [startedAt] is when this run's node was started
      * (SystemClock.elapsedRealtime), and [group] its process group ([fi.pocketsk.node.NodeProcess]),
-     * null where there is none: the Dock's uptime, CPU and memory.
+     * null where there is none: the Dock's uptime, CPU and memory. [lan] is whether this run
+     * listens on the boat's network or on 127.0.0.1 alone, as LAN access was when it started.
      */
     data class Running(
         val version: String,
@@ -23,6 +24,7 @@ internal sealed interface ServerState {
         val onTrial: Boolean,
         val startedAt: Long,
         val group: Int?,
+        val lan: Boolean,
     ) : ServerState
 
     /** Exited unasked, [reason], and starts again after [delayMs]. */
