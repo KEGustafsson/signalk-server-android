@@ -15,6 +15,11 @@
  * else nothing, and then the phone's Silence quiets the phone alone. A notification the server does
  * not manage (no id) is the same: nothing is written for it, since a delta of this plugin's own on
  * that path would stay behind as a second source after the alarm's own source went back to normal.
+ *
+ * The action is the alarm's own, from its id and status, whether or not this server has the API to
+ * do it: one that came from the boat's main server in satellite mode (lib/satellite.js) is done
+ * there, so the phone must be offered it, and its Silence must come back, even where this server
+ * manages no notifications of its own. Here it is then done only when the API is there.
  */
 
 /** Signal K's notification states, by rank; normal and nominal are no alarm. */
@@ -95,6 +100,8 @@ class Alarms {
       if (idOf(path, value) !== id) continue;
       const action = this.actionOf(value);
       if (action === null) return null;
+      // Nothing to do it with here: the boat's main server may still do it (index.js).
+      if (!this.api) return action;
       try {
         this.api[action](value.id);
         return action;
@@ -115,7 +122,7 @@ class Alarms {
 
   /** What the server allows done to `value` from here: `silence`, `acknowledge` or null. */
   actionOf(value) {
-    if (!this.api || typeof value.id !== "string" || !UUID.test(value.id)) return null;
+    if (typeof value.id !== "string" || !UUID.test(value.id)) return null;
     const status = value.status !== null && typeof value.status === "object" ? value.status : {};
     if (value.state !== "emergency" && status.canSilence !== false && !status.silenced && !status.acknowledged) return "silence";
     if (status.canAcknowledge !== false && !status.acknowledged) return "acknowledge";

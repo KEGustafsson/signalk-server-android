@@ -77,7 +77,8 @@ sound on the alarm volume, vibrate it, and fill its locked screen. That is an an
 wakes a phone asleep in a pocket. The phone's **Silence** is done through the server's notification
 API, so the alarm goes quiet on every client at once. An emergency, which Signal K does not let be
 silenced, is acknowledged instead. Where the server does not manage notifications (its
-`manageNotifications` setting is off), Silence quiets the phone alone. **Alarms on the phone** turns
+`manageNotifications` setting is off), Silence quiets the phone alone, but for an alarm from the
+boat's main server followed in satellite mode with read/write, which it silences there. **Alarms on the phone** turns
 it all off.
 
 ## Satellite mode

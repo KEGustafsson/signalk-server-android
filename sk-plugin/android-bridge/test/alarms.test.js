@@ -129,11 +129,14 @@ test("a message is cleaned and cut; sound follows the method, and rings without 
   assert.equal(sent.at(-1).list[0].sound, true);
 });
 
-test("without the server's API, or without an id, nothing can be done from the phone", () => {
+test("without the server's API the alarm's own action is offered and comes back; without an id nothing can be done", () => {
+  // A main server followed in satellite mode does it (lib/satellite.js); this server cannot.
   const none = alarms();
   none.a.update("notifications.a", anchor());
-  assert.equal(none.sent.at(-1).list[0].action, null);
-  assert.equal(none.a.silence(ID), null);
+  assert.equal(none.sent.at(-1).list[0].action, "silence");
+  assert.equal(none.a.silence(ID), "silence");
+  none.a.update("notifications.a", anchor({ state: "emergency" }));
+  assert.equal(none.a.silence(ID), "acknowledge");
   const api = fakeApi();
   const noId = alarms({ api });
   noId.a.update("notifications.a", anchor({ id: "not-a-uuid" }));
