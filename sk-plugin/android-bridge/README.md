@@ -80,6 +80,14 @@ silenced, is acknowledged instead. Where the server does not manage notification
 `manageNotifications` setting is off), Silence quiets the phone alone. **Alarms on the phone** turns
 it all off.
 
+## Satellite mode
+
+When the app's Dock follows the boat's main Signal K server (a Raspberry Pi, say), this plugin
+holds the link: it opens the main server's delta stream with the device token its admin approved
+for the phone, and gives every delta to this server, the main server's vessel as this one's own.
+The plugin's status line says how the link stands. The token stays in the app, which hands it to
+the plugin over its socket.
+
 ## Files
 
 The plugin's web page, **Pocket SK files** among the server's webapps, uploads files into the

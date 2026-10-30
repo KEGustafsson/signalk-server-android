@@ -12,6 +12,7 @@ import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.night.NightSettings
 import fi.pocketsk.power.PowerProfile
+import fi.pocketsk.satellite.SatelliteJob
 import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
@@ -19,6 +20,7 @@ import fi.pocketsk.server.LogFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
+import fi.pocketsk.signalk.SignalKDiscovery
 import fi.pocketsk.signalk.Webapps
 import fi.pocketsk.update.AppUpdater
 import java.io.File
@@ -68,6 +70,10 @@ internal class AppModel {
 
     /** Native addons installed without an Android build ([fi.pocketsk.install.MissingBuilds]), read off the main thread. */
     var missingBuilds by mutableStateOf<List<MissingBuilds.Missing>>(emptyList())
+
+    /** Satellite mode ([SatelliteJob]), and the other Signal K servers found on the network meanwhile. */
+    var satellite by mutableStateOf<SatelliteJob.State>(SatelliteJob.State.Off)
+    var satelliteFound by mutableStateOf<List<SignalKDiscovery.Found>>(emptyList())
 
     /** The webapps installed, by title; null until first read, off the main thread. */
     var webapps by mutableStateOf<List<Webapps.Webapp>?>(null)
@@ -209,6 +215,15 @@ internal interface AppActions {
 
     /** Takes what waits in the USB inbox into the server's data folders now. */
     fun takeInbox()
+
+    /**
+     * Follows the boat's main Signal K server at [url], named [name] (satellite mode): asks it for
+     * access first, and restarts this phone's server with the link once approved.
+     */
+    fun followServer(url: String, name: String)
+
+    /** Satellite mode off, or its access request no longer waited for. */
+    fun stopFollowing()
 
     /** Shows the log's lines of [kind] that hold every word of [query]. */
     fun filterLog(kind: LogFilter.Kind, query: String)

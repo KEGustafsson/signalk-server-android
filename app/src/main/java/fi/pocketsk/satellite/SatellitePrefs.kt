@@ -1,0 +1,110 @@
+package fi.pocketsk.satellite
+
+import android.content.Context
+import androidx.core.content.edit
+import java.util.UUID
+
+/**
+ * Satellite mode's state (docs/PLAN.md §16 13.1), in a preferences file of its own: the main
+ * server being followed or asked, the access request's `href` while its admin decides, and the
+ * token once approved. The bridge hands [link] to its plugin whenever the plugin connects and
+ * whenever it changes; the token lives here alone, never in `.signalk`, which goes to the USB
+ * folder and the Dock's backups. Every preferences file is out of Android's backup and device
+ * transfer (`data_extraction_rules.xml`), the token with it.
+ */
+internal class SatellitePrefs(context: Context) {
+    private val p = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    /** The main server, `http://host:port`, while it is followed or asked; null when off. */
+    val url: String? get() = p.getString(URL, null)
+
+    /** Its name as it advertises itself, or its address when typed. */
+    val name: String? get() = p.getString(NAME, null)
+
+    /**
+     * The last access request's `href`, kept after a cancel: the main server refuses a second
+     * request from this phone while the first is pending, so following the same server again
+     * polls this one ([askedOf] is the server it was asked of).
+     */
+    val href: String? get() = p.getString(HREF, null)
+
+    /** The server [href] was asked of. */
+    val askedOf: String? get() = p.getString(ASKED_OF, null)
+
+    /** Approved (or no security there): the server follows [url]. */
+    val following: Boolean get() = p.getBoolean(FOLLOWING, false)
+
+    /**
+     * This phone's client id in the main server's access requests and devices list. Made once and
+     * kept, so a request asked again replaces the phone's entry there rather than adding another.
+     */
+    val clientId: String
+        @Synchronized get() = p.getString(CLIENT_ID, null) ?: UUID.randomUUID().toString().also { p.edit { putString(CLIENT_ID, it) } }
+
+    /** What the bridge's plugin is to follow, or null when not following. */
+    fun link(): Satellite.Link? {
+        if (!following) return null
+        val url = url?.takeIf { Satellite.target(it) != null } ?: return null
+        return Satellite.Link(url, p.getString(TOKEN, null))
+    }
+
+    /** An access request asked of [url] (named [name]), waiting at [href]. */
+    fun asking(url: String, name: String, href: String) = p.edit {
+        putString(URL, url)
+        putString(NAME, name)
+        putString(HREF, href)
+        putString(ASKED_OF, url)
+        putBoolean(FOLLOWING, false)
+        remove(TOKEN)
+    }
+
+    /** [url] asked of again: what to poll, if anything (see [href]). */
+    fun target(url: String, name: String) = p.edit {
+        putString(URL, url)
+        putString(NAME, name)
+        putBoolean(FOLLOWING, false)
+        remove(TOKEN)
+        if (askedOf != url) {
+            remove(HREF)
+            remove(ASKED_OF)
+        }
+    }
+
+    /** The request at [href] is answered or gone: a new one is asked next time. */
+    fun forgetRequest() = p.edit {
+        remove(HREF)
+        remove(ASKED_OF)
+    }
+
+    /** Following [url] with [token] (null: its server runs without security). */
+    fun follow(url: String, name: String, token: String?) = p.edit {
+        putString(URL, url)
+        putString(NAME, name)
+        remove(HREF)
+        remove(ASKED_OF)
+        putBoolean(FOLLOWING, true)
+        if (token == null) remove(TOKEN) else putString(TOKEN, token)
+    }
+
+    /**
+     * Off: nothing followed, the token forgotten. The client id stays, and so does a pending
+     * request's [href] (see there).
+     */
+    fun off() = p.edit {
+        remove(URL)
+        remove(NAME)
+        remove(TOKEN)
+        putBoolean(FOLLOWING, false)
+    }
+
+    private companion object {
+        const val FILE = "satellite"
+        const val URL = "url"
+        const val NAME = "name"
+        const val HREF = "href"
+        const val ASKED_OF = "asked_of"
+        const val TOKEN = "token"
+        const val FOLLOWING = "following"
+        const val CLIENT_ID = "client_id"
+    }
+}

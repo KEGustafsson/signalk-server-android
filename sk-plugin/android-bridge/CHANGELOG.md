@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0
+
+- Satellite mode: when the app says so (`{"t":"satellite","url","token"}`), the server follows the
+  boat's main Signal K server, its delta stream opened with the device token in the Authorization
+  header, the main server's vessel as this one's self and its sources kept. The link's state goes
+  back to the app and into the status line. signalk-server's own Signal K connection is not used:
+  in 2.35.1 it sends its token where the server does not read it.
+
 ## 0.11.0
 
 - Glance: for the app's home-screen widget, the boat's depth (below the transducer, else the keel,

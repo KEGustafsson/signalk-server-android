@@ -102,6 +102,10 @@ app/                 the Android app
                      App holds it), NightTile (Quick Settings); NightRules (pure, tested)
   fi.pocketsk.power  PowerPrefs (the Dock's power profile); PowerRules (what Harbor, Passage and
                      Battery saver take from the plugin's subscription and the screen) (pure, tested)
+  fi.pocketsk.satellite SatelliteJob (the access request to the boat's main server, polled until
+                     approved), SatellitePrefs (the link and its token, handed to the plugin over
+                     the bridge); Satellite (what can be followed, the phone's own server, the
+                     request's answers) (pure, tested)
   fi.pocketsk.widget BoatWidget (the home-screen widget: depth, SOG, apparent wind), GlanceWatch
                      (asks the plugin for them while a widget is placed and the screen is on);
                      GlanceView (pure, tested)
@@ -140,7 +144,10 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      lib/protocol.js's glanceMessage reads depth, SOG and wind for the widget;
                      lib/ble.js parses the app's Bluetooth LE advertisements for the server's BLE
                      API (as a provider) and node-ble.js's hub; lib/files.js and public/index.html
-                     (a webapp) upload files, charts above all, into the server's data folders
+                     (a webapp) upload files, charts above all, into the server's data folders;
+                     lib/satellite.js follows the boat's main server (satellite mode) with the
+                     token the app hands it, the server's own Signal K connection being unable to
+                     send one in 2.35.1
 prebuilds/           packages.json (the addons built for Android), build.js (npm pack, node-gyp with
                      the NDK, linked against libnode.so, packed for the Release) and lib.js (its
                      pure part, tested); plain CommonJS, no dependencies, run by prebuilds.yml

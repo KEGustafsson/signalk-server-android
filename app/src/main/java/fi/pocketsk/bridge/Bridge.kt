@@ -5,6 +5,8 @@ import fi.pocketsk.BuildConfig
 import fi.pocketsk.net.reporting
 import fi.pocketsk.power.PowerPrefs
 import fi.pocketsk.power.PowerRules
+import fi.pocketsk.satellite.SatelliteJob
+import fi.pocketsk.satellite.SatellitePrefs
 import fi.pocketsk.server.ServerLog
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.widget.BoatWidget
@@ -105,6 +107,12 @@ internal class Bridge(context: Context, private val log: ServerLog) {
     /** The owner chose another power profile in the Dock: what the plugin asked for is served again under it. */
     fun powerChanged() = synchronized(serving) { serve() }
 
+    /**
+     * Satellite mode changed in the Dock ([SatelliteJob]): the plugin follows the main server the
+     * preferences now name, or none. Sent again whenever the plugin connects.
+     */
+    fun satelliteChanged() = sendToPeer(BridgeProtocol.satellite(SatellitePrefs(app).link()))
+
     /** "Level now" from the Dock: the phone's present tilt becomes the boat's level ([PhoneSensors.level]). */
     fun level() = sensors.level()
 
@@ -131,6 +139,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         devices.resend()
         sensors.connected()
         glance.connected()
+        p.send(BridgeProtocol.satellite(SatellitePrefs(app).link()))
         log.note("bridge: the server's plugin connected")
     }
 
@@ -145,6 +154,7 @@ internal class Bridge(context: Context, private val log: ServerLog) {
             is BridgeProtocol.Incoming.Alarms -> if (p === peer) alarms.update(msg.list)
             is BridgeProtocol.Incoming.Stats -> if (p === peer) ServerStatus.publishDeltaRate(msg.deltaRate)
             is BridgeProtocol.Incoming.Glance -> if (p === peer) showGlance(msg.glance)
+            is BridgeProtocol.Incoming.Satellite -> if (p === peer) SatelliteJob.linked(msg.state, msg.detail)
             is BridgeProtocol.Incoming.Dropped -> if (droppedNotes++ < MAX_DROPPED_NOTES) log.note("bridge: dropped a line from the plugin: ${msg.reason}")
         }
     }
@@ -164,6 +174,9 @@ internal class Bridge(context: Context, private val log: ServerLog) {
         ServerStatus.publishDeltaRate(null)
         glance.disconnected()
         showGlance(null)
+        // The plugin may have stopped with the server, or only the socket gone: either way the
+        // Dock no longer knows how the link stands.
+        SatelliteJob.linked(null, null)
         if (p.dropped > 0) log.note("bridge: ${p.dropped} readings were dropped while the plugin was not reading")
     }
 

@@ -21,9 +21,9 @@ class BridgePluginTarTest {
         val tar = File(System.getProperty("pocketsk.bridgeTar") ?: error("run through Gradle: pocketsk.bridgeTar is not set"))
         val dest = tmp.newFolder("android-bridge")
         val files = tar.inputStream().use { Tar.extract(it, dest) }
-        assertEquals(setOf("CHANGELOG.md", "LICENSE", "README.md", "index.js", "package.json", "lib/alarms.js", "lib/ble.js", "lib/files.js", "lib/link.js", "lib/protocol.js", "lib/serial.js", "public/index.html"),
+        assertEquals(setOf("CHANGELOG.md", "LICENSE", "README.md", "index.js", "package.json", "lib/alarms.js", "lib/ble.js", "lib/files.js", "lib/link.js", "lib/protocol.js", "lib/satellite.js", "lib/serial.js", "public/index.html"),
             dest.walkTopDown().filter { it.isFile }.map { it.relativeTo(dest).path }.toSet())
-        assertEquals(12, files)
+        assertEquals(13, files)
         assertFalse("the tests stay out of the APK", File(dest, "test").exists())
         val pkg = File(dest, "package.json").readText()
         assertTrue(pkg.contains("\"name\": \"${BridgePlugin.PACKAGE}\""))

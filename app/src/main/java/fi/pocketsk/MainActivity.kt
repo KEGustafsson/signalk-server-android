@@ -46,6 +46,8 @@ import fi.pocketsk.night.NightFilter
 import fi.pocketsk.night.NightSettings
 import fi.pocketsk.power.PowerPrefs
 import fi.pocketsk.power.PowerProfile
+import fi.pocketsk.satellite.Satellite
+import fi.pocketsk.satellite.SatelliteJob
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.Backup
 import fi.pocketsk.server.BackupJob
@@ -60,6 +62,7 @@ import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
 import fi.pocketsk.server.SignalKService
+import fi.pocketsk.signalk.SignalKDiscovery
 import fi.pocketsk.signalk.Webapps
 import fi.pocketsk.ui.AppActions
 import fi.pocketsk.ui.AppModel
@@ -74,6 +77,8 @@ import fi.pocketsk.ui.StorageView
 import fi.pocketsk.update.AppUpdater
 import java.io.File
 import java.io.IOException
+import java.net.NetworkInterface
+import java.net.SocketException
 import java.nio.file.Files
 
 /**
@@ -213,6 +218,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val satelliteObserver = SatelliteJob.Observer { state -> runOnUiThread { model.satellite = state } }
+
+    /**
+     * The boat's other Signal K servers, looked for while this screen is in front so the Satellite
+     * card can offer them ([findServers]); mDNS keeps a multicast socket open, so not a moment longer.
+     */
+    private val discovery by lazy { SignalKDiscovery(this) }
+
     /**
      * The Backup card's passphrase, from its button to the file picker's answer and no longer. Not
      * in the saved state: a screen recreated meanwhile asks for it again rather than keep it.
@@ -276,15 +289,20 @@ class MainActivity : ComponentActivity() {
                         // the screen in front, which the lifecycle says only now.
                         showInstallConfirmation()
                         usage.start()
+                        findServers()
                     }
                     // The figures are for this screen only: nothing reads /proc while it is hidden.
-                    Lifecycle.Event.ON_PAUSE -> usage.stop()
+                    Lifecycle.Event.ON_PAUSE -> {
+                        usage.stop()
+                        discovery.stop()
+                    }
                     else -> Unit
                 }
             },
         )
         InstallJob.observe(installObserver)
         BackupJob.observe(backupObserver)
+        SatelliteJob.observe(this, satelliteObserver)
         model.appChecks = prefs.appUpdateChecks
         model.lanAccess = prefs.lanAccess
         if (selfUpdates) AppUpdater.observe(appUpdateObserver)
@@ -345,6 +363,7 @@ class MainActivity : ComponentActivity() {
         ServerStatus.detach(serverObserver)
         InstallJob.detach(installObserver)
         BackupJob.detach(backupObserver)
+        SatelliteJob.detach(satelliteObserver)
         AppUpdater.detach(appUpdateObserver)
         super.onDestroy()
     }
@@ -422,6 +441,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Looks for the boat's other Signal K servers, this phone's own left out ([Satellite.own]): it
+     * advertises itself while LAN access is on. Found on a binder thread, listed on this one.
+     */
+    private fun findServers() {
+        model.satelliteFound = emptyList()
+        try {
+            discovery.start(
+                onFound = { found ->
+                    if (!Satellite.own(found.url, ownAddresses())) {
+                        runOnUiThread { if (model.satelliteFound.none { it.url == found.url }) model.satelliteFound += found }
+                    }
+                },
+                onDone = {},
+            )
+        } catch (_: SecurityException) {
+            // Android 17 without Nearby devices finds nothing; the card's address field still works.
+        }
+    }
+
+    /** This phone's addresses, as [Satellite.own] compares them. */
+    private fun ownAddresses(): Set<String> = try {
+        NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .flatMap { it.inetAddresses.toList() }
+            .mapNotNull { it.hostAddress }
+            .toSet()
+    } catch (_: SocketException) {
+        emptySet()
+    }
+
+    /** Satellite mode: [url] asked for access ([SatelliteJob]), the link handed to the plugin once approved. */
+    private fun followServer(url: String, name: String) {
+        SatelliteJob.follow(this, url, name)
+        // Android 17 holds every connection to the boat's network behind Nearby devices.
+        askPermissions()
+    }
+
     /** A new issue on GitHub asking for [missing]'s Android build, in the browser. */
     private fun requestBuild(missing: MissingBuilds.Missing) {
         val url = MissingBuilds.requestUrl(missing, BuildConfig.VERSION_NAME, fi.pocketsk.node.BuildConfig.NODEJS_MOBILE_VERSION)
@@ -494,6 +550,8 @@ class MainActivity : ComponentActivity() {
         override fun chooseStorage(volume: DataVolumes.Volume?) = this@MainActivity.chooseStorage(volume)
 
         override fun takeInbox() = this@MainActivity.takeInbox()
+        override fun followServer(url: String, name: String) = this@MainActivity.followServer(url, name)
+        override fun stopFollowing() = SatelliteJob.stop(this@MainActivity)
         override fun requestBuild(missing: MissingBuilds.Missing) = this@MainActivity.requestBuild(missing)
 
         override fun saveBackup(passphrase: CharArray) {

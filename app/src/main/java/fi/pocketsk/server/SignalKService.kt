@@ -161,6 +161,7 @@ class SignalKService : Service() {
             ACTION_LEVEL -> if (foreground) bridge.level() else stopIfIdle()
             ACTION_DEVICES -> if (foreground) bridge.devicesChanged() else stopIfIdle()
             ACTION_POWER -> if (foreground) bridge.powerChanged() else stopIfIdle()
+            ACTION_SATELLITE -> if (foreground) bridge.satelliteChanged() else stopIfIdle()
             ACTION_SILENCE -> {
                 val id = intent.getStringExtra(EXTRA_ALARM)
                 if (foreground && id != null) bridge.silence(id) else stopIfIdle()
@@ -455,6 +456,7 @@ class SignalKService : Service() {
         private const val ACTION_LEVEL = "fi.pocketsk.action.LEVEL"
         private const val ACTION_DEVICES = "fi.pocketsk.action.DEVICES"
         private const val ACTION_POWER = "fi.pocketsk.action.POWER"
+        private const val ACTION_SATELLITE = "fi.pocketsk.action.SATELLITE"
 
         /** Silence for an alarm ([EXTRA_ALARM], its id), from the alarm's notification ([fi.pocketsk.bridge.PhoneAlarm]). */
         internal const val ACTION_SILENCE = "fi.pocketsk.action.SILENCE"
@@ -548,6 +550,15 @@ class SignalKService : Service() {
          */
         fun powerChanged(context: Context) {
             if (ServerPrefs(context).running) send(context, ACTION_POWER)
+        }
+
+        /**
+         * Satellite mode changed in the Dock: a running server's bridge tells its plugin which main
+         * server to follow, or none. Gated like [permissionsChanged]; a server started later hears
+         * it as its plugin connects.
+         */
+        fun satelliteChanged(context: Context) {
+            if (ServerPrefs(context).running) send(context, ACTION_SATELLITE)
         }
 
         /**
