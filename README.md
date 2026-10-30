@@ -39,6 +39,8 @@ You need a phone or tablet with Android 10 or later and, for the first run, abou
 
 From then on the app updates itself: the Dock's **App update** card offers a newer release, downloads it, checks it against the checksum its release publishes and the key the app is signed with, and hands it to Android's installer. A server that was running starts again after the update.
 
+The app is published here only, not on F-Droid or IzzyOnDroid. If you would rather have one app keep your sideloaded apps current, [Obtainium](https://github.com/ImranR98/Obtainium) follows this repository's releases: add the repository's address, and when it asks which file, take the arm64-v8a one as above.
+
 ## First run
 
 A short wizard:
