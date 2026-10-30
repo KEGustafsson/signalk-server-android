@@ -125,8 +125,8 @@ runtime-tools/npm/   what every npm on the phone runs (files/runtime, NodeRuntim
                      prebuilds.js puts the Android builds of native addons in place from the
                      `prebuilds` Release (index checked, SHA-256 checked, kept in files/prebuilds),
                      since the App Store installs with --ignore-scripts, and records the ones it
-                     has none for in files/prebuilds/missing.json (MissingBuilds reads it); its
-                     index checks mirror prebuilds/lib.js: change both together
+                     has none for in files/prebuilds/missing/, a file per tree (MissingBuilds
+                     reads them); its index checks mirror prebuilds/lib.js: change both together
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
                      (leads a process group when NodeRuntime asks), and `npm` when started
                      as files/bin/npm, for Signal K's App Store;

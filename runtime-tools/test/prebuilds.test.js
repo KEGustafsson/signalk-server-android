@@ -170,12 +170,16 @@ test("place: each addon without a build gets this phone's from the index, checke
   assert.equal(fs.readFileSync(path.join(serialDir, "build/Release/bindings.node"), "utf8"), "serial");
 });
 
-test("place: what is left without a build is recorded by its tree, and cleared when it is not", async () => {
+test("place: what is left without a build is recorded in its tree's own file, and cleared when it is not", async () => {
   const base = tmp();
   const root = path.join(base, "a", "node_modules");
   const other = path.join(base, "b", "node_modules");
   const cacheDir = tmp();
-  const record = () => JSON.parse(fs.readFileSync(path.join(cacheDir, prebuilds.MISSING_FILE), "utf8"));
+  const records = () => Object.fromEntries(
+    (fs.existsSync(path.join(cacheDir, prebuilds.MISSING_DIR)) ? fs.readdirSync(path.join(cacheDir, prebuilds.MISSING_DIR)) : [])
+      .map((f) => [f, JSON.parse(fs.readFileSync(path.join(cacheDir, prebuilds.MISSING_DIR, f), "utf8"))]),
+  );
+  const fileOf = (r) => path.basename(prebuilds.missingFile(cacheDir, r));
   const serial = build("@serialport/bindings-cpp", "13.0.1", { files: { "build/Release/bindings.node": Buffer.from("serial") } });
   const s = server({ "index.json": indexOf(serial), [serial.entry.file]: serial.tarball });
   const can = pkg(root, "@canboat/socketcan", "1.0.0");
@@ -184,37 +188,35 @@ test("place: what is left without a build is recorded by its tree, and cleared w
 
   await prebuilds.place(root, { ...ANDROID, baseUrl: BASE, cacheDir, fetch: s.fetch });
   await prebuilds.place(other, { ...ANDROID, baseUrl: BASE, cacheDir, fetch: s.fetch });
-  assert.deepEqual(record(), {
-    format: 1,
-    roots: {
-      [root]: [{ name: "@canboat/socketcan", version: "1.0.0", dir: can }],
-      [other]: [{ name: "usb", version: "2.9.0", dir: elsewhere }],
-    },
-  }, "the placed build is not in it; each tree has its own list");
+  assert.deepEqual(records(), {
+    [fileOf(root)]: { format: 1, root, missing: [{ name: "@canboat/socketcan", version: "1.0.0", dir: can }] },
+    [fileOf(other)]: { format: 1, root: other, missing: [{ name: "usb", version: "2.9.0", dir: elsewhere }] },
+  }, "the placed build is not in it; each tree has a file of its own");
+  assert.match(fileOf(root), /^[0-9a-f]{32}\.json$/);
 
   // Offline, with no kept index either: nothing is known, so the record stands.
   fs.rmSync(path.join(cacheDir, "index.json"));
-  const before = record();
+  const before = records();
   await prebuilds.place(root, { ...ANDROID, baseUrl: BASE, cacheDir, fetch: server({}).fetch });
-  assert.deepEqual(record(), before);
+  assert.deepEqual(records(), before);
 
-  // The package builds its own addon (or is removed): its tree drops out, the other's stays.
+  // The package builds its own addon (or is removed): its tree's file goes, the other's stays.
   fs.mkdirSync(path.join(can, "build", "Release"), { recursive: true });
   fs.writeFileSync(path.join(can, "build", "Release", "can.node"), "own");
   await prebuilds.place(root, { ...ANDROID, baseUrl: BASE, cacheDir, fetch: s.fetch });
-  assert.deepEqual(record(), { format: 1, roots: { [other]: [{ name: "usb", version: "2.9.0", dir: elsewhere }] } });
+  assert.deepEqual(Object.keys(records()), [fileOf(other)]);
 });
 
-test("place: a record that is not one is started again", async () => {
+test("place: a tree's record that is not one is written again, and nothing is left staged", async () => {
   const root = path.join(tmp(), "node_modules");
   const cacheDir = tmp();
-  fs.writeFileSync(path.join(cacheDir, prebuilds.MISSING_FILE), "[1, 2");
+  const file = prebuilds.missingFile(cacheDir, root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "[1, 2");
   const dir = pkg(root, "usb", "2.9.0");
   await prebuilds.place(root, { ...ANDROID, baseUrl: BASE, cacheDir, fetch: server({ "index.json": indexOf() }).fetch });
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(cacheDir, prebuilds.MISSING_FILE), "utf8")), {
-    format: 1,
-    roots: { [root]: [{ name: "usb", version: "2.9.0", dir }] },
-  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), { format: 1, root, missing: [{ name: "usb", version: "2.9.0", dir }] });
+  assert.deepEqual(fs.readdirSync(path.dirname(file)), [path.basename(file)], "no staging file left beside it");
 });
 
 test("place: a build for a new runtime replaces the one this file put in place for the old", async () => {

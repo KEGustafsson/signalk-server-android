@@ -403,7 +403,7 @@ class MainActivity : ComponentActivity() {
     /** The native addons left without an Android build ([MissingBuilds]), read on a worker thread. */
     private fun refreshMissingBuilds() {
         transportThread("dock-missing-builds", onError = {}) {
-            val missing = MissingBuilds.read(File(runtime.prebuilds, MissingBuilds.FILE))
+            val missing = MissingBuilds.read(File(runtime.prebuilds, MissingBuilds.DIR))
             runOnUiThread { model.missingBuilds = missing }
         }
     }

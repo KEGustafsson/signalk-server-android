@@ -15,12 +15,11 @@ import java.net.URLDecoder
 class MissingBuildsTest {
     @get:Rule val tmp = TemporaryFolder()
 
-    /** A record as prebuilds.js writes it. */
-    private fun record(vararg roots: Pair<String, List<MissingBuilds.Missing>>) = roots.joinToString(",", """{"format":1,"roots":{""", "}}") { (root, list) ->
-        Json.quote(root) + ":" + list.joinToString(",", "[", "]") {
+    /** One tree's record as prebuilds.js writes it. */
+    private fun record(root: String, list: List<MissingBuilds.Missing>) = """{"format":1,"root":${Json.quote(root)},"missing":""" +
+        list.joinToString(",", "[", "]") {
             """{"name":${Json.quote(it.name)},"version":${Json.quote(it.version)},"dir":${Json.quote(it.dir)}}"""
-        }
-    }
+        } + "}"
 
     private fun pkg(name: String, version: String, addon: String? = null): MissingBuilds.Missing {
         val dir = File(tmp.root, "node_modules/$name").apply { mkdirs() }
@@ -30,22 +29,21 @@ class MissingBuildsTest {
     }
 
     @Test
-    fun theRecordsPackagesEachOnce() {
+    fun aTreesRecordGivesItsPackagesInOrder() {
         val a = MissingBuilds.Missing("usb", "2.9.0", "/x/node_modules/usb")
         val b = MissingBuilds.Missing("@canboat/socketcan", "1.0.0", "/x/node_modules/@canboat/socketcan")
-        val parsed = MissingBuilds.parse(record("/x/node_modules" to listOf(a, b), "/y/node_modules" to listOf(a.copy(dir = "/y/node_modules/usb"))))
-        assertEquals(listOf(a, b, a.copy(dir = "/y/node_modules/usb")), parsed)
+        assertEquals(listOf(a, b), MissingBuilds.parse(record("/x/node_modules", listOf(a, b))))
     }
 
     @Test
     fun anythingElseIsNoRecord() {
-        for (text in listOf("", "[1, 2", "[]", """{"format":2,"roots":{}}""", """{"format":1}""", """{"format":1,"roots":[]}""")) {
+        for (text in listOf("", "[1, 2", "[]", """{"format":2,"missing":[]}""", """{"format":1}""", """{"format":1,"missing":{}}""")) {
             assertEquals(text, emptyList<MissingBuilds.Missing>(), MissingBuilds.parse(text))
         }
         assertEquals(
             "entries that are no package are skipped",
             listOf(MissingBuilds.Missing("usb", "2.9.0", "/d")),
-            MissingBuilds.parse("""{"format":1,"roots":{"/r":[1,{"name":"x"},{"name":"","version":"1","dir":"/d"},{"name":"usb","version":"2.9.0","dir":"/d"}]}}"""),
+            MissingBuilds.parse("""{"format":1,"root":"/r","missing":[1,{"name":"x"},{"name":"","version":"1","dir":"/d"},{"name":"usb","version":"2.9.0","dir":"/d"}]}"""),
         )
     }
 
@@ -60,13 +58,17 @@ class MissingBuildsTest {
     }
 
     @Test
-    fun readGivesWhatIsStillMissingEachOnce() {
+    fun readGivesWhatIsStillMissingInEveryTreeEachOnce() {
         val usb = pkg("usb", "2.9.0")
         val built = pkg("sqlite3", "5.1.6", addon = "build/Release/node_sqlite3.node")
-        val file = File(tmp.root, MissingBuilds.FILE)
-        file.writeText(record("/a" to listOf(usb, built), "/b" to listOf(usb)))
-        assertEquals(listOf(usb), MissingBuilds.read(file))
-        assertEquals(emptyList<MissingBuilds.Missing>(), MissingBuilds.read(File(tmp.root, "none.json")))
+        val can = pkg("@canboat/socketcan", "1.0.0")
+        val dir = File(tmp.root, MissingBuilds.DIR).apply { mkdirs() }
+        File(dir, "a.json").writeText(record("/a", listOf(usb, built)))
+        File(dir, "b.json").writeText(record("/b", listOf(usb, can)))
+        File(dir, ".c.json.1234.ab12cd34.part").writeText(record("/c", listOf(pkg("staged", "1.0.0"))))
+        File(dir, "d.json").writeText("[1, 2")
+        assertEquals(listOf(usb, can), MissingBuilds.read(dir))
+        assertEquals(emptyList<MissingBuilds.Missing>(), MissingBuilds.read(File(tmp.root, "none")))
     }
 
     @Test
@@ -82,9 +84,9 @@ class MissingBuildsTest {
     }
 
     @Test
-    fun theFileIsTheOnePrebuildsJsWrites() {
-        // runtime-tools/npm/prebuilds.js: `const MISSING_FILE = "missing.json";`
+    fun theDirectoryIsTheOnePrebuildsJsWrites() {
+        // runtime-tools/npm/prebuilds.js: `const MISSING_DIR = "missing";`
         val dir = File(System.getProperty("pocketsk.npmToolsDir") ?: error("pocketsk.npmToolsDir not set by the build"))
-        assertTrue(File(dir, "prebuilds.js").readText().contains("const MISSING_FILE = \"${MissingBuilds.FILE}\";"))
+        assertTrue(File(dir, "prebuilds.js").readText().contains("const MISSING_DIR = \"${MissingBuilds.DIR}\";"))
     }
 }

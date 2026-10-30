@@ -22,11 +22,13 @@
  * its own and replaces it when the index names another (a C++ API build for a new runtime);
  * an addon the package brought or built itself is never touched.
  *
- * What is left without a build is recorded too, in [MISSING_FILE] in the cache directory, by the
- * tree it was installed into: the Dock reads it to name those packages and offer to request their
- * build (docs/PLAN.md §16 12.4), since the App Store's log, where [report]'s lines go, is gone
- * once the install is over. Each run replaces its tree's list, so a build placed later, or a tree
- * with nothing missing any more, clears its own; the Dock checks each package is still there.
+ * What is left without a build is recorded too, in [MISSING_DIR] in the cache directory, one file
+ * for each tree an install went into: the Dock reads them to name those packages and offer to
+ * request their build (docs/PLAN.md §16 12.4), since the App Store's log, where [report]'s lines
+ * go, is gone once the install is over. Each run replaces its own tree's file, so a build placed
+ * later, or a tree with nothing missing any more, clears its own, and two installs into different
+ * trees (the App Store's and the app's own update of the server) never write the same file; the
+ * Dock checks each package is still there.
  *
  * Plain CommonJS with no dependencies, like the preloads. Nothing here throws out of [place]:
  * whatever fails is reported, and npm's own result stands.
@@ -49,8 +51,8 @@ const NAPI = "napi";
 /** Left beside a placed build: the asset it came from and that asset's SHA-256. */
 const MARKER = ".pocketsk-prebuild";
 
-/** The record of packages left without a build, in the cache directory; NodeRuntime names it too. */
-const MISSING_FILE = "missing.json";
+/** Where the records of packages left without a build go, in the cache directory; MissingBuilds names it too. */
+const MISSING_DIR = "missing";
 const MISSING_FORMAT = 1;
 
 /** The only files a build may hold: addons straight under build/Release. */
@@ -246,7 +248,8 @@ const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex"
 /** Writes [bytes] to [file] beside it first, then renamed, so a reader sees the old file or the new one. */
 function writeWhole(file, bytes) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const partial = path.join(path.dirname(file), `.${path.basename(file)}.part`);
+  // A name of its own for each writer: two at once never write into, or rename, the other's.
+  const partial = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.part`);
   fs.writeFileSync(partial, bytes);
   fs.renameSync(partial, file);
 }
@@ -310,23 +313,30 @@ function unpack(dir, entry, tarball) {
   writeWhole(marker, JSON.stringify(stamp) + "\n");
 }
 
+/** [root]'s record of packages left without a build: a file of its own, named after it. */
+function missingFile(cacheDir, root) {
+  return path.join(cacheDir, MISSING_DIR, `${sha256(Buffer.from(root, "utf8")).slice(0, 32)}.json`);
+}
+
 /**
  * Records [absent], the packages under [root] left without a build (`name`, `version`, `dir`), in
- * [MISSING_FILE] in [cacheDir] in place of what an earlier run recorded for [root]: a root left
- * with none is dropped, and the file is written only when that changes something (so a phone
- * with nothing missing has no file). Another root's entries are left as they were; a file that is
- * no record at all is started again.
+ * [root]'s own file ([missingFile]) in place of what an earlier run recorded there; a root left with
+ * none has no file, and the file is written only when it changes. No other root's record is read
+ * or written, so installs into different trees cannot undo each other.
  */
 function remember(cacheDir, root, absent) {
-  const file = path.join(cacheDir, MISSING_FILE);
-  const old = readJson(file);
-  const roots = old?.format === MISSING_FORMAT && old.roots && typeof old.roots === "object" && !Array.isArray(old.roots) ? { ...old.roots } : {};
-  const before = JSON.stringify(roots[root] ?? []);
-  if (absent.length === 0) delete roots[root];
-  else roots[root] = absent;
-  const valid = old?.format === MISSING_FORMAT;
-  if (JSON.stringify(roots[root] ?? []) === before && (valid || Object.keys(roots).length === 0)) return;
-  writeWhole(file, JSON.stringify({ format: MISSING_FORMAT, roots }) + "\n");
+  const file = missingFile(cacheDir, root);
+  if (absent.length === 0) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  const text = JSON.stringify({ format: MISSING_FORMAT, root, missing: absent }) + "\n";
+  try {
+    if (fs.readFileSync(file, "utf8") === text) return;
+  } catch {
+    // none yet
+  }
+  writeWhole(file, text);
 }
 
 /**
@@ -399,4 +409,4 @@ function report(result) {
   };
 }
 
-module.exports = { RELEASE_URL, MARKER, MISSING_FILE, INSTALL_COMMANDS, installRoot, loadsUnder, runtimeAbi, checkIndex, pick, findAddons, hasOwnBuild, untar, place, report };
+module.exports = { RELEASE_URL, MARKER, MISSING_DIR, missingFile, INSTALL_COMMANDS, installRoot, loadsUnder, runtimeAbi, checkIndex, pick, findAddons, hasOwnBuild, untar, place, report };

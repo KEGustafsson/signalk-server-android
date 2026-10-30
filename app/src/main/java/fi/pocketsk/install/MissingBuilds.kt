@@ -8,9 +8,9 @@ import java.net.URLEncoder
 /**
  * The native addons installed without an Android build (docs/PLAN.md §16 12.4), for the Dock to
  * name and offer to request. npm's launcher records them when an install leaves one without its
- * addon (runtime-tools/npm/prebuilds.js, `missing.json` in [fi.pocketsk.node.NodeRuntime.prebuilds]),
- * by the tree each install went into: the App Store's log says so too, but it is gone once the
- * install is over, and the plugin that needs the addon only fails when the server loads it.
+ * addon (runtime-tools/npm/prebuilds.js), one file for each tree an install went into, in [DIR] in
+ * [fi.pocketsk.node.NodeRuntime.prebuilds]: the App Store's log says so too, but it is gone once
+ * the install is over, and the plugin that needs the addon only fails when the server loads it.
  *
  * The record says what an install found; the Dock shows what is still so. A package removed since,
  * installed again in another version, or given an addon (its own build, or one placed by a later
@@ -24,9 +24,9 @@ internal object MissingBuilds {
     data class Missing(val name: String, val version: String, val dir: String)
 
     /**
-     * The record's packages, each name and version once (one package can sit in several trees),
-     * in the order recorded. A record of another format, or no record at all, has none; an entry
-     * that is not a package is skipped.
+     * One tree's record's packages, in the order recorded: `{"format":1,"root":...,"missing":[...]}`.
+     * A record of another format, or no record at all, has none; an entry that is not a package is
+     * skipped.
      */
     fun parse(json: String): List<Missing> {
         val parsed = try {
@@ -36,8 +36,8 @@ internal object MissingBuilds {
         }
         val record = parsed as? Map<*, *> ?: return emptyList()
         if ((record["format"] as? Double) != FORMAT) return emptyList()
-        val roots = record["roots"] as? Map<*, *> ?: return emptyList()
-        return roots.values.flatMap { (it as? List<*>).orEmpty() }.mapNotNull { e ->
+        val missing = record["missing"] as? List<*> ?: return emptyList()
+        return missing.mapNotNull { e ->
             val m = e as? Map<*, *> ?: return@mapNotNull null
             val name = m["name"] as? String ?: return@mapNotNull null
             val version = m["version"] as? String ?: return@mapNotNull null
@@ -66,16 +66,20 @@ internal object MissingBuilds {
     }
 
     /**
-     * The packages in the record [file] that are still without a build, each once; none when
-     * there is no record. Reads files: off the main thread.
+     * The packages the records in [dir] name that are still without a build, each name and
+     * version once (one package can sit in several trees), the trees in their files' order; none
+     * when there are no records. A file being written is staged under a dot name, which is
+     * skipped. Reads files: off the main thread.
      */
-    fun read(file: File): List<Missing> {
-        val text = try {
-            file.readText()
-        } catch (_: IOException) {
-            return emptyList()
-        }
-        return parse(text).filter(::stillMissing).distinctBy { it.name to it.version }
+    fun read(dir: File): List<Missing> {
+        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".json") && !f.name.startsWith(".") }.orEmpty()
+        return files.sortedBy { it.name }.flatMap { f ->
+            try {
+                parse(f.readText())
+            } catch (_: IOException) {
+                emptyList()
+            }
+        }.filter(::stillMissing).distinctBy { it.name to it.version }
     }
 
     /**
@@ -100,8 +104,8 @@ internal object MissingBuilds {
 
     private fun encode(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
-    /** The record's file name in the prebuilds directory, as prebuilds.js writes it. */
-    const val FILE = "missing.json"
+    /** The records' directory in the prebuilds directory, as prebuilds.js writes them. */
+    const val DIR = "missing"
 
     private const val FORMAT = 1.0
 
