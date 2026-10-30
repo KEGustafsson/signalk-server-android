@@ -407,11 +407,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The number of the latest [refreshMissingBuilds], main thread: like [webappScan], since the end
+     * of an install, a restore and a resume can each start one while another is still reading.
+     */
+    private var missingScan = 0
+
     /** The native addons left without an Android build ([MissingBuilds]), read on a worker thread. */
     private fun refreshMissingBuilds() {
+        val scan = ++missingScan
         transportThread("dock-missing-builds", onError = {}) {
             val missing = MissingBuilds.read(File(runtime.prebuilds, MissingBuilds.DIR))
-            runOnUiThread { model.missingBuilds = missing }
+            runOnUiThread { if (scan == missingScan) model.missingBuilds = missing }
         }
     }
 
