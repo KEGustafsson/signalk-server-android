@@ -34,9 +34,8 @@ internal object MissingBuilds {
         } catch (_: Json.ParseException) {
             return emptyList()
         }
-        val record = parsed as? Map<*, *> ?: return emptyList()
-        if ((record["format"] as? Double) != FORMAT) return emptyList()
-        val missing = record["missing"] as? List<*> ?: return emptyList()
+        if (parsed !is Map<*, *> || parsed["format"] != FORMAT) return emptyList()
+        val missing = parsed["missing"] as? List<*> ?: return emptyList()
         return missing.mapNotNull { e ->
             val m = e as? Map<*, *> ?: return@mapNotNull null
             val name = m["name"] as? String ?: return@mapNotNull null
