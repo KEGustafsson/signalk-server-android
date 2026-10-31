@@ -338,7 +338,7 @@ internal class Supervisor(
                 } == true
             }
             if (failedGate) {
-                rollBackBad(version, "stopped ${HealthGate.CRASH_LIMIT} times within ${HealthGate.CRASH_WINDOW_MS / 60_000} min of its update")
+                rollBackBad(version, "stopped ${HealthGate.CRASH_LIMIT} times within ${HealthGate.CRASH_WINDOW_MS / 60_000} min of starting after its update")
                 continue
             }
             when (val d = policy.exited(code, startedAt, now)) {
@@ -378,7 +378,7 @@ internal class Supervisor(
                 if (ok) g?.answered(now)
                 when (g?.verdict(now)) {
                     HealthGate.Verdict.FAILED -> {
-                        gateFailure = "did not answer within ${HealthGate.ANSWER_WITHIN_MS / 1000} s of its update"
+                        gateFailure = "did not answer within ${HealthGate.ANSWER_WITHIN_MS / 1000} s of starting after its update"
                         ask = Ask.ROLLBACK
                         publish(ServerState.Stopping)
                         terminate(n)

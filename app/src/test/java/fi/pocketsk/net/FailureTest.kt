@@ -38,10 +38,10 @@ class FailureTest {
 
     @Test
     fun npmsErrorCodeSaysWhatHappened() {
-        val offline = "the npm registry could not be found: is the phone on the internet?"
+        val offline = "npm could not find a server it needs: is the phone on the internet?"
         assertEquals(offline, Failure.npm("npm error code ENOTFOUND"))
         assertEquals(offline, Failure.npm("npm ERR! code EAI_AGAIN"))
-        assertEquals("the npm registry did not answer", Failure.npm("npm error code ETIMEDOUT"))
+        assertEquals("a server npm needs did not answer", Failure.npm("npm error code ETIMEDOUT"))
         assertEquals("the phone has no route to the internet: is it on a network?", Failure.npm("npm error code ENETUNREACH"))
         assertEquals("the phone is out of storage space", Failure.npm("npm error code ENOSPC"))
         assertEquals(null, Failure.npm("npm error code E404"))

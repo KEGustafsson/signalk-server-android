@@ -37,9 +37,11 @@ internal object Failure {
      * full.
      */
     fun npm(line: String): String? = when (NPM_CODE.find(line)?.groupValues?.get(1)) {
-        "ENOTFOUND", "EAI_AGAIN" -> "the npm registry could not be found: is the phone on the internet?"
+        // npm fetches from the registry and, for some packages, from elsewhere (GitHub): the
+        // phrases name no host, since the line does not say which one failed.
+        "ENOTFOUND", "EAI_AGAIN" -> "npm could not find a server it needs: is the phone on the internet?"
         "ENETUNREACH" -> "the phone has no route to the internet: is it on a network?"
-        "ETIMEDOUT", "ESOCKETTIMEDOUT", "ECONNRESET", "ECONNREFUSED" -> "the npm registry did not answer"
+        "ETIMEDOUT", "ESOCKETTIMEDOUT", "ECONNRESET", "ECONNREFUSED" -> "a server npm needs did not answer"
         "ENOSPC" -> "the phone is out of storage space"
         else -> null
     }
