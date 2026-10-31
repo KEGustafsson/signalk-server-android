@@ -150,8 +150,12 @@ internal object SatelliteJob {
     @Synchronized
     fun askWrite(context: Context) {
         val f = latest as? State.Following ?: return
+        val app = context.applicationContext
+        // One already made of it (kept from a cancel) is waited for from now, not from its next answer.
+        val prefs = SatellitePrefs(app)
+        if (prefs.href != null && prefs.askedOf == f.url) prefs.askingWrite(true)
         publish(f.copy(upgrade = Upgrade.Asking(reached = false)))
-        start(context.applicationContext, f.url, f.name, write = true)
+        start(app, f.url, f.name, write = true)
     }
 
     /** No longer waits for read/write; the link stays as it is. */
@@ -238,7 +242,7 @@ internal object SatelliteJob {
                     if (href == null) {
                         if (!settle(gen) { prefs.asking(url, name, outcome.href, keepFollowing = write); asking(true) }) return
                         log.note("satellite: asked $url for $what; its admin approves it under Security, Access Requests")
-                    } else if (!settle(gen) { if (write) prefs.askingWrite(true); asking(true) }) return
+                    } else if (!settle(gen) { asking(true) }) return
                     href = outcome.href
                     backoff.reset()
                     if (!sleepQuietly(POLL_MS)) return
