@@ -554,7 +554,7 @@ class MainActivity : ComponentActivity() {
         override fun stopFollowing() = SatelliteJob.stop(this@MainActivity)
         override fun setSatellitePush(push: Satellite.Push) = SatelliteJob.setPush(this@MainActivity, push)
         override fun askWrite() = SatelliteJob.askWrite(this@MainActivity)
-        override fun cancelWrite() = SatelliteJob.cancelWrite()
+        override fun cancelWrite() = SatelliteJob.cancelWrite(this@MainActivity)
         override fun requestBuild(missing: MissingBuilds.Missing) = this@MainActivity.requestBuild(missing)
 
         override fun saveBackup(passphrase: CharArray) {

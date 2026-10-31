@@ -31,6 +31,13 @@ internal class SatellitePrefs(context: Context) {
     /** The server [href] was asked of. */
     val askedOf: String? get() = p.getString(ASKED_OF, null)
 
+    /**
+     * Whether [href] is a request for read/write made while following, still waited for: polled
+     * again when the process comes back. A cancelled one keeps its [href] (asked again, it is
+     * polled rather than refused) but is no longer waited for.
+     */
+    val askingWrite: Boolean get() = p.getBoolean(ASKING_WRITE, false)
+
     /** Approved (or no security there): the server follows [url]. */
     val following: Boolean get() = p.getBoolean(FOLLOWING, false)
 
@@ -63,6 +70,7 @@ internal class SatellitePrefs(context: Context) {
     fun asking(url: String, name: String, href: String, keepFollowing: Boolean = false) = p.edit {
         putString(HREF, href)
         putString(ASKED_OF, url)
+        putBoolean(ASKING_WRITE, keepFollowing)
         if (keepFollowing) return@edit
         putString(URL, url)
         putString(NAME, name)
@@ -75,7 +83,11 @@ internal class SatellitePrefs(context: Context) {
         putString(TOKEN, token)
         remove(HREF)
         remove(ASKED_OF)
+        remove(ASKING_WRITE)
     }
+
+    /** The request for read/write at [href] waited for again, or no longer (see [askingWrite]). */
+    fun askingWrite(on: Boolean) = p.edit { putBoolean(ASKING_WRITE, on) }
 
     /** [url] asked of again: what to poll, if anything (see [href]). */
     fun target(url: String, name: String) = p.edit {
@@ -83,6 +95,7 @@ internal class SatellitePrefs(context: Context) {
         putString(NAME, name)
         putBoolean(FOLLOWING, false)
         remove(TOKEN)
+        remove(ASKING_WRITE)
         if (askedOf != url) {
             remove(HREF)
             remove(ASKED_OF)
@@ -93,6 +106,7 @@ internal class SatellitePrefs(context: Context) {
     fun forgetRequest() = p.edit {
         remove(HREF)
         remove(ASKED_OF)
+        remove(ASKING_WRITE)
     }
 
     /** Following [url] with [token] (null: its server runs without security). */
@@ -101,6 +115,7 @@ internal class SatellitePrefs(context: Context) {
         putString(NAME, name)
         remove(HREF)
         remove(ASKED_OF)
+        remove(ASKING_WRITE)
         putBoolean(FOLLOWING, true)
         if (token == null) remove(TOKEN) else putString(TOKEN, token)
     }
@@ -113,6 +128,7 @@ internal class SatellitePrefs(context: Context) {
         remove(URL)
         remove(NAME)
         remove(TOKEN)
+        remove(ASKING_WRITE)
         putBoolean(FOLLOWING, false)
     }
 
@@ -122,6 +138,7 @@ internal class SatellitePrefs(context: Context) {
         const val NAME = "name"
         const val HREF = "href"
         const val ASKED_OF = "asked_of"
+        const val ASKING_WRITE = "asking_write"
         const val TOKEN = "token"
         const val FOLLOWING = "following"
         const val CLIENT_ID = "client_id"

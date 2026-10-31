@@ -97,12 +97,19 @@ internal object SatelliteJob {
         observers -= observer
     }
 
-    /** What the preferences say at the process's first look, a waiting request polled again. */
+    /**
+     * What the preferences say at the process's first look, a waiting request polled again: one
+     * to follow, or one for read/write while following.
+     */
     private fun resume(app: Context): State {
         val prefs = SatellitePrefs(app)
         val url = prefs.url ?: return State.Off
         val name = prefs.name ?: url
-        if (prefs.following) return following(prefs, url, name)
+        if (prefs.following) {
+            if (!prefs.askingWrite || prefs.href == null || prefs.askedOf != url) return following(prefs, url, name)
+            start(app, url, name, write = true)
+            return following(prefs, url, name, Upgrade.Asking(reached = true))
+        }
         if (prefs.href == null || prefs.askedOf != url) return State.Off.also { prefs.off() }
         start(app, url, name)
         return State.Asking(url, name, reached = true)
@@ -149,7 +156,8 @@ internal object SatelliteJob {
 
     /** No longer waits for read/write; the link stays as it is. */
     @Synchronized
-    fun cancelWrite() {
+    fun cancelWrite(context: Context) {
+        SatellitePrefs(context.applicationContext).askingWrite(false)
         generation++
         worker?.interrupt()
         worker = null
@@ -230,7 +238,7 @@ internal object SatelliteJob {
                     if (href == null) {
                         if (!settle(gen) { prefs.asking(url, name, outcome.href, keepFollowing = write); asking(true) }) return
                         log.note("satellite: asked $url for $what; its admin approves it under Security, Access Requests")
-                    } else if (!settle(gen) { asking(true) }) return
+                    } else if (!settle(gen) { if (write) prefs.askingWrite(true); asking(true) }) return
                     href = outcome.href
                     backoff.reset()
                     if (!sleepQuietly(POLL_MS)) return
