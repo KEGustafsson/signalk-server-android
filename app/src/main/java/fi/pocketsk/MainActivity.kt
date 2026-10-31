@@ -650,7 +650,10 @@ class MainActivity : ComponentActivity() {
             if (model.notes !is Notes.Loading) model.notes = Notes.Unknown
             if (selfUpdates) AppUpdater.check(this, maxAgeMs = 0)
         }
-        transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed(failure("reading the versions", e)) } }) {
+        transportThread("dock-versions", onError = { e ->
+            val why = failure("reading the versions", e)
+            runOnUiThread { model.available = Available.Failed(why) }
+        }) {
             val result = try {
                 Available.Loaded(installs.listAvailable(maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
             } catch (e: IOException) {
@@ -665,7 +668,9 @@ class MainActivity : ComponentActivity() {
      * log for whoever helps: what the owner reads never names a class, and the log always does.
      */
     private fun failure(what: String, e: Throwable): String {
-        ServerStatus.log(applicationContext).note("$what failed: $e")
+        val app = applicationContext
+        // The log writes to a file, and one caller (the installer's confirmation) is on the main thread.
+        transportThread("dock-log", onError = {}) { ServerStatus.log(app).note("$what failed: $e") }
         return Failure.text(e)
     }
 
@@ -679,7 +684,10 @@ class MainActivity : ComponentActivity() {
         val maxAge = if (notesRefresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS
         notesRefresh = false
         val source = ReleaseNotesSource(File(cacheDir, RELEASE_NOTES))
-        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed(failure("reading the release notes", e))) } }) {
+        transportThread("dock-notes", onError = { e ->
+            val why = failure("reading the release notes", e)
+            runOnUiThread { notesRead(Notes.Failed(why)) }
+        }) {
             val result = try {
                 Notes.Loaded(source.releases(maxAge))
             } catch (e: IOException) {
@@ -959,9 +967,10 @@ class MainActivity : ComponentActivity() {
         val summary = diagnosticsSummary()
         val app = applicationContext
         transportThread("dock-diagnostics", onError = { e ->
+            val why = failure("the diagnostics", e)
             runOnUiThread {
                 model.sharing = false
-                Toast.makeText(this, getString(R.string.dock_log_share_failed, failure("the diagnostics", e)), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.dock_log_share_failed, why), Toast.LENGTH_LONG).show()
             }
         }) {
             val file = DiagnosticsBundle.write(app, runtime, summary)

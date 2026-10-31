@@ -165,6 +165,20 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         target
     }
 
+    /**
+     * Appends [e], class and all, to the install log, which the diagnostics bundle carries: the
+     * owner is shown [Failure.text], and whoever helps reads this. A log that cannot be written
+     * loses the line, not the failure, which still reaches the screen.
+     */
+    fun noteFailure(e: Throwable) {
+        try {
+            logFile.parentFile?.mkdirs()
+            logFile.appendText("failed: $e\n")
+        } catch (_: IOException) {
+            // Said on the screen all the same.
+        }
+    }
+
     /** One install, from the wipe to the record; the tail and its throttle are its own. */
     private inner class Run(
         private val source: Source,
@@ -194,12 +208,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 // can still throw on a full disk), so it is reported as done.
                 // The owner reads the plain words; the install log and the history keep the exception.
                 promoted?.let { State.Done(it, slot, readHistory()) } ?: run {
-                    try {
-                        logFile.parentFile?.mkdirs()
-                        logFile.appendText("failed: $e\n")
-                    } catch (_: IOException) {
-                        // The history below still has it.
-                    }
+                    noteFailure(e)
                     fail(Failure.text(e), detail = "$e")
                 }
             }

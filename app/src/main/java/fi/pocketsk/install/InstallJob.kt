@@ -42,7 +42,11 @@ internal object InstallJob {
         if (isRunning) return false
         isRunning = true
         latest = null
-        transportThread("install", onError = { finish(InstallManager.State.Failed(Failure.text(it), "")) }) {
+        transportThread("install", onError = {
+            // What escaped the install (onPromoted, say): on this worker thread, logged before it is shown.
+            manager.noteFailure(it)
+            finish(InstallManager.State.Failed(Failure.text(it), ""))
+        }) {
             val end = manager.install(source, allowBad, onPromoting) { state -> publish(state, running = true) }
             if (end is InstallManager.State.Done) onPromoted(end)
             finish(end)
