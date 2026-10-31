@@ -170,8 +170,10 @@ class SignalKClient(
             if (code !in 200..299) return http(Failure.BAD_RESPONSE, code)
             val text = readBounded(connection.inputStream)
                 ?: return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_too_large))
+            val json = if (text.isBlank()) JSONObject() else JSONObject(text)
+            // Cleared only by an answer that parsed: a body that never is would log on every poll.
             lastLogged = null
-            return Result.Ok(if (text.isBlank()) JSONObject() else JSONObject(text))
+            return Result.Ok(json)
         } catch (e: IOException) {
             // Wrong address, nothing listening yet, or this phone is not on the server's network.
             // The detail reaches the Dock's Boat's main server card: in words, not the exception's.
