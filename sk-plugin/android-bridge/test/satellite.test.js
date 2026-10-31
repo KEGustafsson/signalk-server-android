@@ -303,6 +303,38 @@ test("a reconnect sends nothing until the main server says again whether this ph
   assert.equal(s.send(delta, "sensors"), false, "the admin took the right away meanwhile");
 });
 
+test("a login status that does not answer is asked again while the connection lasts", async (t) => {
+  let calls = 0;
+  const fetch = async () => {
+    calls++;
+    if (calls <= 2) throw new Error("unreachable");
+    return { ok: true, json: async () => ({ status: "loggedIn", authenticationRequired: true, userLevel: "readwrite" }) };
+  };
+  const { s, WebSocket } = setup({ fetch });
+  t.after(() => s.stop());
+  s.follow("http://192.168.1.9:3000", "a.b.c", { label: "pocketsk.0b1c2d3e", push: { sensors: true } });
+  WebSocket.made[0].hello();
+  await until(() => s.status().write === true);
+  assert.equal(calls, 3, "asked until it answered");
+});
+
+test("a login status asked again stops with the connection", async () => {
+  let calls = 0;
+  const fetch = async () => {
+    calls++;
+    throw new Error("unreachable");
+  };
+  const { s, WebSocket } = setup({ fetch });
+  s.follow("http://192.168.1.9:3000", "a.b.c", { label: "pocketsk.0b1c2d3e", push: { sensors: true } });
+  WebSocket.made[0].hello();
+  await until(() => calls >= 2);
+  s.stop();
+  const before = calls;
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(calls, before);
+  assert.equal(s.status().write, null);
+});
+
 test("the phone's own deltas go to the main server under its label, each group as chosen", async (t) => {
   const writes = [];
   const { s, ws } = await writing({ onState: (state, detail, write) => writes.push(write) });

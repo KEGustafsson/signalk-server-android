@@ -80,6 +80,7 @@ class Satellite {
     this.target = null;
     this.socket = null;
     this.timer = null;
+    this.accessTimer = null;
     this.watchdog = null;
     this.remoteSelf = null;
     this.current = { state: "off", detail: null };
@@ -181,7 +182,39 @@ class Satellite {
     }
   }
 
+  /**
+   * What the main server lets this connection do, asked once it has said hello. A login status
+   * that did not answer (the Wi-Fi, a restart) is asked again, the wait doubling up to the
+   * reconnect's, for as long as this connection lasts: until it answers, nothing is sent.
+   */
+  checkAccess(socket, delayMs) {
+    this.access().then((a) => {
+      if (this.socket !== socket) return;
+      if (!a) {
+        this.accessTimer = setTimeout(() => {
+          this.accessTimer = null;
+          this.checkAccess(socket, Math.min(delayMs * 2, this.maxDelayMs));
+        }, delayMs);
+        this.accessTimer.unref?.();
+        return;
+      }
+      if (a.read) {
+        this.allow(a.write);
+        return;
+      }
+      this.socket = null;
+      try {
+        socket.close();
+      } catch {
+        // Gone already.
+      }
+      this.lost(REFUSED);
+    });
+  }
+
   close() {
+    clearTimeout(this.accessTimer);
+    this.accessTimer = null;
     clearTimeout(this.timer);
     this.timer = null;
     clearTimeout(this.watchdog);
@@ -278,21 +311,7 @@ class Satellite {
       // meanwhile, so nothing is sent until the server says again.
       this.write = null;
       this.report("connected", null);
-      const socket = this.socket;
-      this.access().then((a) => {
-        if (this.socket !== socket || !a) return;
-        if (a.read) {
-          this.allow(a.write);
-          return;
-        }
-        this.socket = null;
-        try {
-          socket.close();
-        } catch {
-          // Gone already.
-        }
-        this.lost(REFUSED);
-      });
+      this.checkAccess(this.socket, this.firstDelayMs);
       return;
     }
     if (!Array.isArray(msg.updates)) return;

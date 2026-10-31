@@ -48,7 +48,11 @@ internal class SatellitePrefs(context: Context) {
     val clientId: String
         @Synchronized get() = p.getString(CLIENT_ID, null) ?: UUID.randomUUID().toString().also { p.edit { putString(CLIENT_ID, it) } }
 
-    /** What of the phone's own goes to the main server (§16 13.2): none until the Dock says. */
+    /**
+     * What of the phone's own goes to the main server (§16 13.2): none until the Dock says, and
+     * for the server it was said for alone. Another server followed, or following stopped, starts
+     * again from none, so the phone's position never goes to a server the owner did not choose.
+     */
     var push: Satellite.Push
         get() = Satellite.Push(sensors = p.getBoolean(PUSH_SENSORS, false), serial = p.getBoolean(PUSH_SERIAL, false))
         set(value) = p.edit {
@@ -91,6 +95,10 @@ internal class SatellitePrefs(context: Context) {
 
     /** [url] asked of again: what to poll, if anything (see [href]). */
     fun target(url: String, name: String) = p.edit {
+        if (url != this@SatellitePrefs.url) {
+            remove(PUSH_SENSORS)
+            remove(PUSH_SERIAL)
+        }
         putString(URL, url)
         putString(NAME, name)
         putBoolean(FOLLOWING, false)
@@ -121,14 +129,16 @@ internal class SatellitePrefs(context: Context) {
     }
 
     /**
-     * Off: nothing followed, the token forgotten. The client id stays, and so does a pending
-     * request's [href] (see there).
+     * Off: nothing followed, the token and the push choices forgotten. The client id stays, and so
+     * does a pending request's [href] (see there).
      */
     fun off() = p.edit {
         remove(URL)
         remove(NAME)
         remove(TOKEN)
         remove(ASKING_WRITE)
+        remove(PUSH_SENSORS)
+        remove(PUSH_SERIAL)
         putBoolean(FOLLOWING, false)
     }
 
