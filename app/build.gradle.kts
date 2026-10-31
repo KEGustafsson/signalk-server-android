@@ -185,6 +185,11 @@ val bridgePluginAsset = tasks.register<BridgePluginAsset>("bridgePluginAsset") {
 
 androidComponents {
     onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(bridgePluginAsset, BridgePluginAsset::outputDir) }
+    // The R2 test addons (native/spike-addon) serve only the runtime checks screen, which is in
+    // debug builds alone (src/debug), so a release APK carries neither.
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.add("**/libspike_napi*.so")
+    }
 }
 
 // BridgePluginTarTest unpacks the very tar the APK carries with the app's own reader, and

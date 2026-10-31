@@ -3,6 +3,7 @@ package fi.pocketsk.install
 import android.content.Context
 import android.system.ErrnoException
 import android.system.Os
+import fi.pocketsk.net.Failure
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.DataStore
 import fi.pocketsk.server.DataVolumes
@@ -164,6 +165,20 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         target
     }
 
+    /**
+     * Appends [e], class and all, to the install log, which the diagnostics bundle carries: the
+     * owner is shown [Failure.text], and whoever helps reads this. A log that cannot be written
+     * loses the line, not the failure, which still reaches the screen.
+     */
+    fun noteFailure(e: Throwable) {
+        try {
+            logFile.parentFile?.mkdirs()
+            logFile.appendText("failed: $e\n")
+        } catch (_: IOException) {
+            // Said on the screen all the same.
+        }
+    }
+
     /** One install, from the wipe to the record; the tail and its throttle are its own. */
     private inner class Run(
         private val source: Source,
@@ -191,7 +206,11 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 // Broadly: whatever went wrong, it is recorded and reported, not thrown at a screen.
                 // After the promotion the install has happened, whatever the log does (closing it
                 // can still throw on a full disk), so it is reported as done.
-                promoted?.let { State.Done(it, slot, readHistory()) } ?: fail("$e")
+                // The owner reads the plain words; the install log and the history keep the exception.
+                promoted?.let { State.Done(it, slot, readHistory()) } ?: run {
+                    noteFailure(e)
+                    fail(Failure.text(e), detail = "$e")
+                }
             }
             listener.onState(state)
             return state
@@ -211,13 +230,17 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                     is Source.Tarball -> source.file.absolutePath
                 }
                 line(log, "$ npm install -g --prefix $dir $spec ${NPM_ARGS.joinToString(" ")}", now = true)
+                var npmError: String? = null
                 val code = runtime.npm("install", "-g", "--prefix", dir.absolutePath, spec, *NPM_ARGS)
-                    .drain(INSTALL_TIMEOUT_S) { line(log, it, now = false) }
+                    .drain(INSTALL_TIMEOUT_S) {
+                        npmError = npmError ?: Failure.npm(it)
+                        line(log, it, now = false)
+                    }
                 when {
                     code == null -> return@use fail("npm ran out of time after ${INSTALL_TIMEOUT_S / 60} min", log)
-                    code != 0 -> return@use fail("npm failed with exit code $code", log)
+                    code != 0 -> return@use fail(npmError ?: "npm failed with exit code $code", log)
                 }
-                val version = installedVersion(slot) ?: return@use fail("npm finished, but signalk-server is not in slot $slot", log)
+                val version = installedVersion(slot) ?: return@use fail("npm finished, but Signal K Server is not where it installs to", log)
                 if (!allowBad && readHistory().isBad(version)) return@use refused(version, log)
                 verifying = true
                 listener.onState(State.Verifying(slot, tailText()))
@@ -291,8 +314,8 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                             line(log, "(smoke test: answered on :$SMOKE_PORT after $ms ms)", now = true)
                             null
                         }
-                        exited -> "the new server exited with code ${p.exitValue()} during its smoke test"
-                        else -> "the new server did not answer on :$SMOKE_PORT within ${SMOKE_TIMEOUT_NS / 1_000_000_000} s"
+                        exited -> "the new server stopped with exit code ${p.exitValue()} in its trial run, before it was used"
+                        else -> "the new server did not answer within ${SMOKE_TIMEOUT_NS / 1_000_000_000} s of its trial run, so it was not used"
                     }
                 }
             } finally {
@@ -325,14 +348,15 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 }
                 if (out.isFile) out.forEachLine { line(log, it, now = false) }
                 return when {
-                    !finished -> "copying the configuration for the smoke test ran out of time"
-                    cp.exitValue() != 0 -> "copying the configuration for the smoke test failed (cp exit ${cp.exitValue()})"
+                    !finished -> "copying the settings for its trial run took too long"
+                    cp.exitValue() != 0 -> "copying the settings for its trial run failed (cp exit code ${cp.exitValue()})"
                     else -> try {
                         // Data folders on a card are links in the copy: the test must not write the live data.
                         DataStore(verify, { line(log, it, now = false) }, DataVolumes::free).detach()
                         null
                     } catch (e: IOException) {
-                        "preparing the smoke test's configuration failed: $e"
+                        line(log, "preparing the trial run's configuration failed: $e", now = true)
+                        "preparing the trial run's configuration failed: ${Failure.text(e)}"
                     }
                 }
             } finally {
@@ -353,12 +377,13 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         }
 
         private fun refused(version: String, log: Writer? = null): State =
-            fail("signalk-server $version was rolled back on this phone before; install it anyway to try again", log, version)
+            fail("Signal K Server $version was rolled back on this phone before; install it anyway to try again", log, version)
 
-        private fun fail(reason: String, log: Writer? = null, version: String? = null): State {
-            log?.let { line(it, "failed: $reason", now = true) }
+        /** Ends the install with [reason] on screen; the log and the history get [detail]. */
+        private fun fail(reason: String, log: Writer? = null, version: String? = null, detail: String = reason): State {
+            log?.let { line(it, "failed: $detail", now = true) }
             if (wiped) slotDir(slot).deleteRecursively()
-            record(version ?: (source as? Source.Registry)?.version ?: "?", InstallHistory.Outcome.FAILED, reason)
+            record(version ?: (source as? Source.Registry)?.version ?: "?", InstallHistory.Outcome.FAILED, detail)
             return State.Failed(reason, tailText())
         }
 
@@ -401,8 +426,14 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
     private fun fetchVersions(): List<String> {
         runtime.ensureExtracted()
         val out = StringBuilder()
-        val code = runtime.npm("view", PACKAGE, "versions", "--json").drain(VIEW_TIMEOUT_S) { out.appendLine(it) }
-        if (code != 0) throw IOException(if (code == null) "npm view ran out of time" else "npm view failed with exit code $code")
+        var npmError: String? = null
+        val code = runtime.npm("view", PACKAGE, "versions", "--json").drain(VIEW_TIMEOUT_S) {
+            npmError = npmError ?: Failure.npm(it)
+            out.appendLine(it)
+        }
+        if (code != 0) {
+            throw IOException(if (code == null) "npm view ran out of time" else npmError ?: "npm view failed with exit code $code")
+        }
         return try {
             JSONArray(out.toString()).let { a -> List(a.length()) { a.getString(it) } }
         } catch (e: JSONException) {

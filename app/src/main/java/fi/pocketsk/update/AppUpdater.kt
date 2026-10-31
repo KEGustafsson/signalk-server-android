@@ -11,7 +11,9 @@ import android.os.Build
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.LegacyPlatform
 import fi.pocketsk.bridge.Json
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
+import fi.pocketsk.server.ServerStatus
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -87,7 +89,7 @@ internal object AppUpdater {
         if (busy()) return
         val app = context.applicationContext
         publish(State.Checking)
-        transportThread("app-update-check", onError = { publish(State.Failed("$it", null)) }) {
+        transportThread("app-update-check", onError = { publish(State.Failed(failure(app, "the update check", it), null)) }) {
             publish(look(app, maxAgeMs))
         }
     }
@@ -107,11 +109,11 @@ internal object AppUpdater {
         }
         val app = context.applicationContext
         publish(State.Downloading(release, 0, release.apk.size))
-        transportThread("app-update", onError = { publish(State.Failed("$it", release)) }) {
+        transportThread("app-update", onError = { publish(State.Failed(failure(app, "the update", it), release)) }) {
             val download = try {
                 download(app, release)
             } catch (e: IOException) {
-                publish(State.Failed(e.message ?: "$e", release))
+                publish(State.Failed(failure(app, "the download", e), release))
                 return@transportThread
             }
             val refusal = check(app, download)
@@ -124,10 +126,10 @@ internal object AppUpdater {
             try {
                 install(app, download.apk)
             } catch (e: IOException) {
-                publish(State.Failed(e.message ?: "$e", release))
+                publish(State.Failed(failure(app, "the installer", e), release))
             } catch (e: RuntimeException) {
                 // SecurityException, IllegalStateException: the installer refused the session.
-                publish(State.Failed(e.message ?: "$e", release))
+                publish(State.Failed(failure(app, "the installer", e), release))
             }
         }
     }
@@ -172,6 +174,12 @@ internal object AppUpdater {
         for (o in observers) o.onState(s)
     }
 
+    /** [e] in plain words for the Dock, after the exception itself goes to the log. */
+    private fun failure(context: Context, what: String, e: Throwable): String {
+        ServerStatus.log(context).note("app update: $what failed: $e")
+        return Failure.text(e)
+    }
+
     /** The latest release, as a state: on offer when it is newer than this build. */
     private fun look(context: Context, maxAgeMs: Long): State {
         // An APK left from an update that never finished: the next one downloads afresh.
@@ -179,7 +187,7 @@ internal object AppUpdater {
         val text = try {
             latestRelease(File(context.cacheDir, RELEASE_CACHE), maxAgeMs)
         } catch (e: IOException) {
-            return State.Failed(e.message ?: "$e", null)
+            return State.Failed(failure(context, "the update check", e), null)
         }
         val release = try {
             AppRelease.parse(text, Build.SUPPORTED_ABIS.toList())

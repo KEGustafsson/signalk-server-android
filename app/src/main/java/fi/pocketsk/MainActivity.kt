@@ -41,6 +41,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotesSource
 import fi.pocketsk.install.Slots
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.night.NightFilter
 import fi.pocketsk.night.NightSettings
@@ -649,14 +650,28 @@ class MainActivity : ComponentActivity() {
             if (model.notes !is Notes.Loading) model.notes = Notes.Unknown
             if (selfUpdates) AppUpdater.check(this, maxAgeMs = 0)
         }
-        transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed("$e") } }) {
+        transportThread("dock-versions", onError = { e ->
+            val why = failure("reading the versions", e)
+            runOnUiThread { model.available = Available.Failed(why) }
+        }) {
             val result = try {
                 Available.Loaded(installs.listAvailable(maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
             } catch (e: IOException) {
-                Available.Failed(e.message ?: "$e")
+                Available.Failed(failure("reading the versions", e))
             }
             runOnUiThread { model.available = result }
         }
+    }
+
+    /**
+     * [e] in plain words for the screen ([Failure.text]), after the exception itself goes to the
+     * log for whoever helps: what the owner reads never names a class, and the log always does.
+     */
+    private fun failure(what: String, e: Throwable): String {
+        val app = applicationContext
+        // The log writes to a file, and one caller (the installer's confirmation) is on the main thread.
+        transportThread("dock-log", onError = {}) { ServerStatus.log(app).note("$what failed: $e") }
+        return Failure.text(e)
     }
 
     /** Set by "Check for updates", so the next look at the notes asks GitHub rather than the day's copy. */
@@ -669,11 +684,14 @@ class MainActivity : ComponentActivity() {
         val maxAge = if (notesRefresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS
         notesRefresh = false
         val source = ReleaseNotesSource(File(cacheDir, RELEASE_NOTES))
-        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed("$e")) } }) {
+        transportThread("dock-notes", onError = { e ->
+            val why = failure("reading the release notes", e)
+            runOnUiThread { notesRead(Notes.Failed(why)) }
+        }) {
             val result = try {
                 Notes.Loaded(source.releases(maxAge))
             } catch (e: IOException) {
-                Notes.Failed(e.message ?: "$e")
+                Notes.Failed(failure("reading the release notes", e))
             }
             runOnUiThread { notesRead(result) }
         }
@@ -707,7 +725,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(confirm)
         } catch (e: ActivityNotFoundException) {
-            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, "$e")
+            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, failure("the installer's confirmation", e))
         }
     }
 
@@ -881,8 +899,12 @@ class MainActivity : ComponentActivity() {
         if (startServer) startServer()
     }
 
+    /**
+     * The runtime checks screen is in debug builds only (`src/debug`), so it is named by its class
+     * name: release code cannot refer to the class, and the Dock shows the button only in debug.
+     */
     private fun openRuntimeChecks() {
-        startActivity(Intent(this, SpikeActivity::class.java))
+        if (BuildConfig.DEBUG) startActivity(Intent().setClassName(this, "$packageName.SpikeActivity"))
     }
 
     // ---- reads -----------------------------------------------------------------------------------
@@ -945,9 +967,10 @@ class MainActivity : ComponentActivity() {
         val summary = diagnosticsSummary()
         val app = applicationContext
         transportThread("dock-diagnostics", onError = { e ->
+            val why = failure("the diagnostics", e)
             runOnUiThread {
                 model.sharing = false
-                Toast.makeText(this, getString(R.string.dock_log_share_failed, "$e"), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.dock_log_share_failed, why), Toast.LENGTH_LONG).show()
             }
         }) {
             val file = DiagnosticsBundle.write(app, runtime, summary)

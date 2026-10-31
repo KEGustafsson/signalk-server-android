@@ -8,6 +8,7 @@ import fi.pocketsk.bridge.BridgePlugin
 import fi.pocketsk.install.HealthGate
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.Slots
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.Waiter
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeProcess
@@ -202,8 +203,8 @@ internal class Supervisor(
                 wanted = false
                 node?.kill()
             }
-            val failed = ServerState.Failed("$e", rollbackTarget())
-            onAlert("$e", failed)
+            val failed = ServerState.Failed(Failure.text(e), rollbackTarget())
+            onAlert(Failure.text(e), failed)
             finished(failed)
         }) {
             finished(runLoop())
@@ -239,7 +240,7 @@ internal class Supervisor(
             }
             val slot = installs.liveSlot()
             val version = slot?.let { installs.installedVersion(it) }
-            if (slot == null || version == null) return failed("signalk-server is not installed")
+            if (slot == null || version == null) return failed("Signal K Server is not installed")
             val main = runtime.serverMain(File(runtime.slots, slot))
             placeData()?.let { return it }
             // A stop, or a restart (a new choice in the Dock), that came during a long move: the
@@ -282,7 +283,8 @@ internal class Supervisor(
                 val env = mapOf(Bridge.ENV to Bridge.socketFile(app).absolutePath)
                 runtime.spawn(main.absolutePath, extraEnv = if (lan) env else env + (NodeRuntime.LOOPBACK_ENV to NodeRuntime.LOOPBACK_ON))
             } catch (e: IOException) {
-                return failed("could not start node: $e")
+                log.note("could not start node: $e")
+                return failed("the server could not be started: ${Failure.text(e)}")
             }
             synchronized(this) {
                 node = n
@@ -324,7 +326,7 @@ internal class Supervisor(
             when (why) {
                 Ask.STOP, Ask.RESTART -> continue
                 Ask.ROLLBACK -> {
-                    rollBackBad(version, synchronized(this) { gateFailure } ?: "failed its health gate")
+                    rollBackBad(version, synchronized(this) { gateFailure } ?: "failed after its update")
                     continue
                 }
                 Ask.NONE -> Unit
@@ -336,16 +338,16 @@ internal class Supervisor(
                 } == true
             }
             if (failedGate) {
-                rollBackBad(version, "crashed ${HealthGate.CRASH_LIMIT} times within its health gate")
+                rollBackBad(version, "stopped ${HealthGate.CRASH_LIMIT} times within ${HealthGate.CRASH_WINDOW_MS / 60_000} min of its update")
                 continue
             }
             when (val d = policy.exited(code, startedAt, now)) {
                 RestartPolicy.Decision.GiveUp -> return failed(
-                    "exited ${RestartPolicy.FAILURE_LIMIT} times within ${RestartPolicy.WINDOW_MS / 60_000} min, the last with $code",
+                    "it stopped ${RestartPolicy.FAILURE_LIMIT} times within ${RestartPolicy.WINDOW_MS / 60_000} min, the last time with exit code $code",
                 )
                 is RestartPolicy.Decision.Restart -> if (d.delayMs > 0) {
                     log.note("starting again in ${d.delayMs / 1000} s")
-                    publish(ServerState.Waiting(version, d.delayMs, "exit $code"))
+                    publish(ServerState.Waiting(version, d.delayMs, "exit code $code"))
                     waiter.await(d.delayMs)
                 }
             }
@@ -376,7 +378,7 @@ internal class Supervisor(
                 if (ok) g?.answered(now)
                 when (g?.verdict(now)) {
                     HealthGate.Verdict.FAILED -> {
-                        gateFailure = "did not answer within ${HealthGate.ANSWER_WITHIN_MS / 1000} s of its promotion"
+                        gateFailure = "did not answer within ${HealthGate.ANSWER_WITHIN_MS / 1000} s of its update"
                         ask = Ask.ROLLBACK
                         publish(ServerState.Stopping)
                         terminate(n)
@@ -461,7 +463,7 @@ internal class Supervisor(
         policy.reset()
         val back = installs.installedVersion(to) ?: "?"
         log.note("signalk-server $version $why: rolled back to $back in slot $to")
-        onAlert("signalk-server $version $why. Back to $back.", null)
+        onAlert("Signal K Server $version $why. Back to $back.", null)
     }
 
     /**
@@ -572,7 +574,8 @@ internal class Supervisor(
                     log.note("${to ?: "the card"} went while the server's data was being moved: ${e.message ?: e}")
                     continue
                 }
-                return failed("the server's data could not be moved: ${e.message ?: e}")
+                log.note("the server's data could not be moved: $e")
+                return failed("the server's data could not be moved: ${Failure.text(e)}")
             }
         }
     }

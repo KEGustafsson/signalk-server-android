@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only. The runtime checks (spikes R1–R3, docs/PLAN.md §3) are a developer's tool,
+     opened from the Dock's Runtime checks button, which release builds do not show. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name=".SpikeActivity"
+            android:exported="false"
+            android:label="@string/spike_title" />
+    </application>
+
+</manifest>

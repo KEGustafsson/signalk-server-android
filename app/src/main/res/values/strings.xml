@@ -1,25 +1,6 @@
 <resources>
     <string name="app_name">Signal K Server</string>
 
-    <!-- The runtime checks: spikes R1–R3 and the step 9.2/9.3 buttons, opened from the Dock -->
-    <string name="spike_title">Runtime checks</string>
-    <string name="spike_run">Run node, npm and the R2 addons</string>
-    <string name="spike_missing">libnodeexec.so is not in this APK for this phone\'s ABI (the build carries arm64-v8a, armeabi-v7a and x86_64). nativeLibraryDir and the environment are shown so the exec path can be checked by hand.</string>
-    <string name="spike_running">Running…</string>
-    <string name="spike_install">Install signalk-server with npm (R3)</string>
-    <string name="spike_installing">Installing signalk-server into slot A…</string>
-    <string name="spike_upgrade">Install into the other slot and make it live (9.2)</string>
-    <string name="spike_upgrade_starting">Installing the latest signalk-server with InstallManager…</string>
-    <string name="spike_upgrade_installing">npm is installing signalk-server into slot %1$s…\n\n%2$s</string>
-    <string name="spike_upgrade_verifying">Smoke test of slot %1$s on port %2$d…\n\n%3$s</string>
-    <string name="spike_upgrade_done">signalk-server %1$s is live in slot %2$s. Its history:\n\n%3$s</string>
-    <string name="spike_upgrade_failed">The install failed: %1$s\n\n%2$s</string>
-    <string name="spike_service_start">Start the server service (9.3)</string>
-    <string name="spike_service_stop">Stop the server service</string>
-    <string name="spike_service_admin">Open the admin UI</string>
-    <string name="spike_service_autostart">Start the server when the phone starts</string>
-    <string name="spike_service_stopped">Stopped.</string>
-    <string name="spike_service_failed">Gave up: %1$s</string>
     <string name="no_browser">No browser to open %1$s</string>
 
     <!-- Setup wizard (docs/PLAN.md §5.3) -->
@@ -31,7 +12,7 @@
     <string name="setup_welcome_text">This phone will run the real Signal K Server, the same one a Raspberry Pi runs. The app downloads it from the npm registry now, about 90 MB, so a Wi-Fi connection to the internet is best. With no internet aboard, install it from a file made on any computer with npm pack signalk-server.</string>
     <string name="setup_version_title">Which version</string>
     <string name="setup_version_loading">Asking npm which versions there are…</string>
-    <string name="setup_version_failed">npm did not answer: %1$s</string>
+    <string name="setup_version_failed">The versions could not be read: %1$s</string>
     <string name="setup_version_latest">%1$s, the latest release</string>
     <string name="setup_version_file">From a file (.tgz)</string>
     <string name="setup_version_file_named">From a file: %1$s</string>
@@ -39,9 +20,9 @@
     <string name="setup_install">Install</string>
     <string name="setup_install_title">Installing</string>
     <string name="setup_install_preparing">Getting ready…</string>
-    <string name="setup_install_npm">npm is installing signalk-server into slot %1$s…</string>
-    <string name="setup_install_verifying">Trying the new server in slot %1$s on port %2$d…</string>
-    <string name="setup_install_done">signalk-server %1$s is installed in slot %2$s.</string>
+    <string name="setup_install_npm">npm is downloading and installing Signal K Server…</string>
+    <string name="setup_install_verifying">Checking that the new server starts…</string>
+    <string name="setup_install_done">Signal K Server %1$s is installed.</string>
     <string name="setup_install_failed">The install failed: %1$s</string>
     <string name="setup_permissions_title">What the server needs</string>
     <string name="setup_permissions_text">Notifications show that the server runs and warn when it has trouble. Nearby devices lets tablets and plotters on the boat\'s network reach it; without it only this phone can. An unrestricted battery keeps Android from stopping it overnight.</string>
@@ -69,16 +50,17 @@
     <string name="perm_autostart">Start the server when the phone starts</string>
 
     <!-- The Dock (docs/PLAN.md §8.1) -->
+    <!-- Debug builds only: opens the runtime checks screen (src/debug). -->
     <string name="dock_runtime_checks">Runtime checks</string>
     <string name="dock_status_title">Server</string>
     <string name="dock_stopped">Stopped</string>
-    <string name="dock_starting">Starting %1$s from slot %2$s…</string>
-    <string name="dock_running">Running %1$s from slot %2$s</string>
+    <string name="dock_starting">Starting %1$s…</string>
+    <string name="dock_running">Running %1$s</string>
     <string name="dock_uptime">Up %1$s</string>
     <string name="dock_usage_memory">Up %1$s · memory %2$s</string>
     <string name="dock_usage">Up %1$s · CPU %2$d %% of one core · memory %3$s</string>
     <string name="dock_delta_rate">Taking in %1$s deltas a second</string>
-    <string name="dock_running_on_trial">Running %1$s from slot %2$s, on trial after its update</string>
+    <string name="dock_running_on_trial">Running %1$s, just updated and watched for its first minutes</string>
     <string name="dock_failed">Stopped: %1$s</string>
     <string name="dock_url_lan">On the boat\'s network: %1$s</string>
     <string name="dock_url_phone">On this phone: %1$s</string>
@@ -127,9 +109,9 @@
     <string name="dock_start">Start</string>
     <string name="dock_open_admin">Open the admin UI</string>
     <string name="dock_updates_title">Updates</string>
-    <string name="dock_live">Live: %1$s in slot %2$s</string>
+    <string name="dock_live">Installed: %1$s</string>
     <string name="dock_nothing_live">Nothing installed yet</string>
-    <string name="dock_other">Other slot: %1$s in slot %2$s</string>
+    <string name="dock_other">Also kept on the phone: %1$s</string>
     <string name="dock_check_updates">Check for updates</string>
     <string name="dock_up_to_date">Up to date</string>
     <string name="dock_install">Install %1$s</string>
@@ -165,9 +147,14 @@
     <string name="dock_app_refused_not_newer">%1$s was not installed: the download is not newer than this build.</string>
     <string name="dock_app_refused_other_signer">%1$s was not installed: it is signed by another key than this app.</string>
     <string name="dock_app_checks">Look for a newer app every day</string>
-    <string name="dock_rollback_reason">by hand, from the Dock</string>
+    <string name="dock_rollback_reason">by hand, in the app</string>
     <string name="dock_history">History</string>
-    <string name="dock_history_line">%1$s  %2$s  %3$s  slot %4$s</string>
+    <string name="dock_history_line">%1$s  %2$s  %3$s</string>
+    <!-- How an install went, after its version in the History list. -->
+    <string name="dock_history_installed">installed</string>
+    <string name="dock_history_failed">did not install</string>
+    <string name="dock_history_rolled_back">rolled back</string>
+    <string name="dock_history_bad">rolled back: it failed after the update</string>
     <string name="dock_settings_title">Settings</string>
     <string name="dock_sensors_title">Sensors</string>
     <string name="dock_sensors_body">The phone\'s battery, barometer, GPS, attitude, rate of turn, compass and cabin sensors reach Signal K through the Pocket SK Android bridge plugin. Turn each on or off, set its period and the bow offset in the plugin\'s settings in the admin UI.</string>
@@ -222,12 +209,12 @@
     <string name="dock_log_empty">Nothing logged yet</string>
     <string name="dock_log_all">All</string>
     <string name="dock_log_problems">Problems</string>
-    <string name="dock_log_app">Pocket SK</string>
+    <string name="dock_log_app">This app</string>
     <string name="dock_log_filter">Lines with these words</string>
     <string name="dock_log_none_match">No recent line matches</string>
     <string name="dock_log_share">Share diagnostics</string>
     <string name="dock_log_share_why">A zip of the server\'s log, the app\'s own settings and the phone\'s model, for whoever helps you. The server\'s settings, security and the plugins\' settings files stay out. The log holds whatever the server and its plugins printed: read it before posting it in public.</string>
-    <string name="dock_log_share_subject">Pocket SK %1$s diagnostics</string>
+    <string name="dock_log_share_subject">Signal K Server app %1$s diagnostics</string>
     <string name="dock_log_share_failed">Could not write the diagnostics: %1$s</string>
     <string name="dock_log_share_none">No app to share the diagnostics with</string>
     <string name="dock_app_version">App %1$s (%2$s)</string>
@@ -260,7 +247,7 @@
     <string name="dock_power_passage">Passage</string>
     <string name="dock_power_passage_what">As Harbor, with the screen dimmed to the helm screen\'s brightness.</string>
     <string name="dock_power_saver">Battery saver</string>
-    <string name="dock_power_saver_what">The phone\'s sensors stop but GNSS, at most once a second, and the battery; no Bluetooth LE scan. Instruments on USB and Bluetooth serial carry on.</string>
+    <string name="dock_power_saver_what">The phone\'s sensors stop, but for the GPS, at most once a second, and the battery; no Bluetooth LE scan. Instruments on USB and Bluetooth serial carry on.</string>
     <string name="dock_power_passage_overlay">Dimming needs the app allowed to display over other apps: the Helm screen card asks for it.</string>
     <string name="dock_backup_title">Backup</string>
     <string name="dock_backup_body">The server\'s settings, its users and passwords and the plugins\' settings, as one zip encrypted with AES-256, saved wherever you choose: this phone, a card, Drive or Nextcloud. 7-Zip opens it on a computer with the passphrase. The plugins themselves are installed again from the App Store\'s registry when you restore, and the data folders (charts and the rest) are not in it: they are in the USB folder.</string>
@@ -316,11 +303,11 @@
     <string name="server_title">Signal K Server %1$s</string>
     <string name="server_starting">Starting…</string>
     <string name="server_not_answering">Not answering on %1$s</string>
-    <string name="server_on_trial">%1$s · new version on trial</string>
-    <string name="server_waiting">Ended (%1$s); starting again in %2$d s</string>
+    <string name="server_on_trial">%1$s · just updated, being watched</string>
+    <string name="server_waiting">Stopped (%1$s); starting again in %2$d s</string>
     <string name="server_storage_waiting">Waiting for %1$s, where the server\'s data is</string>
     <string name="server_storage_phone">the phone\'s shared storage</string>
-    <string name="data_readme">The Signal K server\'s .signalk folder (Pocket SK)\n\nThis is the server\'s configuration folder, as /home/node/.signalk is on a Linux box.\n\nThe folders here (charts, serverstate, applicationData, logs, and each plugin\'s data in plugin-config-data) are the server\'s own: what you copy in, the server sees at once.\n\nThe files directly here and in plugin-config-data (settings.json, security.json, the SSL key and certificate, the plugins\' settings) are copies of the server\'s, brought up to date every 30 seconds while it runs. A copy you change, add or delete goes into the server when it next starts: stop and start it in Pocket SK, or restart it from the admin UI. Until then the server\'s own changes to that file do not overwrite yours. Deleting security.json and restarting the server resets its users and passwords, as on a Linux box.\n\nnode_modules, the installed plugins and webapps, is not here: Android runs code only from the app\'s private storage. Install and remove them in the admin UI\'s App Store.\n\nsecurity.json holds the server\'s users and the key its logins are signed with: anyone who can open this folder can read it.\n</string>
+    <string name="data_readme">The Signal K server\'s .signalk folder (Signal K Server for Android)\n\nThis is the server\'s configuration folder, as /home/node/.signalk is on a Linux box.\n\nThe folders here (charts, serverstate, applicationData, logs, and each plugin\'s data in plugin-config-data) are the server\'s own: what you copy in, the server sees at once.\n\nThe files directly here and in plugin-config-data (settings.json, security.json, the SSL key and certificate, the plugins\' settings) are copies of the server\'s, brought up to date every 30 seconds while it runs. A copy you change, add or delete goes into the server when it next starts: stop and start it in the Signal K Server app, or restart it from the admin UI. Until then the server\'s own changes to that file do not overwrite yours. Deleting security.json and restarting the server resets its users and passwords, as on a Linux box.\n\nnode_modules, the installed plugins and webapps, is not here: Android runs code only from the app\'s private storage. Install and remove them in the admin UI\'s App Store.\n\nsecurity.json holds the server\'s users and the key its logins are signed with: anyone who can open this folder can read it.\n</string>
     <string name="server_storage_moving">Moving the server\'s data to %1$s</string>
     <string name="server_storage_moving_phone">Moving the server\'s data to the phone</string>
     <string name="server_stopping">Stopping…</string>

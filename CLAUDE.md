@@ -57,9 +57,10 @@ pipeline and several files were lifted (PLAN §17).
 app/                 the Android app
   fi.pocketsk        MainActivity (the Dock and the setup wizard, Compose; pocketsk://webapp/ links),
                      AlarmActivity (the boat's alarm over the lock screen), ServerActions,
-                     WebappShortcuts (the installed webapps, pinned to the home screen),
-                     SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3), App,
-                     LocalNetwork, WifiLockModes, LegacyPlatform
+                     WebappShortcuts (the installed webapps, pinned to the home screen), App,
+                     LocalNetwork, WifiLockModes, LegacyPlatform; in src/debug only,
+                     SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3: a
+                     developer's tool, its button in debug builds' Dock alone)
   fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Common (sections, permission rows),
                      AppModel, Theme
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
@@ -95,7 +96,9 @@ app/                 the Android app
   fi.pocketsk.update AppUpdater (the app's own update: GitHub's latest release, the download, the
                      checks, the PackageInstaller session), UpdateReceiver (the installer's status
                      and confirmation); AppRelease (pure, tested)
-  fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice
+  fi.pocketsk.net    Backoff, Threads (transportThread, Waiter), NetworkChoice, Failure (an
+                     exception in plain words for the Dock and the notifications; the log keeps
+                     the exception itself) (pure, tested)
   fi.pocketsk.signalk SignalKClient, SignalKUrl, SignalKDiscovery, SignalKTree, Quantity (Role only),
                      Webapps (a package.json as a webapp, the deep link) (pure, tested)
   fi.pocketsk.night  NightFilter (the helm screen's overlay: red filter, dimming, screen kept on;
@@ -134,7 +137,8 @@ runtime-tools/npm/   what every npm on the phone runs (files/runtime, NodeRuntim
 native/              CMake: launcher/main.cc -> lib/<abi>/libnodeexec.so, the `node` the app execs
                      (leads a process group when NodeRuntime asks), and `npm` when started
                      as files/bin/npm, for Signal K's App Store;
-                     spike-addon/ (R2 test addon, two builds; leaves with the spike screen)
+                     spike-addon/ (R2 test addon, two builds; packaged in debug builds only,
+                     with the spike screen)
 sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: plain CommonJS, no
                      dependencies, `node --test`; packed into the APK as assets/android-bridge.tar.
                      lib/protocol.js mirrors BridgeProtocol: change both together; lib/serial.js
@@ -173,6 +177,11 @@ Planned, not yet present (PLAN §2): `runtime-tools/bootstrap`.
   `files/home/.signalk`, and that folder is in the external backup domain, which the rules exclude. `files/npm`, `files/bin`, `files/prebuilds`, `files/plugins` (the
   bridge's plugin) and `files/runtime` (the preload) are excluded too, with `files/bridge.sock`: the APK makes them again, and `files/bin/node` points into the old install. So is `files/logs`, the
   server's output, which may carry whatever a plugin printed.
+- What the owner reads (strings.xml, the notifications, the reasons the Dock shows, the bridge
+  plugin's settings and status) speaks of the server, its versions and the phone, never of the
+  plan's steps (R2, 9.3, §5.2), slots, smoke tests or health gates, nor an exception's class name:
+  a failure reaches the screen through `Failure.text`. The log and the debug-only runtime checks
+  keep the developer's words.
 - Doc comments explain why, in full sentences. A file copied from Crew Radio says so at the top of
   its class comment, so a fix found in one repo is carried to the other.
 - Commit messages: what changed and why, present tense, wrapped at 72. Version numbers are never

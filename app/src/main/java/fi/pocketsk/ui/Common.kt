@@ -42,11 +42,11 @@ internal fun LogText(text: String, modifier: Modifier = Modifier) {
 @Composable
 internal fun serverStateText(state: ServerState, url: String): String = when (state) {
     ServerState.Stopped -> stringResource(R.string.dock_stopped)
-    is ServerState.Starting -> stringResource(R.string.dock_starting, state.version, state.slot)
+    is ServerState.Starting -> stringResource(R.string.dock_starting, state.version)
     is ServerState.Running -> when {
         !state.answering -> stringResource(R.string.server_not_answering, url)
-        state.onTrial -> stringResource(R.string.dock_running_on_trial, state.version, state.slot)
-        else -> stringResource(R.string.dock_running, state.version, state.slot)
+        state.onTrial -> stringResource(R.string.dock_running_on_trial, state.version)
+        else -> stringResource(R.string.dock_running, state.version)
     }
     is ServerState.Waiting -> stringResource(R.string.server_waiting, state.reason, state.delayMs / 1000)
     is ServerState.Storage -> when {
@@ -62,9 +62,9 @@ internal fun serverStateText(state: ServerState, url: String): String = when (st
 @Composable
 internal fun installStateText(state: InstallManager.State?): String = when (state) {
     null -> stringResource(R.string.setup_install_preparing)
-    is InstallManager.State.Installing -> stringResource(R.string.setup_install_npm, state.slot)
-    is InstallManager.State.Verifying -> stringResource(R.string.setup_install_verifying, state.slot, InstallManager.SMOKE_PORT)
-    is InstallManager.State.Done -> stringResource(R.string.setup_install_done, state.version, state.slot)
+    is InstallManager.State.Installing -> stringResource(R.string.setup_install_npm)
+    is InstallManager.State.Verifying -> stringResource(R.string.setup_install_verifying)
+    is InstallManager.State.Done -> stringResource(R.string.setup_install_done, state.version)
     is InstallManager.State.Failed -> stringResource(R.string.setup_install_failed, state.reason)
 }
 
