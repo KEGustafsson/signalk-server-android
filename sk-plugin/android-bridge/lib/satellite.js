@@ -268,8 +268,11 @@ class Satellite {
     // Node's WebSocket fires error alone on an upgrade the server refuses, with no close after it:
     // either one is the end of this connection, and whichever comes second finds it gone.
     socket.onerror = (event) => {
-      const message = plainError(event?.message || event?.error?.message);
+      const raw = event?.message || event?.error?.message;
+      const message = plainError(raw);
       socket.lastError = message;
+      // The owner's card gets the plain words; the debug log keeps Node's own.
+      if (raw && raw !== message) this.debug(`satellite: websocket error: ${raw}`);
       if (this.socket !== socket) return;
       this.socket = null;
       try {
