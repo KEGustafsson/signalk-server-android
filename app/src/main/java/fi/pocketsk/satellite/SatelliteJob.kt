@@ -139,9 +139,13 @@ internal object SatelliteJob {
 
     /** What of the phone's own goes to the main server, as the Dock chose; the plugin hears at once. */
     @Synchronized
-    fun setPush(context: Context, push: Satellite.Push) {
+    fun setPush(context: Context, change: (Satellite.Push) -> Satellite.Push) {
         val app = context.applicationContext
-        SatellitePrefs(app).push = push
+        // Applied to what is stored, under the job's lock: two switches flicked before the Dock
+        // redraws each change their own field, rather than one copy undoing the other.
+        val prefs = SatellitePrefs(app)
+        val push = change(prefs.push)
+        prefs.push = push
         (latest as? State.Following)?.let { publish(it.copy(push = push)) }
         SignalKService.satelliteChanged(app)
     }

@@ -234,8 +234,8 @@ private fun writeEndedText(u: SatelliteJob.Upgrade.Ended): Int = when {
  */
 @Composable
 private fun SatellitePush(s: SatelliteJob.State.Following, actions: AppActions) {
-    HelmSwitch(stringResource(R.string.dock_satellite_push_sensors), s.push.sensors) { actions.setSatellitePush(s.push.copy(sensors = it)) }
-    HelmSwitch(stringResource(R.string.dock_satellite_push_serial), s.push.serial) { actions.setSatellitePush(s.push.copy(serial = it)) }
+    HelmSwitch(stringResource(R.string.dock_satellite_push_sensors), s.push.sensors) { on -> actions.setSatellitePush { it.copy(sensors = on) } }
+    HelmSwitch(stringResource(R.string.dock_satellite_push_serial), s.push.serial) { on -> actions.setSatellitePush { it.copy(serial = on) } }
     val sending = s.push.sensors || s.push.serial
     when (val u = s.upgrade) {
         is SatelliteJob.Upgrade.Asking -> {

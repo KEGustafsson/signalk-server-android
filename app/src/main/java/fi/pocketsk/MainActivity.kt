@@ -556,7 +556,7 @@ class MainActivity : ComponentActivity() {
         override fun takeInbox() = this@MainActivity.takeInbox()
         override fun followServer(url: String, name: String) = this@MainActivity.followServer(url, name)
         override fun stopFollowing() = SatelliteJob.stop(this@MainActivity)
-        override fun setSatellitePush(push: Satellite.Push) = SatelliteJob.setPush(this@MainActivity, push)
+        override fun setSatellitePush(change: (Satellite.Push) -> Satellite.Push) = SatelliteJob.setPush(this@MainActivity, change)
         override fun askWrite() = SatelliteJob.askWrite(this@MainActivity)
         override fun cancelWrite() = SatelliteJob.cancelWrite(this@MainActivity)
         override fun requestBuild(missing: MissingBuilds.Missing) = this@MainActivity.requestBuild(missing)

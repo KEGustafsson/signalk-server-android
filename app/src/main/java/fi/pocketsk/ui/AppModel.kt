@@ -226,8 +226,8 @@ internal interface AppActions {
     /** Satellite mode off, or its access request no longer waited for. */
     fun stopFollowing()
 
-    /** What of the phone's own goes to the main server followed. */
-    fun setSatellitePush(push: Satellite.Push)
+    /** What of the phone's own goes to the main server followed: [change] applied to what is set now. */
+    fun setSatellitePush(change: (Satellite.Push) -> Satellite.Push)
 
     /** Asks the main server followed for read/write, which sending needs. */
     fun askWrite()
