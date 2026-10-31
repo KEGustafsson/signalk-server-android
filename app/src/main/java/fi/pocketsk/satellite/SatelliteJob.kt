@@ -174,6 +174,8 @@ internal object SatelliteJob {
         val app = context.applicationContext
         val wasFollowing = SatellitePrefs(app).following
         SatellitePrefs(app).target(url, name)
+        // What the plugin said was of the server followed before: the next one says again.
+        heard = Heard(null, null, null)
         // Moving from one server to another: the old link goes at once, not when the new is approved.
         if (wasFollowing) SignalKService.satelliteChanged(app)
         publish(State.Asking(url, name, reached = false))
@@ -190,6 +192,7 @@ internal object SatelliteJob {
         worker?.interrupt()
         worker = null
         prefs.off()
+        heard = Heard(null, null, null)
         publish(State.Off)
         if (wasFollowing) SignalKService.satelliteChanged(app)
     }
@@ -202,7 +205,9 @@ internal object SatelliteJob {
             // left asking with nobody asking.
             val ended = settle(gen) {
                 if (write) {
-                    following(SatellitePrefs(app), url, name, Upgrade.Ended(denied = false, why = Satellite.Why.NOT_SIGNAL_K))
+                    val prefs = SatellitePrefs(app)
+                    prefs.forgetRequest()
+                    following(prefs, url, name, Upgrade.Ended(denied = false, why = Satellite.Why.NOT_SIGNAL_K))
                 } else {
                     SatellitePrefs(app).off()
                     State.Ended(url, name, denied = false, why = Satellite.Why.NOT_SIGNAL_K)
