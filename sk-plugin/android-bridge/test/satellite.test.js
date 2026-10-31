@@ -293,6 +293,7 @@ test("a reconnect sends nothing until the main server says again whether this ph
   level = "readonly";
   ws.fail("gone");
   assert.equal(s.status().write, null, "a connection lost takes its answer with it");
+  assert.equal(s.notices.size, 0, "and the main server's alarm ids, which may change meanwhile");
   assert.equal(await s.silence("notifications.mob", "silence"), false);
   await until(() => WebSocket.made.length === 2);
   WebSocket.made[1].hello();

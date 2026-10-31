@@ -356,8 +356,11 @@ class Satellite {
     this.remoteSelf = null;
     const target = this.target;
     if (!target) return;
-    // Whether this phone may write is a connection's answer: none is open now, so none holds.
+    // Whether this phone may write is a connection's answer: none is open now, so none holds. The
+    // alarms' ids go too: one cleared and raised again meanwhile has a new one, and the next
+    // stream's first deltas (its cached values) give them all again.
     this.write = null;
+    this.notices.clear();
     this.report(detail === REFUSED ? "unauthorized" : "unreachable", detail);
     if (detail !== REFUSED) {
       // A refused token fails the upgrade as any network error does: the server says which it was.
