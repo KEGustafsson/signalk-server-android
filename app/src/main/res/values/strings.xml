@@ -60,7 +60,7 @@
     <string name="dock_usage_memory">Up %1$s · memory %2$s</string>
     <string name="dock_usage">Up %1$s · CPU %2$d %% of one core · memory %3$s</string>
     <string name="dock_delta_rate">Taking in %1$s deltas a second</string>
-    <string name="dock_running_on_trial">Running %1$s, just updated and watched for its first minutes</string>
+    <string name="dock_running_on_trial">Running %1$s, watched for its first minutes</string>
     <string name="dock_failed">Stopped: %1$s</string>
     <string name="dock_url_lan">On the boat\'s network: %1$s</string>
     <string name="dock_url_phone">On this phone: %1$s</string>
@@ -303,7 +303,7 @@
     <string name="server_title">Signal K Server %1$s</string>
     <string name="server_starting">Starting…</string>
     <string name="server_not_answering">Not answering on %1$s</string>
-    <string name="server_on_trial">%1$s · just updated, being watched</string>
+    <string name="server_on_trial">%1$s · watched for its first minutes</string>
     <string name="server_waiting">Stopped (%1$s); starting again in %2$d s</string>
     <string name="server_storage_waiting">Waiting for %1$s, where the server\'s data is</string>
     <string name="server_storage_phone">the phone\'s shared storage</string>

@@ -27,7 +27,21 @@ class SignalKClient(
     private val token: String?,
     private val connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
     private val readTimeoutMs: Int = READ_TIMEOUT_MS,
+    private val log: ((String) -> Unit)? = null,
 ) {
+    /**
+     * The last failure given to [log], so a poll that fails the same way every few seconds logs
+     * it once; an answer clears it. [Result.Failed]'s detail is the owner's words, this the
+     * exception itself.
+     */
+    private var lastLogged: String? = null
+
+    private fun logged(e: Exception) {
+        val line = "$base: $e"
+        if (line == lastLogged) return
+        lastLogged = line
+        log?.invoke("signalk: $line")
+    }
 
     /** Why a request did not produce an answer, in the terms the UI explains it in. */
     enum class Failure {
@@ -156,15 +170,19 @@ class SignalKClient(
             if (code !in 200..299) return http(Failure.BAD_RESPONSE, code)
             val text = readBounded(connection.inputStream)
                 ?: return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_too_large))
+            lastLogged = null
             return Result.Ok(if (text.isBlank()) JSONObject() else JSONObject(text))
         } catch (e: IOException) {
             // Wrong address, nothing listening yet, or this phone is not on the server's network.
             // The detail reaches the Dock's Boat's main server card: in words, not the exception's.
+            logged(e)
             return Result.Failed(Failure.UNREACHABLE, fi.pocketsk.net.Failure.text(e))
-        } catch (_: JSONException) {
+        } catch (e: JSONException) {
+            logged(e)
             return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_not_json))
         } catch (e: SecurityException) {
             // Cleartext refused by the network security policy, among other things.
+            logged(e)
             return Result.Failed(Failure.UNREACHABLE, fi.pocketsk.net.Failure.text(e))
         } finally {
             connection?.disconnect()
