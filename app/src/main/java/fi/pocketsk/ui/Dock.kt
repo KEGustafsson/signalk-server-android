@@ -211,13 +211,20 @@ private fun SatelliteCard(model: AppModel, actions: AppActions) {
     }
 }
 
-private fun endedText(s: SatelliteJob.State.Ended): Int = endedText(s.denied, s.why)
+private fun endedText(s: SatelliteJob.State.Ended): Int = when {
+    s.denied -> R.string.dock_satellite_denied
+    s.why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_no_requests
+    s.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_already
+    s.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_expired
+    else -> R.string.dock_satellite_not_signalk
+}
 
-private fun endedText(denied: Boolean, why: Satellite.Why?): Int = when {
-    denied -> R.string.dock_satellite_denied
-    why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_no_requests
-    why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_already
-    why == Satellite.Why.EXPIRED -> R.string.dock_satellite_expired
+/** A request for read/write ended without it: the link reads on, and asking again is the remedy. */
+private fun writeEndedText(u: SatelliteJob.Upgrade.Ended): Int = when {
+    u.denied -> R.string.dock_satellite_write_denied
+    u.why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_write_no_requests
+    u.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_write_already
+    u.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_write_expired
     else -> R.string.dock_satellite_not_signalk
 }
 
@@ -245,7 +252,7 @@ private fun SatellitePush(s: SatelliteJob.State.Following, actions: AppActions) 
         else -> when (s.write) {
             true -> if (sending) Text(stringResource(R.string.dock_satellite_may_write), style = MaterialTheme.typography.bodySmall)
             false -> {
-                (u as? SatelliteJob.Upgrade.Ended)?.let { Text(stringResource(endedText(it.denied, it.why), s.name), color = MaterialTheme.colorScheme.error) }
+                (u as? SatelliteJob.Upgrade.Ended)?.let { Text(stringResource(writeEndedText(it), s.name), color = MaterialTheme.colorScheme.error) }
                 Text(stringResource(R.string.dock_satellite_read_only, s.name), style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = actions::askWrite) { Text(stringResource(R.string.dock_satellite_ask_write)) }
             }

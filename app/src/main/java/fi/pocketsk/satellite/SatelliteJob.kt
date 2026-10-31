@@ -93,6 +93,9 @@ internal object SatelliteJob {
         observer.onState(state)
     }
 
+    /** The state last published, null before the first look ([observe]). */
+    val current: State? get() = latest
+
     fun detach(observer: Observer) {
         observers -= observer
     }
