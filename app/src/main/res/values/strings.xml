@@ -322,6 +322,7 @@
     <!-- SignalKClient failure details -->
     <string name="signalk_http">HTTP %1$d</string>
     <string name="signalk_too_large">response too large</string>
+    <string name="signalk_not_json">the answer was not Signal K\'s JSON</string>
     <string name="signalk_redirected">the server pointed the request somewhere else</string>
 
     <!-- The boat's alarms (PhoneAlarm, AlarmActivity) -->

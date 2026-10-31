@@ -269,7 +269,8 @@ internal class BluetoothSerial(
                 return
             } catch (e: Exception) {
                 if (!link.running) break
-                link.detail = e.message
+                note("bt: ${link.id}: $e")
+                link.detail = Failure.text(e)
             } finally {
                 link.socket = null
                 reporting({}) { socket?.close() }

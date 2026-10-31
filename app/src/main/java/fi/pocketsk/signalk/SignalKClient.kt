@@ -159,12 +159,13 @@ class SignalKClient(
             return Result.Ok(if (text.isBlank()) JSONObject() else JSONObject(text))
         } catch (e: IOException) {
             // Wrong address, nothing listening yet, or this phone is not on the server's network.
-            return Result.Failed(Failure.UNREACHABLE, e.message)
-        } catch (e: JSONException) {
-            return Result.Failed(Failure.BAD_RESPONSE, e.message)
+            // The detail reaches the Dock's Boat's main server card: in words, not the exception's.
+            return Result.Failed(Failure.UNREACHABLE, fi.pocketsk.net.Failure.text(e))
+        } catch (_: JSONException) {
+            return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_not_json))
         } catch (e: SecurityException) {
             // Cleartext refused by the network security policy, among other things.
-            return Result.Failed(Failure.UNREACHABLE, e.message)
+            return Result.Failed(Failure.UNREACHABLE, fi.pocketsk.net.Failure.text(e))
         } finally {
             connection?.disconnect()
         }
