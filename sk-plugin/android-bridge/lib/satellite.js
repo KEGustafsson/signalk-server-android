@@ -274,6 +274,9 @@ class Satellite {
       // then nothing; a token it refuses fails the connection itself.
       this.remoteSelf = msg.self;
       this.delayMs = this.firstDelayMs;
+      // The last connection's word on writing is not this one's: the admin may have changed it
+      // meanwhile, so nothing is sent until the server says again.
+      this.write = null;
       this.report("connected", null);
       const socket = this.socket;
       this.access().then((a) => {

@@ -535,7 +535,12 @@ test("satellite mode sends the phone's sensors and serial sentences to the main 
   });
   const app = fakeApp();
   app.notifications = { silence() {}, acknowledge() {} };
-  app.subscriptionmanager = { subscribe() {} };
+  let onNotice = null;
+  app.subscriptionmanager = {
+    subscribe(command, unsubscribes, onError, callback) {
+      onNotice = callback;
+    },
+  };
   const Parser = class {
     parse(line) {
       return line.startsWith("$GPRMC") ? { updates: [{ source: { talker: "GP", sentence: "RMC" }, values: [{ path: "navigation.speedOverGround", value: 2 }] }] } : null;
@@ -559,4 +564,17 @@ test("satellite mode sends the phone's sensors and serial sentences to the main 
   assert.equal(made[0].sent[0].updates[0].$source, "pocketsk.0b1c2d3e.android.baro");
   assert.equal(made[0].sent[1].updates[0].source.label, "pocketsk.0b1c2d3e.android.usb-1a86-7523");
   assert.ok(app.status.at(-1).includes("(connected, read/write)"), app.status.at(-1));
+  // The main server's alarm, known here by an id of this server's own: Silence goes there by its id.
+  const mainId = "194c0d6e-8a4b-4c1e-9f3a-2b7d5e6f8a90";
+  const localId = "84eb1f2a-3c4d-4e5f-8a6b-7c8d9e0f1a2b";
+  made[0].onmessage({ data: JSON.stringify({ context: "vessels.urn:mrn:signalk:uuid:main", updates: [{ $source: "x.y", values: [{ path: "notifications.bilge", value: { state: "alarm", id: mainId } }] }] }) });
+  onNotice({ updates: [{ values: [{ path: "notifications.bilge", value: { id: localId, state: "alarm", message: "Bilge", status: {} } }] }] });
+  conn.write(`${JSON.stringify({ t: "silence", id: localId })}\n`);
+  await until(() => posts.length === 1);
+  assert.equal(posts[0], `http://192.168.1.9:3000/signalk/v2/api/notifications/${mainId}/silence`);
+  // Acknowledged meanwhile: the phone's Silence, sent before it heard, does nothing on either server.
+  onNotice({ updates: [{ values: [{ path: "notifications.bilge", value: { id: localId, state: "alarm", message: "Bilge", status: { acknowledged: true } } }] }] });
+  conn.write(`${JSON.stringify({ t: "silence", id: localId })}\n`);
+  await until(() => app.debugs.includes(`the phone silenced ${localId} on the phone alone`));
+  assert.equal(posts.length, 1);
 });

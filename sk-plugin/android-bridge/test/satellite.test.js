@@ -283,6 +283,22 @@ async function writing(more = {}) {
   return t;
 }
 
+test("a reconnect sends nothing until the main server says again whether this phone may write", async (t) => {
+  let level = "readwrite";
+  const fetch = async () => ({ ok: true, json: async () => ({ status: "loggedIn", authenticationRequired: true, userLevel: level }) });
+  const { s, ws, WebSocket } = await writing({ fetch });
+  t.after(() => s.stop());
+  const delta = { updates: [{ $source: "android.baro", values: [] }] };
+  level = "readonly";
+  ws.fail("gone");
+  await until(() => WebSocket.made.length === 2);
+  WebSocket.made[1].hello();
+  assert.equal(s.status().write, null, "the last connection's answer is not this one's");
+  assert.equal(s.send(delta, "sensors"), false);
+  await until(() => s.status().write === false);
+  assert.equal(s.send(delta, "sensors"), false, "the admin took the right away meanwhile");
+});
+
 test("the phone's own deltas go to the main server under its label, each group as chosen", async (t) => {
   const writes = [];
   const { s, ws } = await writing({ onState: (state, detail, write) => writes.push(write) });

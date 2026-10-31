@@ -530,8 +530,8 @@ module.exports = function androidBridge(app, deps = {}) {
       const done = alarms?.silence(msg.id);
       app.debug(done ? `the phone asked to ${done} ${msg.id}` : `the phone silenced ${msg.id} on the phone alone`);
       // An alarm that came from the boat's main server goes quiet there too, whatever this server
-      // could do with its copy.
-      if (path) satellite?.silence(path, done ?? "silence");
+      // could do with its copy, with the action the alarm offers; none (it changed meanwhile), none.
+      if (path && done) satellite?.silence(path, done);
       return;
     }
     stats.sensors++;
