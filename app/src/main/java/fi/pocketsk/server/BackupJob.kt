@@ -3,6 +3,7 @@ package fi.pocketsk.server
 import android.content.Context
 import android.net.Uri
 import fi.pocketsk.bridge.BridgePlugin
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
 import java.io.ByteArrayOutputStream
@@ -148,7 +149,7 @@ internal object BackupJob {
         val state = when (e) {
             is AesZip.WrongPassphrase -> State.Failed(restore, Why.WRONG_PASSPHRASE)
             is AesZip.NotOurs -> State.Failed(restore, Why.NOT_A_BACKUP, e.message.orEmpty())
-            else -> State.Failed(restore, Why.FAILED, e.message ?: e.toString())
+            else -> State.Failed(restore, Why.FAILED, Failure.text(e))
         }
         ServerStatus.log(app).note("${if (restore) "restore" else "backup"} failed: ${e.message ?: e}")
         publish(state)

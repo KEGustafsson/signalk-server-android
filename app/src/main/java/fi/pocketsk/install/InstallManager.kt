@@ -3,6 +3,7 @@ package fi.pocketsk.install
 import android.content.Context
 import android.system.ErrnoException
 import android.system.Os
+import fi.pocketsk.net.Failure
 import fi.pocketsk.node.NodeRuntime
 import fi.pocketsk.server.DataStore
 import fi.pocketsk.server.DataVolumes
@@ -191,7 +192,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 // Broadly: whatever went wrong, it is recorded and reported, not thrown at a screen.
                 // After the promotion the install has happened, whatever the log does (closing it
                 // can still throw on a full disk), so it is reported as done.
-                promoted?.let { State.Done(it, slot, readHistory()) } ?: fail("$e")
+                promoted?.let { State.Done(it, slot, readHistory()) } ?: fail(Failure.text(e))
             }
             listener.onState(state)
             return state
@@ -217,7 +218,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                     code == null -> return@use fail("npm ran out of time after ${INSTALL_TIMEOUT_S / 60} min", log)
                     code != 0 -> return@use fail("npm failed with exit code $code", log)
                 }
-                val version = installedVersion(slot) ?: return@use fail("npm finished, but signalk-server is not in slot $slot", log)
+                val version = installedVersion(slot) ?: return@use fail("npm finished, but Signal K Server is not where it installs to", log)
                 if (!allowBad && readHistory().isBad(version)) return@use refused(version, log)
                 verifying = true
                 listener.onState(State.Verifying(slot, tailText()))
@@ -291,8 +292,8 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                             line(log, "(smoke test: answered on :$SMOKE_PORT after $ms ms)", now = true)
                             null
                         }
-                        exited -> "the new server exited with code ${p.exitValue()} during its smoke test"
-                        else -> "the new server did not answer on :$SMOKE_PORT within ${SMOKE_TIMEOUT_NS / 1_000_000_000} s"
+                        exited -> "the new server stopped with exit code ${p.exitValue()} in its trial run, before it was used"
+                        else -> "the new server did not answer within ${SMOKE_TIMEOUT_NS / 1_000_000_000} s of its trial run, so it was not used"
                     }
                 }
             } finally {
@@ -325,14 +326,14 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 }
                 if (out.isFile) out.forEachLine { line(log, it, now = false) }
                 return when {
-                    !finished -> "copying the configuration for the smoke test ran out of time"
-                    cp.exitValue() != 0 -> "copying the configuration for the smoke test failed (cp exit ${cp.exitValue()})"
+                    !finished -> "copying the settings for its trial run took too long"
+                    cp.exitValue() != 0 -> "copying the settings for its trial run failed (cp exit code ${cp.exitValue()})"
                     else -> try {
                         // Data folders on a card are links in the copy: the test must not write the live data.
                         DataStore(verify, { line(log, it, now = false) }, DataVolumes::free).detach()
                         null
                     } catch (e: IOException) {
-                        "preparing the smoke test's configuration failed: $e"
+                        "preparing the trial run's configuration failed: ${Failure.text(e)}"
                     }
                 }
             } finally {
@@ -353,7 +354,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         }
 
         private fun refused(version: String, log: Writer? = null): State =
-            fail("signalk-server $version was rolled back on this phone before; install it anyway to try again", log, version)
+            fail("Signal K Server $version was rolled back on this phone before; install it anyway to try again", log, version)
 
         private fun fail(reason: String, log: Writer? = null, version: String? = null): State {
             log?.let { line(it, "failed: $reason", now = true) }

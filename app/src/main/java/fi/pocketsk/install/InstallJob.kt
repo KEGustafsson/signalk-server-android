@@ -1,5 +1,6 @@
 package fi.pocketsk.install
 
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -41,7 +42,7 @@ internal object InstallJob {
         if (isRunning) return false
         isRunning = true
         latest = null
-        transportThread("install", onError = { finish(InstallManager.State.Failed("$it", "")) }) {
+        transportThread("install", onError = { finish(InstallManager.State.Failed(Failure.text(it), "")) }) {
             val end = manager.install(source, allowBad, onPromoting) { state -> publish(state, running = true) }
             if (end is InstallManager.State.Done) onPromoted(end)
             finish(end)

@@ -41,7 +41,7 @@ test("without the app's socket the plugin says so and does nothing", () => {
   const app = fakeApp();
   const p = plugin(app, { env: {} });
   p.start({});
-  assert.deepEqual(app.status, ["Not running on Pocket SK: there is no phone to bridge"]);
+  assert.deepEqual(app.status, ["Not running in the Signal K Server app for Android: there is no phone to bridge"]);
   p.stop();
   assert.equal(p.statusNow().connected, false);
 });

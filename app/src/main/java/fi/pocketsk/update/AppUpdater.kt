@@ -11,6 +11,7 @@ import android.os.Build
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.LegacyPlatform
 import fi.pocketsk.bridge.Json
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -87,7 +88,7 @@ internal object AppUpdater {
         if (busy()) return
         val app = context.applicationContext
         publish(State.Checking)
-        transportThread("app-update-check", onError = { publish(State.Failed("$it", null)) }) {
+        transportThread("app-update-check", onError = { publish(State.Failed(Failure.text(it), null)) }) {
             publish(look(app, maxAgeMs))
         }
     }
@@ -107,11 +108,11 @@ internal object AppUpdater {
         }
         val app = context.applicationContext
         publish(State.Downloading(release, 0, release.apk.size))
-        transportThread("app-update", onError = { publish(State.Failed("$it", release)) }) {
+        transportThread("app-update", onError = { publish(State.Failed(Failure.text(it), release)) }) {
             val download = try {
                 download(app, release)
             } catch (e: IOException) {
-                publish(State.Failed(e.message ?: "$e", release))
+                publish(State.Failed(Failure.text(e), release))
                 return@transportThread
             }
             val refusal = check(app, download)
@@ -124,10 +125,10 @@ internal object AppUpdater {
             try {
                 install(app, download.apk)
             } catch (e: IOException) {
-                publish(State.Failed(e.message ?: "$e", release))
+                publish(State.Failed(Failure.text(e), release))
             } catch (e: RuntimeException) {
                 // SecurityException, IllegalStateException: the installer refused the session.
-                publish(State.Failed(e.message ?: "$e", release))
+                publish(State.Failed(Failure.text(e), release))
             }
         }
     }
@@ -179,7 +180,7 @@ internal object AppUpdater {
         val text = try {
             latestRelease(File(context.cacheDir, RELEASE_CACHE), maxAgeMs)
         } catch (e: IOException) {
-            return State.Failed(e.message ?: "$e", null)
+            return State.Failed(Failure.text(e), null)
         }
         val release = try {
             AppRelease.parse(text, Build.SUPPORTED_ABIS.toList())

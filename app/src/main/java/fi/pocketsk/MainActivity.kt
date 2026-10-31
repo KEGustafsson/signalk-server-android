@@ -41,6 +41,7 @@ import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotesSource
 import fi.pocketsk.install.Slots
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.night.NightFilter
 import fi.pocketsk.night.NightSettings
@@ -649,11 +650,11 @@ class MainActivity : ComponentActivity() {
             if (model.notes !is Notes.Loading) model.notes = Notes.Unknown
             if (selfUpdates) AppUpdater.check(this, maxAgeMs = 0)
         }
-        transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed("$e") } }) {
+        transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed(Failure.text(e)) } }) {
             val result = try {
                 Available.Loaded(installs.listAvailable(maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
             } catch (e: IOException) {
-                Available.Failed(e.message ?: "$e")
+                Available.Failed(Failure.text(e))
             }
             runOnUiThread { model.available = result }
         }
@@ -669,11 +670,11 @@ class MainActivity : ComponentActivity() {
         val maxAge = if (notesRefresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS
         notesRefresh = false
         val source = ReleaseNotesSource(File(cacheDir, RELEASE_NOTES))
-        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed("$e")) } }) {
+        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed(Failure.text(e))) } }) {
             val result = try {
                 Notes.Loaded(source.releases(maxAge))
             } catch (e: IOException) {
-                Notes.Failed(e.message ?: "$e")
+                Notes.Failed(Failure.text(e))
             }
             runOnUiThread { notesRead(result) }
         }
@@ -707,7 +708,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(confirm)
         } catch (e: ActivityNotFoundException) {
-            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, "$e")
+            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, Failure.text(e))
         }
     }
 
@@ -881,8 +882,12 @@ class MainActivity : ComponentActivity() {
         if (startServer) startServer()
     }
 
+    /**
+     * The runtime checks screen is in debug builds only (`src/debug`), so it is named by its class
+     * name: release code cannot refer to the class, and the Dock shows the button only in debug.
+     */
     private fun openRuntimeChecks() {
-        startActivity(Intent(this, SpikeActivity::class.java))
+        if (BuildConfig.DEBUG) startActivity(Intent().setClassName(this, "$packageName.SpikeActivity"))
     }
 
     // ---- reads -----------------------------------------------------------------------------------
@@ -947,7 +952,7 @@ class MainActivity : ComponentActivity() {
         transportThread("dock-diagnostics", onError = { e ->
             runOnUiThread {
                 model.sharing = false
-                Toast.makeText(this, getString(R.string.dock_log_share_failed, "$e"), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.dock_log_share_failed, Failure.text(e)), Toast.LENGTH_LONG).show()
             }
         }) {
             val file = DiagnosticsBundle.write(app, runtime, summary)

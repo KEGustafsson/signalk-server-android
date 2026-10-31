@@ -17,6 +17,7 @@ import android.os.HandlerThread
 import androidx.core.content.ContextCompat
 import fi.pocketsk.bridge.BridgeProtocol.Device
 import fi.pocketsk.net.Backoff
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.Waiter
 import fi.pocketsk.net.reporting
 import fi.pocketsk.net.transportThread
@@ -217,7 +218,7 @@ internal class BluetoothSerial(
         transportThread("bt-$id", onError = { e ->
             link.dead = true
             link.state = Device.ERROR
-            link.detail = e.message ?: e.toString()
+            link.detail = Failure.text(e)
             note("bt: $id stopped: $e")
             changed()
         }) { run(link) }
