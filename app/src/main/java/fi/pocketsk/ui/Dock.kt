@@ -156,6 +156,7 @@ private fun SatelliteCard(model: AppModel, actions: AppActions) {
                     color = if (s.link == BridgeProtocol.SatelliteLink.UNAUTHORIZED) MaterialTheme.colorScheme.error else Color.Unspecified,
                 )
                 if (!s.secured) Text(stringResource(R.string.dock_satellite_open), style = MaterialTheme.typography.bodySmall)
+                SatellitePush(s, actions)
                 OutlinedButton(onClick = actions::stopFollowing) { Text(stringResource(R.string.dock_satellite_stop)) }
             }
             is SatelliteJob.State.Asking -> {
@@ -216,6 +217,48 @@ private fun endedText(s: SatelliteJob.State.Ended): Int = when {
     s.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_already
     s.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_expired
     else -> R.string.dock_satellite_not_signalk
+}
+
+/** A request for read/write ended without it: the link reads on, and asking again is the remedy. */
+private fun writeEndedText(u: SatelliteJob.Upgrade.Ended): Int = when {
+    u.denied -> R.string.dock_satellite_write_denied
+    u.why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_write_no_requests
+    u.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_write_already
+    u.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_write_expired
+    else -> R.string.dock_satellite_not_signalk
+}
+
+/**
+ * The push (docs/PLAN.md §16 13.2): which of the phone's own data goes to the main server, and
+ * whether the main server lets this phone write, with the request for read/write when it does not.
+ */
+@Composable
+private fun SatellitePush(s: SatelliteJob.State.Following, actions: AppActions) {
+    HelmSwitch(stringResource(R.string.dock_satellite_push_sensors), s.push.sensors) { on -> actions.setSatellitePush { it.copy(sensors = on) } }
+    HelmSwitch(stringResource(R.string.dock_satellite_push_serial), s.push.serial) { on -> actions.setSatellitePush { it.copy(serial = on) } }
+    val sending = s.push.sensors || s.push.serial
+    when (val u = s.upgrade) {
+        is SatelliteJob.Upgrade.Asking -> {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                Text(
+                    stringResource(if (u.reached) R.string.dock_satellite_write_asked else R.string.dock_satellite_reaching, s.name),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            u.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            TextButton(onClick = actions::cancelWrite) { Text(stringResource(R.string.dock_satellite_cancel)) }
+        }
+        else -> when (s.write) {
+            true -> if (sending) Text(stringResource(R.string.dock_satellite_may_write), style = MaterialTheme.typography.bodySmall)
+            false -> {
+                (u as? SatelliteJob.Upgrade.Ended)?.let { Text(stringResource(writeEndedText(it), s.name), color = MaterialTheme.colorScheme.error) }
+                Text(stringResource(R.string.dock_satellite_read_only, s.name), style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = actions::askWrite) { Text(stringResource(R.string.dock_satellite_ask_write)) }
+            }
+            null -> if (sending) Text(stringResource(R.string.dock_satellite_write_unknown, s.name), style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 /**

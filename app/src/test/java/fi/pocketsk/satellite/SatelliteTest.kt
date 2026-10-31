@@ -24,6 +24,13 @@ class SatelliteTest {
     }
 
     @Test
+    fun thePhonesLabelIsItsClientIdsFirstEightHex() {
+        assertEquals("pocketsk.0b1c2d3e", Satellite.label("0B1C2D3E-4f5a-6b7c-8d9e-0f1a2b3c4d5e"))
+        assertEquals("pocketsk.0b1c2d3e", Satellite.label("0b1c-2d3e-4f5a"))
+        assertEquals("a client id shorter than that is padded", "pocketsk.ab000000", Satellite.label("ab"))
+    }
+
+    @Test
     fun thePhonesOwnServerIsNotOffered() {
         val own = setOf("192.168.1.20", "FE80::A%wlan0")
         assertTrue(Satellite.own("http://192.168.1.20:3000", own))

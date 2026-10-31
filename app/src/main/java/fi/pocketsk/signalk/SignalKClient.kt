@@ -86,10 +86,13 @@ class SignalKClient(
     /**
      * Asks the server for a token, which someone with the admin UI open then approves. This is
      * Signal K's own device flow. For the app's own local server the approval is done by the app
-     * itself through the admin API, so nothing is ever shown or typed.
+     * itself through the admin API, so nothing is ever shown or typed. [permissions] names the
+     * access asked for (`readwrite`), none leaving it to the admin.
      */
-    fun requestAccess(clientId: String, description: String): Result<Access> {
-        val body = JSONObject().put("clientId", clientId).put("description", description).toString()
+    fun requestAccess(clientId: String, description: String, permissions: String? = null): Result<Access> {
+        val json = JSONObject().put("clientId", clientId).put("description", description)
+        if (permissions != null) json.put("permissions", permissions)
+        val body = json.toString()
         return when (val response = post(SignalKUrl.accessRequests(base), body)) {
             is Result.Ok -> Result.Ok(
                 Access(

@@ -292,19 +292,23 @@ class BridgeProtocolTest {
     @Test
     fun satelliteModeNamesTheMainServerAndHearsHowTheLinkStands() {
         // sk-plugin/android-bridge/lib/protocol.js parses exactly these (its satellite test).
+        val label = "pocketsk.0b1c2d3e"
         assertEquals(
-            """{"t":"satellite","url":"http://192.168.1.9:3000","token":"a.b.c"}""",
-            BridgeProtocol.satellite(Satellite.Link("http://192.168.1.9:3000", "a.b.c")),
+            """{"t":"satellite","url":"http://192.168.1.9:3000","token":"a.b.c","label":"pocketsk.0b1c2d3e","push":{"sensors":true,"serial":false}}""",
+            BridgeProtocol.satellite(Satellite.Link("http://192.168.1.9:3000", "a.b.c", label, Satellite.Push(sensors = true, serial = false))),
         )
-        assertEquals("""{"t":"satellite","url":"http://pi.local:3000","token":null}""", BridgeProtocol.satellite(Satellite.Link("http://pi.local:3000", null)))
+        assertEquals(
+            """{"t":"satellite","url":"http://pi.local:3000","token":null,"label":"pocketsk.0b1c2d3e","push":{"sensors":false,"serial":false}}""",
+            BridgeProtocol.satellite(Satellite.Link("http://pi.local:3000", null, label, Satellite.Push.NONE)),
+        )
         assertEquals("""{"t":"satellite"}""", BridgeProtocol.satellite(null))
         assertEquals(
-            Incoming.Satellite(BridgeProtocol.SatelliteLink.CONNECTED, null),
-            BridgeProtocol.parse("""{"t":"satellite","state":"connected","detail":null}"""),
+            Incoming.Satellite(BridgeProtocol.SatelliteLink.CONNECTED, null, true),
+            BridgeProtocol.parse("""{"t":"satellite","state":"connected","detail":null,"write":true}"""),
         )
         assertEquals(
-            Incoming.Satellite(BridgeProtocol.SatelliteLink.UNREACHABLE, "x".repeat(200)),
-            BridgeProtocol.parse("""{"t":"satellite","state":"unreachable","detail":"${"x".repeat(300)}"}"""),
+            Incoming.Satellite(BridgeProtocol.SatelliteLink.UNREACHABLE, "x".repeat(200), null),
+            BridgeProtocol.parse("""{"t":"satellite","state":"unreachable","detail":"${"x".repeat(300)}","write":"yes"}"""),
         )
         for (state in listOf("off", "connecting", "connected", "unauthorized", "unreachable")) {
             assertTrue(state, BridgeProtocol.parse("""{"t":"satellite","state":"$state"}""") is Incoming.Satellite)

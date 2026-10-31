@@ -218,7 +218,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val satelliteObserver = SatelliteJob.Observer { state -> runOnUiThread { model.satellite = state } }
+    /**
+     * The job's state as it is when the main thread gets to it, not as it was when posted: a state
+     * a worker published just before a cancel on this thread would otherwise land after it.
+     */
+    private val satelliteObserver = SatelliteJob.Observer { runOnUiThread { SatelliteJob.current?.let { model.satellite = it } } }
 
     /**
      * The boat's other Signal K servers, looked for while this screen is in front so the Satellite
@@ -552,6 +556,9 @@ class MainActivity : ComponentActivity() {
         override fun takeInbox() = this@MainActivity.takeInbox()
         override fun followServer(url: String, name: String) = this@MainActivity.followServer(url, name)
         override fun stopFollowing() = SatelliteJob.stop(this@MainActivity)
+        override fun setSatellitePush(change: (Satellite.Push) -> Satellite.Push) = SatelliteJob.setPush(this@MainActivity, change)
+        override fun askWrite() = SatelliteJob.askWrite(this@MainActivity)
+        override fun cancelWrite() = SatelliteJob.cancelWrite(this@MainActivity)
         override fun requestBuild(missing: MissingBuilds.Missing) = this@MainActivity.requestBuild(missing)
 
         override fun saveBackup(passphrase: CharArray) {

@@ -77,7 +77,8 @@ sound on the alarm volume, vibrate it, and fill its locked screen. That is an an
 wakes a phone asleep in a pocket. The phone's **Silence** is done through the server's notification
 API, so the alarm goes quiet on every client at once. An emergency, which Signal K does not let be
 silenced, is acknowledged instead. Where the server does not manage notifications (its
-`manageNotifications` setting is off), Silence quiets the phone alone. **Alarms on the phone** turns
+`manageNotifications` setting is off), Silence quiets the phone alone, but for an alarm from the
+boat's main server followed in satellite mode with read/write, which it silences there. **Alarms on the phone** turns
 it all off.
 
 ## Satellite mode
@@ -86,7 +87,9 @@ When the app's Dock follows the boat's main Signal K server (a Raspberry Pi, say
 holds the link: it opens the main server's delta stream with the device token its admin approved
 for the phone, and gives every delta to this server, the main server's vessel as this one's own.
 The plugin's status line says how the link stands. The token stays in the app, which hands it to
-the plugin over its socket.
+the plugin over its socket. With read/write access, the phone's own sensors and serial devices go
+to the main server too, as the app's Dock chose them, under the phone's own name there
+(`pocketsk.<id>.android.*`), and the phone's Silence silences the main server's alarm.
 
 ## Files
 

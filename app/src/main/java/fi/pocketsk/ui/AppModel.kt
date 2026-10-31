@@ -12,6 +12,7 @@ import fi.pocketsk.install.ReleaseNotes
 import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.night.NightSettings
 import fi.pocketsk.power.PowerProfile
+import fi.pocketsk.satellite.Satellite
 import fi.pocketsk.satellite.SatelliteJob
 import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
@@ -224,6 +225,15 @@ internal interface AppActions {
 
     /** Satellite mode off, or its access request no longer waited for. */
     fun stopFollowing()
+
+    /** What of the phone's own goes to the main server followed: [change] applied to what is set now. */
+    fun setSatellitePush(change: (Satellite.Push) -> Satellite.Push)
+
+    /** Asks the main server followed for read/write, which sending needs. */
+    fun askWrite()
+
+    /** No longer waits for read/write. */
+    fun cancelWrite()
 
     /** Shows the log's lines of [kind] that hold every word of [query]. */
     fun filterLog(kind: LogFilter.Kind, query: String)

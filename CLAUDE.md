@@ -147,7 +147,8 @@ sk-plugin/android-bridge/  @pocketsk/android-bridge, the bridge's server half: p
                      (a webapp) upload files, charts above all, into the server's data folders;
                      lib/satellite.js follows the boat's main server (satellite mode) with the
                      token the app hands it, the server's own Signal K connection being unable to
-                     send one in 2.35.1
+                     send one in 2.35.1, and sends it the phone's own data under the phone's label
+                     (pocketsk.<id>.) with read/write
 prebuilds/           packages.json (the addons built for Android), build.js (npm pack, node-gyp with
                      the NDK, linked against libnode.so, packed for the Release) and lib.js (its
                      pure part, tested); plain CommonJS, no dependencies, run by prebuilds.yml

@@ -109,6 +109,17 @@
     <string name="dock_satellite_already">%1$s already has a request from this phone. Approve or deny it there, then follow it again.</string>
     <string name="dock_satellite_expired">%1$s no longer has the request (it restarted). Follow it again to ask anew.</string>
     <string name="dock_satellite_not_signalk">%1$s did not answer as a Signal K server does.</string>
+    <string name="dock_satellite_push_sensors">Send this phone\'s sensors to it</string>
+    <string name="dock_satellite_push_serial">Send this phone\'s serial devices to it</string>
+    <string name="dock_satellite_may_write">It takes what this phone sends, under this phone\'s own name.</string>
+    <string name="dock_satellite_read_only">%1$s lets this phone read only, so nothing is sent to it.</string>
+    <string name="dock_satellite_ask_write">Ask for read/write</string>
+    <string name="dock_satellite_write_asked">Asked %1$s for read/write. On its admin UI, approve this phone\'s request under Security, Access Requests, with Read/Write as its permission.</string>
+    <string name="dock_satellite_write_denied">%1$s denied read/write. This phone goes on reading from it.</string>
+    <string name="dock_satellite_write_no_requests">%1$s takes no device access requests. Allow them in its Security settings, then ask for read/write again.</string>
+    <string name="dock_satellite_write_already">%1$s already has a request from this phone. Approve or deny it there, then ask for read/write again.</string>
+    <string name="dock_satellite_write_expired">%1$s no longer has the request (it restarted). Ask for read/write again.</string>
+    <string name="dock_satellite_write_unknown">Sending starts once %1$s says this phone may write.</string>
     <string name="satellite_request_description">Signal K Server on %1$s</string>
     <string name="dock_lan_access">LAN access</string>
     <string name="dock_lan_access_on">Tablets and plotters on the boat\'s network reach the server.</string>

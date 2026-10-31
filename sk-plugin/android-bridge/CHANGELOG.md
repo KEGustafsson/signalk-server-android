@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0
+
+- Satellite mode, the push: the phone's sensors and its serial devices, as the app's Dock chose
+  them (`push` in the app's satellite message), go to the main server on the stream followed, each
+  source under the phone's label (`pocketsk.<id>.`), only while the main server lets the phone
+  write (its login status, now in the satellite state sent to the app as `write`). What the phone
+  sent comes back from the main server and is dropped. The phone's Silence of one of the main
+  server's alarms is also done there, by the main server's own id for it.
+
 ## 0.12.0
 
 - Satellite mode: when the app says so (`{"t":"satellite","url","token"}`), the server follows the

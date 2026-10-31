@@ -26,7 +26,26 @@ internal object Satellite {
      * The main server, `http://host:port`, and the device token its admin granted (null when it
      * runs without security): what the bridge's plugin follows ([fi.pocketsk.bridge.BridgeProtocol.satellite]).
      */
-    data class Link(val url: String, val token: String?)
+    data class Link(val url: String, val token: String?, val label: String, val push: Push)
+
+    /**
+     * What of the phone's own the plugin sends the main server (§16 13.2): its sensors, its serial
+     * devices. Bluetooth LE sensors are not the bridge's: other plugins make their data, under
+     * their own names.
+     */
+    data class Push(val sensors: Boolean, val serial: Boolean) {
+        companion object {
+            val NONE = Push(sensors = false, serial = false)
+        }
+    }
+
+    /**
+     * The label this phone's data goes under on the main server, `pocketsk.` and the first 8 hex
+     * of its [clientId] (a UUID): its own, so two phones on one main server never write over each
+     * other's `android.gnss`, and the plugin knows its own data when the main server sends it back.
+     */
+    fun label(clientId: String): String =
+        "pocketsk." + clientId.lowercase().filter { it in '0'..'9' || it in 'a'..'f' }.take(LABEL_HEX).padEnd(LABEL_HEX, '0')
 
     /**
      * The main server's host and port from an address as the Dock has it (found over mDNS or
@@ -131,6 +150,7 @@ internal object Satellite {
         }
     }
 
+    private const val LABEL_HEX = 8
     private const val PENDING = "PENDING"
     private const val COMPLETED = "COMPLETED"
     private const val APPROVED = "APPROVED"

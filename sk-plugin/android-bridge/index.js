@@ -247,7 +247,11 @@ module.exports = function androidBridge(app, deps = {}) {
         Parser,
         // As the server makes its own: custom sentence parsers other plugins register apply too.
         parserOptions: typeof app.onPropertyValues === "function" ? { onPropertyValues: app.onPropertyValues.bind(app) } : {},
-        handle: (delta) => app.handleMessage(plugin.id, delta),
+        // Sent first: signalk-server writes its own vessel into a delta it is given.
+        handle: (delta) => {
+          satellite?.send(delta, "serial");
+          app.handleMessage(plugin.id, delta);
+        },
         emit: emitSentence,
       });
       alarms = new Alarms({
@@ -273,8 +277,8 @@ module.exports = function androidBridge(app, deps = {}) {
         pluginId: plugin.id,
         ...("WebSocket" in deps ? { WebSocket: deps.WebSocket } : {}),
         ...("fetch" in deps ? { fetch: deps.fetch } : {}),
-        onState: (state, detail) => {
-          if (link?.connected) link.send(satelliteMessage(state, detail));
+        onState: (state, detail, write) => {
+          if (link?.connected) link.send(satelliteMessage(state, detail, write));
           showStatus();
         },
         debug: (s) => app.debug(s),
@@ -447,7 +451,7 @@ module.exports = function androidBridge(app, deps = {}) {
       sendStats();
       if (satellite) {
         const s = satellite.status();
-        link.send(satelliteMessage(s.state, s.detail));
+        link.send(satelliteMessage(s.state, s.detail, s.write));
       }
     }
     showStatus(detail);
@@ -480,7 +484,8 @@ module.exports = function androidBridge(app, deps = {}) {
     });
     const parser = devices.length > 0 && !Parser ? "; the server's NMEA 0183 parser was not found, so sentences are not parsed" : "";
     const s = satellite?.status();
-    const following = s?.url ? `; following ${s.url.replace(/^http:\/\//, "")} (${s.state}${s.detail ? `: ${s.detail}` : ""})` : "";
+    const access = s?.write === true ? ", read/write" : s?.write === false ? ", read only" : "";
+    const following = s?.url ? `; following ${s.url.replace(/^http:\/\//, "")} (${s.state}${s.detail ? `: ${s.detail}` : ""}${access})` : "";
     app.setPluginStatus(`${parts.length > 0 ? `Connected to the phone; serial: ${parts.join(", ")}${parser}` : "Connected to the phone"}${following}`);
   }
 
@@ -517,16 +522,23 @@ module.exports = function androidBridge(app, deps = {}) {
       return;
     }
     if (msg.t === "satellite") {
-      satellite?.follow(msg.url, msg.token);
+      satellite?.follow(msg.url, msg.token, { label: msg.label, push: msg.push });
       return;
     }
     if (msg.t === "silence") {
+      const path = alarms?.pathOf(msg.id);
       const done = alarms?.silence(msg.id);
       app.debug(done ? `the phone asked to ${done} ${msg.id}` : `the phone silenced ${msg.id} on the phone alone`);
+      // An alarm that came from the boat's main server goes quiet there too, whatever this server
+      // could do with its copy, with the action the alarm offers; none (it changed meanwhile), none.
+      if (path && done) satellite?.silence(path, done);
       return;
     }
     stats.sensors++;
-    app.handleMessage(plugin.id, toDelta(msg));
+    const delta = toDelta(msg);
+    // Sent first: signalk-server writes its own vessel into a delta it is given.
+    satellite?.send(delta, "sensors");
+    app.handleMessage(plugin.id, delta);
   }
 
   return plugin;
