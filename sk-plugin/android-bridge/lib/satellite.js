@@ -356,6 +356,8 @@ class Satellite {
     this.remoteSelf = null;
     const target = this.target;
     if (!target) return;
+    // Whether this phone may write is a connection's answer: none is open now, so none holds.
+    this.write = null;
     this.report(detail === REFUSED ? "unauthorized" : "unreachable", detail);
     if (detail !== REFUSED) {
       // A refused token fails the upgrade as any network error does: the server says which it was.

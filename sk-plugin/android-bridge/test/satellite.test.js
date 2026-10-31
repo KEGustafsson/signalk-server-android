@@ -289,8 +289,11 @@ test("a reconnect sends nothing until the main server says again whether this ph
   const { s, ws, WebSocket } = await writing({ fetch });
   t.after(() => s.stop());
   const delta = { updates: [{ $source: "android.baro", values: [] }] };
+  ws.receive({ context: "vessels.urn:mrn:signalk:uuid:main", updates: [{ $source: "x.y", values: [{ path: "notifications.mob", value: { state: "alarm", id: "c52ef7ac-7c16-481d-9dc1-db72f5f2b281" } }] }] });
   level = "readonly";
   ws.fail("gone");
+  assert.equal(s.status().write, null, "a connection lost takes its answer with it");
+  assert.equal(await s.silence("notifications.mob", "silence"), false);
   await until(() => WebSocket.made.length === 2);
   WebSocket.made[1].hello();
   assert.equal(s.status().write, null, "the last connection's answer is not this one's");
