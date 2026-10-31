@@ -255,7 +255,12 @@ class Satellite {
     try {
       socket = new this.WebSocket(stream, target.token ? { headers: { Authorization: `Bearer ${target.token}` } } : undefined);
     } catch (e) {
-      this.lost(`cannot connect: ${e.message}`);
+      // Node's WebSocket can put the error's class in its message ("TypeError: Invalid URL"): the
+      // card gets the words without it, the debug log the whole of it.
+      const raw = String(e?.message ?? e);
+      const detail = raw.replace(/^\w*Error:\s*/, "");
+      this.debug(`satellite: the WebSocket could not be made: ${raw}`);
+      this.lost(/invalid url/i.test(detail) ? "the address is not valid" : `cannot connect: ${detail}`);
       return;
     }
     this.socket = socket;

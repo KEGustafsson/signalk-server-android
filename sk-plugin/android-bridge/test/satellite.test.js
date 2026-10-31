@@ -271,6 +271,14 @@ test("a Node without WebSocket, or one whose constructor throws, says so", async
   t.after(() => throwing.s.stop());
   throwing.s.follow("http://192.168.1.9:3000", null);
   assert.deepEqual(throwing.states.at(-1), ["unreachable", "cannot connect: bad url"]);
+  const invalid = setup({ WebSocket: function () { throw new TypeError("TypeError: Invalid URL"); } });
+  t.after(() => invalid.s.stop());
+  invalid.s.follow("http://999.1.1.1:3000", null);
+  assert.deepEqual(invalid.states.at(-1), ["unreachable", "the address is not valid"]);
+  const classed = setup({ WebSocket: function () { throw new Error("SyntaxError: bad scheme"); } });
+  t.after(() => classed.s.stop());
+  classed.s.follow("http://192.168.1.9:3000", null);
+  assert.deepEqual(classed.states.at(-1), ["unreachable", "cannot connect: bad scheme"]);
 });
 
 /** A main server that lets this phone write, the stream up and the write level heard. */

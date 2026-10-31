@@ -173,7 +173,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
     fun noteFailure(e: Throwable) {
         try {
             logFile.parentFile?.mkdirs()
-            logFile.appendText("failed: $e\n")
+            logFile.appendText("failed: $e" + (e.cause?.let { " ($it)" } ?: "") + "\n")
         } catch (_: IOException) {
             // Said on the screen all the same.
         }
@@ -222,7 +222,8 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
             val dir = slotDir(slot)
             wiped = true
             dir.deleteRecursively()
-            if (!dir.mkdirs()) throw IOException("could not create $dir")
+            // The owner reads the message; the folder, which names the install slot, goes to the log as the cause.
+            if (!dir.mkdirs()) throw IOException("the server's install folder could not be made", IOException("could not create $dir"))
             logFile.parentFile?.mkdirs()
             return logFile.bufferedWriter().use { log ->
                 val spec = when (source) {
