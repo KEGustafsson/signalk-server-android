@@ -192,7 +192,16 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 // Broadly: whatever went wrong, it is recorded and reported, not thrown at a screen.
                 // After the promotion the install has happened, whatever the log does (closing it
                 // can still throw on a full disk), so it is reported as done.
-                promoted?.let { State.Done(it, slot, readHistory()) } ?: fail(Failure.text(e))
+                // The owner reads the plain words; the install log and the history keep the exception.
+                promoted?.let { State.Done(it, slot, readHistory()) } ?: run {
+                    try {
+                        logFile.parentFile?.mkdirs()
+                        logFile.appendText("failed: $e\n")
+                    } catch (_: IOException) {
+                        // The history below still has it.
+                    }
+                    fail(Failure.text(e), detail = "$e")
+                }
             }
             listener.onState(state)
             return state
@@ -212,11 +221,15 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                     is Source.Tarball -> source.file.absolutePath
                 }
                 line(log, "$ npm install -g --prefix $dir $spec ${NPM_ARGS.joinToString(" ")}", now = true)
+                var npmError: String? = null
                 val code = runtime.npm("install", "-g", "--prefix", dir.absolutePath, spec, *NPM_ARGS)
-                    .drain(INSTALL_TIMEOUT_S) { line(log, it, now = false) }
+                    .drain(INSTALL_TIMEOUT_S) {
+                        npmError = npmError ?: Failure.npm(it)
+                        line(log, it, now = false)
+                    }
                 when {
                     code == null -> return@use fail("npm ran out of time after ${INSTALL_TIMEOUT_S / 60} min", log)
-                    code != 0 -> return@use fail("npm failed with exit code $code", log)
+                    code != 0 -> return@use fail(npmError ?: "npm failed with exit code $code", log)
                 }
                 val version = installedVersion(slot) ?: return@use fail("npm finished, but Signal K Server is not where it installs to", log)
                 if (!allowBad && readHistory().isBad(version)) return@use refused(version, log)
@@ -333,6 +346,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                         DataStore(verify, { line(log, it, now = false) }, DataVolumes::free).detach()
                         null
                     } catch (e: IOException) {
+                        line(log, "preparing the trial run's configuration failed: $e", now = true)
                         "preparing the trial run's configuration failed: ${Failure.text(e)}"
                     }
                 }
@@ -356,10 +370,11 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         private fun refused(version: String, log: Writer? = null): State =
             fail("Signal K Server $version was rolled back on this phone before; install it anyway to try again", log, version)
 
-        private fun fail(reason: String, log: Writer? = null, version: String? = null): State {
-            log?.let { line(it, "failed: $reason", now = true) }
+        /** Ends the install with [reason] on screen; the log and the history get [detail]. */
+        private fun fail(reason: String, log: Writer? = null, version: String? = null, detail: String = reason): State {
+            log?.let { line(it, "failed: $detail", now = true) }
             if (wiped) slotDir(slot).deleteRecursively()
-            record(version ?: (source as? Source.Registry)?.version ?: "?", InstallHistory.Outcome.FAILED, reason)
+            record(version ?: (source as? Source.Registry)?.version ?: "?", InstallHistory.Outcome.FAILED, detail)
             return State.Failed(reason, tailText())
         }
 
@@ -402,8 +417,14 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
     private fun fetchVersions(): List<String> {
         runtime.ensureExtracted()
         val out = StringBuilder()
-        val code = runtime.npm("view", PACKAGE, "versions", "--json").drain(VIEW_TIMEOUT_S) { out.appendLine(it) }
-        if (code != 0) throw IOException(if (code == null) "npm view ran out of time" else "npm view failed with exit code $code")
+        var npmError: String? = null
+        val code = runtime.npm("view", PACKAGE, "versions", "--json").drain(VIEW_TIMEOUT_S) {
+            npmError = npmError ?: Failure.npm(it)
+            out.appendLine(it)
+        }
+        if (code != 0) {
+            throw IOException(if (code == null) "npm view ran out of time" else npmError ?: "npm view failed with exit code $code")
+        }
         return try {
             JSONArray(out.toString()).let { a -> List(a.length()) { a.getString(it) } }
         } catch (e: JSONException) {

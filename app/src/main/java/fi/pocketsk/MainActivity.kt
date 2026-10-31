@@ -650,14 +650,23 @@ class MainActivity : ComponentActivity() {
             if (model.notes !is Notes.Loading) model.notes = Notes.Unknown
             if (selfUpdates) AppUpdater.check(this, maxAgeMs = 0)
         }
-        transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed(Failure.text(e)) } }) {
+        transportThread("dock-versions", onError = { e -> runOnUiThread { model.available = Available.Failed(failure("reading the versions", e)) } }) {
             val result = try {
                 Available.Loaded(installs.listAvailable(maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
             } catch (e: IOException) {
-                Available.Failed(Failure.text(e))
+                Available.Failed(failure("reading the versions", e))
             }
             runOnUiThread { model.available = result }
         }
+    }
+
+    /**
+     * [e] in plain words for the screen ([Failure.text]), after the exception itself goes to the
+     * log for whoever helps: what the owner reads never names a class, and the log always does.
+     */
+    private fun failure(what: String, e: Throwable): String {
+        ServerStatus.log(applicationContext).note("$what failed: $e")
+        return Failure.text(e)
     }
 
     /** Set by "Check for updates", so the next look at the notes asks GitHub rather than the day's copy. */
@@ -670,11 +679,11 @@ class MainActivity : ComponentActivity() {
         val maxAge = if (notesRefresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS
         notesRefresh = false
         val source = ReleaseNotesSource(File(cacheDir, RELEASE_NOTES))
-        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed(Failure.text(e))) } }) {
+        transportThread("dock-notes", onError = { e -> runOnUiThread { notesRead(Notes.Failed(failure("reading the release notes", e))) } }) {
             val result = try {
                 Notes.Loaded(source.releases(maxAge))
             } catch (e: IOException) {
-                Notes.Failed(Failure.text(e))
+                Notes.Failed(failure("reading the release notes", e))
             }
             runOnUiThread { notesRead(result) }
         }
@@ -708,7 +717,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(confirm)
         } catch (e: ActivityNotFoundException) {
-            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, Failure.text(e))
+            AppUpdater.installEnded(PackageInstaller.STATUS_FAILURE, failure("the installer's confirmation", e))
         }
     }
 
@@ -952,7 +961,7 @@ class MainActivity : ComponentActivity() {
         transportThread("dock-diagnostics", onError = { e ->
             runOnUiThread {
                 model.sharing = false
-                Toast.makeText(this, getString(R.string.dock_log_share_failed, Failure.text(e)), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.dock_log_share_failed, failure("the diagnostics", e)), Toast.LENGTH_LONG).show()
             }
         }) {
             val file = DiagnosticsBundle.write(app, runtime, summary)

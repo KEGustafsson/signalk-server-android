@@ -151,7 +151,7 @@ internal object BackupJob {
             is AesZip.NotOurs -> State.Failed(restore, Why.NOT_A_BACKUP, e.message.orEmpty())
             else -> State.Failed(restore, Why.FAILED, Failure.text(e))
         }
-        ServerStatus.log(app).note("${if (restore) "restore" else "backup"} failed: ${e.message ?: e}")
+        ServerStatus.log(app).note("${if (restore) "restore" else "backup"} failed: $e")
         publish(state)
     }
 

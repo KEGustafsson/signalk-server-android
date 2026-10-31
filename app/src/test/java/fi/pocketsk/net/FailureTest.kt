@@ -30,9 +30,21 @@ class FailureTest {
     @Test
     fun anythingElseKeepsItsMessageWithoutTheClassName() {
         assertEquals("npm view gave no version list", Failure.text(IOException("npm view gave no version list")))
-        assertEquals("not found: /x/y", Failure.text(FileNotFoundException("/x/y")))
-        assertEquals("not found", Failure.text(FileNotFoundException()))
-        assertEquals("IllegalStateException", Failure.text(IllegalStateException()))
-        assertEquals("IOException", Failure.text(IOException(" ")))
+        assertEquals("could not open /x/y (Permission denied)", Failure.text(FileNotFoundException("/x/y (Permission denied)")))
+        assertEquals("a file could not be opened", Failure.text(FileNotFoundException()))
+        assertEquals("something went wrong (the log has the details)", Failure.text(IllegalStateException()))
+        assertEquals("something went wrong (the log has the details)", Failure.text(IOException(" ")))
+    }
+
+    @Test
+    fun npmsErrorCodeSaysWhatHappened() {
+        val offline = "the npm registry could not be found: is the phone on the internet?"
+        assertEquals(offline, Failure.npm("npm error code ENOTFOUND"))
+        assertEquals(offline, Failure.npm("npm ERR! code EAI_AGAIN"))
+        assertEquals("the npm registry did not answer", Failure.npm("npm error code ETIMEDOUT"))
+        assertEquals("the phone is out of storage space", Failure.npm("npm error code ENOSPC"))
+        assertEquals(null, Failure.npm("npm error code E404"))
+        assertEquals(null, Failure.npm("npm error errno ENOTFOUND"))
+        assertEquals(null, Failure.npm("added 758 packages in 3m"))
     }
 }

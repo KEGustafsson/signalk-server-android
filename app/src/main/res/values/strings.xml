@@ -12,7 +12,7 @@
     <string name="setup_welcome_text">This phone will run the real Signal K Server, the same one a Raspberry Pi runs. The app downloads it from the npm registry now, about 90 MB, so a Wi-Fi connection to the internet is best. With no internet aboard, install it from a file made on any computer with npm pack signalk-server.</string>
     <string name="setup_version_title">Which version</string>
     <string name="setup_version_loading">Asking npm which versions there are…</string>
-    <string name="setup_version_failed">npm did not answer: %1$s</string>
+    <string name="setup_version_failed">The versions could not be read: %1$s</string>
     <string name="setup_version_latest">%1$s, the latest release</string>
     <string name="setup_version_file">From a file (.tgz)</string>
     <string name="setup_version_file_named">From a file: %1$s</string>
@@ -60,7 +60,7 @@
     <string name="dock_usage_memory">Up %1$s · memory %2$s</string>
     <string name="dock_usage">Up %1$s · CPU %2$d %% of one core · memory %3$s</string>
     <string name="dock_delta_rate">Taking in %1$s deltas a second</string>
-    <string name="dock_running_on_trial">Running %1$s, just updated: if it fails in its first minutes, the version before it comes back</string>
+    <string name="dock_running_on_trial">Running %1$s, just updated and watched for its first minutes</string>
     <string name="dock_failed">Stopped: %1$s</string>
     <string name="dock_url_lan">On the boat\'s network: %1$s</string>
     <string name="dock_url_phone">On this phone: %1$s</string>

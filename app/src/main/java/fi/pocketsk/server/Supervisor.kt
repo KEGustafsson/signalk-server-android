@@ -283,6 +283,7 @@ internal class Supervisor(
                 val env = mapOf(Bridge.ENV to Bridge.socketFile(app).absolutePath)
                 runtime.spawn(main.absolutePath, extraEnv = if (lan) env else env + (NodeRuntime.LOOPBACK_ENV to NodeRuntime.LOOPBACK_ON))
             } catch (e: IOException) {
+                log.note("could not start node: $e")
                 return failed("the server could not be started: ${Failure.text(e)}")
             }
             synchronized(this) {
@@ -573,6 +574,7 @@ internal class Supervisor(
                     log.note("${to ?: "the card"} went while the server's data was being moved: ${e.message ?: e}")
                     continue
                 }
+                log.note("the server's data could not be moved: $e")
                 return failed("the server's data could not be moved: ${Failure.text(e)}")
             }
         }
