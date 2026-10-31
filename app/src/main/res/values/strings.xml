@@ -20,7 +20,7 @@
     <string name="setup_install">Install</string>
     <string name="setup_install_title">Installing</string>
     <string name="setup_install_preparing">Getting ready…</string>
-    <string name="setup_install_npm">npm is downloading and installing Signal K Server…</string>
+    <string name="setup_install_npm">npm is installing Signal K Server…</string>
     <string name="setup_install_verifying">Checking that the new server starts…</string>
     <string name="setup_install_done">Signal K Server %1$s is installed.</string>
     <string name="setup_install_failed">The install failed: %1$s</string>
