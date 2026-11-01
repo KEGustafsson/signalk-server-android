@@ -231,6 +231,8 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                     is Source.Tarball -> source.file.absolutePath
                 }
                 logOnly(log, "$ npm install -g --prefix $dir $spec ${NPM_ARGS.joinToString(" ")}")
+                // Published now, not with npm's first line: a screen recreated before it has a state to replay.
+                listener.onState(State.Installing(slot, tailText()))
                 var npmError: String? = null
                 val code = runtime.npm("install", "-g", "--prefix", dir.absolutePath, spec, *NPM_ARGS)
                     .drain(INSTALL_TIMEOUT_S) {
