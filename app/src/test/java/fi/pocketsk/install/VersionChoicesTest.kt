@@ -94,9 +94,20 @@ class VersionChoicesTest {
             "['https://one.example/a.tgz','https://two.example/b.tgz']",
             VersionChoices.redact("['https://one.example/a.tgz?s=1','https://user:secret@two.example/b.tgz']"),
         )
+        // Run together, the second address is in the first's query, and goes with it.
+        assertEquals(
+            "https://one.example/a",
+            VersionChoices.redact("https://one.example/a?sig=1https://user:secret@two.example/b?t=2"),
+        )
+        // Straight after a path, the second address is its own and loses its own credential.
         assertEquals(
             "https://one.example/ahttps://two.example/b",
-            VersionChoices.redact("https://one.example/a?sig=1https://user:secret@two.example/b?t=2"),
+            VersionChoices.redact("https://one.example/ahttps://user:secret@two.example/b?t=2"),
+        )
+        // An address inside a query does not end it: what follows it in the query goes too.
+        assertEquals(
+            "npm error GET https://ci.example/a.tgz failed",
+            VersionChoices.redact("npm error GET https://ci.example/a.tgz?next=https://cdn.example/file&token=secret failed"),
         )
         assertEquals(
             "fetch failed: \"https://example.org:8443/a.tgz\" (redirected)",

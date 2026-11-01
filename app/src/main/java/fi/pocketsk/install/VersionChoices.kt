@@ -108,11 +108,13 @@ internal object VersionChoices {
 
     /**
      * Scheme; a user and password (dropped); host, port and path; a query or fragment (dropped).
-     * Neither the path nor the query runs into another address (`'https://a/x','https://u:p@b/y'`,
-     * a list a script printed): each address is matched, and its credential dropped, on its own,
-     * even one that follows another with no break between them (no `\b`: `1https` has none).
+     * The path stops where another address begins (`'https://a/x','https://u:p@b/y'`, a list a
+     * script printed), so each address is matched, and its credential dropped, on its own, even
+     * one straight after another (no `\b`: `1https` has none). The query runs to the end of the
+     * address whatever it holds, another address included (`?next=https://b/f&token=…`), and goes
+     * whole: what follows a `?` is never kept, so nothing in it can be.
      */
     private val URL_IN_TEXT = Regex(
-        """(?i)(https?)://(?:[^\s/?#@"'<>]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#](?:(?!https?://)[^\s"'<>])*)?""",
+        """(?i)(https?)://(?:[^\s/?#@"'<>]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#][^\s"'<>]*)?""",
     )
 }
