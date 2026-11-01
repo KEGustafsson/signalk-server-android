@@ -230,7 +230,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                     is Source.Registry -> source.version?.let { "$PACKAGE@$it" } ?: PACKAGE
                     is Source.Tarball -> source.file.absolutePath
                 }
-                line(log, "$ npm install -g --prefix $dir $spec ${NPM_ARGS.joinToString(" ")}", now = true)
+                logOnly(log, "$ npm install -g --prefix $dir $spec ${NPM_ARGS.joinToString(" ")}")
                 var npmError: String? = null
                 val code = runtime.npm("install", "-g", "--prefix", dir.absolutePath, spec, *NPM_ARGS)
                     .drain(INSTALL_TIMEOUT_S) {
@@ -252,7 +252,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 wiped = false
                 promoted = version
                 record(version, InstallHistory.Outcome.PROMOTED, null)
-                line(log, "signalk-server $version is live in slot $slot", now = true)
+                logOnly(log, "signalk-server $version is live in slot $slot")
                 State.Done(version, slot, readHistory())
             }
         }
@@ -272,7 +272,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
             try {
                 copyConfig(verify, log)?.let { return it }
                 quietSettings(File(verify, "settings.json"), log)
-                line(log, "$ PORT=$SMOKE_PORT signalk-server --sample-nmea0183-data   # smoke test", now = true)
+                logOnly(log, "$ PORT=$SMOKE_PORT signalk-server --sample-nmea0183-data   # smoke test")
                 val node = runtime.spawn(
                     runtime.serverMain(dir).absolutePath, "--sample-nmea0183-data",
                     extraEnv = mapOf(
@@ -312,7 +312,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 return synchronized(log) {
                     when {
                         answered -> {
-                            line(log, "(smoke test: answered on :$SMOKE_PORT after $ms ms)", now = true)
+                            line(log, "(the new server answered after $ms ms)", now = true)
                             null
                         }
                         exited -> "the new server stopped with exit code ${p.exitValue()} in its trial run, before it was used"
@@ -333,7 +333,9 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
         private fun copyConfig(verify: File, log: Writer): String? {
             val live = runtime.configDir
             if (live.list().isNullOrEmpty()) {
-                return if (verify.mkdirs()) null else "could not create $verify"
+                if (verify.mkdirs()) return null
+                logOnly(log, "could not create $verify")
+                return "the folder for its trial run could not be made"
             }
             // Its few lines of output go to a file, not a pipe, so its deadline holds even if it hangs.
             val out = File(app.cacheDir, "verify-cp.txt")
@@ -356,7 +358,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                         DataStore(verify, { line(log, it, now = false) }, DataVolumes::free).detach()
                         null
                     } catch (e: IOException) {
-                        line(log, "preparing the trial run's configuration failed: $e", now = true)
+                        logOnly(log, "preparing the trial run's configuration failed: $e")
                         "preparing the trial run's configuration failed: ${Failure.text(e)}"
                     }
                 }
@@ -370,7 +372,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 if (settings.isFile) JSONObject(settings.readText()) else JSONObject()
             } catch (_: JSONException) {
                 // The test then runs on the server's defaults, still a test of the new version.
-                line(log, "(settings.json does not parse; the smoke test uses defaults)", now = true)
+                line(log, "(settings.json does not parse: the trial run uses the server's defaults)", now = true)
                 JSONObject()
             }
             json.put("mdns", false).put("ssl", false)
@@ -409,6 +411,16 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
             lastPost = t
             log.flush()
             listener.onState(if (verifying) State.Verifying(slot, tailText()) else State.Installing(slot, tailText()))
+        }
+
+        /**
+         * A line for the log file alone: the commands with their install folder, and exceptions.
+         * The tail is on the Dock's and the setup page's screen, which shows npm's and the
+         * server's own output and the app's lines in the owner's words.
+         */
+        private fun logOnly(log: Writer, text: String) {
+            log.appendLine(text)
+            log.flush()
         }
 
         private fun tailText() = tail.joinToString("\n")

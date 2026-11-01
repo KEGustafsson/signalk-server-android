@@ -36,8 +36,10 @@ class SignalKClient(
      */
     private var lastLogged: String? = null
 
-    private fun logged(e: Exception) {
-        val line = "$base: $e"
+    private fun logged(e: Exception) = logged("$e")
+
+    private fun logged(what: String) {
+        val line = "$base: $what"
         if (line == lastLogged) return
         lastLogged = line
         log?.invoke("signalk: $line")
@@ -179,8 +181,10 @@ class SignalKClient(
             // The detail reaches the Dock's Boat's main server card: in words, not the exception's.
             logged(e)
             return Result.Failed(Failure.UNREACHABLE, fi.pocketsk.net.Failure.text(e))
-        } catch (e: JSONException) {
-            logged(e)
+        } catch (_: JSONException) {
+            // Not the exception: Android's JSONTokener puts the whole body in its message, and an
+            // access request's answer carries the token the log and the diagnostics must not.
+            logged("the answer is not JSON")
             return Result.Failed(Failure.BAD_RESPONSE, context.getString(R.string.signalk_not_json))
         } catch (e: SecurityException) {
             // Cleartext refused by the network security policy, among other things.
