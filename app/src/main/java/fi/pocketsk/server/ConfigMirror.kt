@@ -52,7 +52,8 @@ internal class ConfigMirror(
      * Brings [root]'s copies and `.signalk`'s files in line, the computer's changes going in only
      * when not [running]. The files named in [ours] follow the phone's whatever the computer did to
      * their copies: a backup just restored ([Backup.restore]), which an older edit or deletion on
-     * the computer must not undo.
+     * the computer must not undo, and the files a reset removed ([ServerReset]), whose copies go
+     * however the computer changed them, so a card that was out during the reset gives none back.
      */
     @Throws(IOException::class)
     fun sync(running: Boolean, ours: Set<String> = emptySet()): Result {
@@ -85,7 +86,8 @@ internal class ConfigMirror(
             val mine = digest(here)
             val theirs = digest(there)
             val last = known[rel]
-            val restored = rel in ours && mine != null
+            // A file of [ours] the phone has not (a reset removed it) takes its copy with it below.
+            val restored = rel in ours
             val edited = !restored && theirs != null && theirs != last && theirs != mine
             val deleted = !restored && theirs == null && last != null && mine != null
             when {

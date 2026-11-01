@@ -85,6 +85,14 @@ class BackupTest {
     }
 
     @Test
+    fun theMarkerKeepsAnySettingsFileButNothingElsewhere() {
+        // A reset marks the dot files it removed; a name leading out of .signalk is never taken.
+        marker().parentFile?.mkdirs()
+        marker().writeText(".npmrc\nsettings.json\n../escape.json\ncharts/a.mbtiles\nplugin-config-data/../../x\n\n")
+        assertEquals(setOf(".npmrc", "settings.json"), Backup.restored(marker()))
+    }
+
+    @Test
     fun aBadNameWritesNothing() {
         val dir = signalk()
         for (bad in listOf("../escape.json", "plugin-config-data/../../x", "charts/chart.mbtiles", "node_modules/p/index.js", ".npmrc", "a\\b", "", "server.log")) {
