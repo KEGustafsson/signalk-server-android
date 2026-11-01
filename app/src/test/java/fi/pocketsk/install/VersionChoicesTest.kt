@@ -120,6 +120,15 @@ class VersionChoicesTest {
             "npm error GET https://ci.example/a.tgz failed",
             VersionChoices.redact("npm error GET https://ci.example/a.tgz?next=https://cdn.example/file&token=secret failed"),
         )
+        // A user and password go whatever they hold: an apostrophe, a quote, an `@` of their own.
+        assertEquals(
+            "npm error GET https://example.org/a.tgz failed",
+            VersionChoices.redact("npm error GET https://o'brien:secret@example.org/a.tgz failed"),
+        )
+        assertEquals(
+            "npm error GET https://example.org/a.tgz failed",
+            VersionChoices.redact("npm error GET https://u\"s:p@ss@example.org/a.tgz failed"),
+        )
         assertEquals(
             "fetch failed: \"https://example.org:8443/a.tgz (redirected)",
             VersionChoices.redact("fetch failed: \"https://example.org:8443/a.tgz#frag\" (redirected)"),

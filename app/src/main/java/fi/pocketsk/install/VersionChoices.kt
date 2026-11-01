@@ -107,7 +107,10 @@ internal object VersionChoices {
 
     /**
      * Scheme; a user and password (dropped); host, port and path; a query or fragment (dropped).
-     * The path stops where another address begins (`'https://a/x','https://u:p@b/y'`, a list a
+     * The user and password are everything up to the last `@` before the first `/`, `?`, `#` or
+     * whitespace, whatever they hold (`o'brien:secret@`, `u:p@ss@`): a character set for them
+     * would leave in the log the one it lacks; text that is not an address but has an `@` in the
+     * same word costs the log that text, not a credential. The path stops where another address begins (`'https://a/x','https://u:p@b/y'`, a list a
      * script printed), so each address is matched, and its credential dropped, on its own, even
      * one straight after another (no `\b`: `1https` has none). A query or fragment goes to the
      * next whitespace, which no address holds unencoded, whatever is in it: another address, an
@@ -116,6 +119,6 @@ internal object VersionChoices {
      * log a character, not a credential.
      */
     private val URL_IN_TEXT = Regex(
-        """(?i)(https?)://(?:[^\s/?#@"'<>]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#]\S*)?""",
+        """(?i)(https?)://(?:[^\s/?#]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#]\S*)?""",
     )
 }
