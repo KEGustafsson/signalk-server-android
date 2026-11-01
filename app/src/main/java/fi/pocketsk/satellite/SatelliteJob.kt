@@ -230,7 +230,8 @@ internal object SatelliteJob {
      */
     private fun run(app: Context, gen: Int, url: String, name: String, write: Boolean) {
         val prefs = SatellitePrefs(app)
-        val client = SignalKClient(app, url, null)
+        // Its failures reach the log once each, not every poll (the card shows them in words).
+        val client = SignalKClient(app, url, null, log = ServerStatus.log(app)::note)
         val backoff = Backoff(RETRY_FIRST_MS, RETRY_MAX_MS)
         var href = prefs.href?.takeIf { prefs.askedOf == url }
         // A request kept from an earlier follow may be gone (the main server restarted): one that

@@ -108,13 +108,13 @@ module.exports = function androidBridge(app, deps = {}) {
         },
         gnss: {
           type: "boolean",
-          title: "GNSS",
+          title: "GPS",
           description: "The phone's own GPS as navigation.position, speedOverGround and courseOverGroundTrue, once precise location is allowed in the app",
           default: true,
         },
         gnssSeconds: {
           type: "number",
-          title: "GNSS period (seconds)",
+          title: "GPS period (seconds)",
           description: "How often a fix is sent",
           default: 1,
           minimum: 0.2,
@@ -179,7 +179,7 @@ module.exports = function androidBridge(app, deps = {}) {
         usb: {
           type: "boolean",
           title: "USB serial devices",
-          description: "Read the NMEA 0183 of USB serial adapters plugged into the phone (GPS and AIS receivers, NMEA 0183 interfaces), each under its own source, android.<device>. Allow each one in Android's dialog when it is plugged in, or with Allow in the app's USB devices card",
+          description: "Read the NMEA 0183 of USB serial adapters plugged into the phone (GPS and AIS receivers, NMEA 0183 interfaces), each under its own source, android.<device>. Allow each one in Android's dialog when it is plugged in, or with Allow in the app's Serial devices card",
           default: true,
         },
         serialBaud: {
@@ -238,7 +238,7 @@ module.exports = function androidBridge(app, deps = {}) {
       connected = false;
       const socketPath = env[ENV];
       if (!socketPath) {
-        app.setPluginStatus("Not running on Pocket SK: there is no phone to bridge");
+        app.setPluginStatus("Not running in the Signal K Server app for Android: there is no phone to bridge");
         return;
       }
       Parser = "Parser" in deps ? deps.Parser : loadNmeaParser();

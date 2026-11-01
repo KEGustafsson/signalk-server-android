@@ -51,6 +51,7 @@ import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
 import fi.pocketsk.ServerActions
 import fi.pocketsk.bridge.BridgeProtocol
+import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.MissingBuilds
 import fi.pocketsk.install.ReleaseNotes
@@ -89,7 +90,10 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            TextButton(onClick = actions::openRuntimeChecks) { Text(stringResource(R.string.dock_runtime_checks)) }
+            // A developer's tool (spikes R1–R3), in debug builds only.
+            if (BuildConfig.DEBUG) {
+                TextButton(onClick = actions::openRuntimeChecks) { Text(stringResource(R.string.dock_runtime_checks)) }
+            }
         }
         if (model.alarms.alarms.isNotEmpty()) {
             Section(stringResource(R.string.dock_alarms_title)) { AlarmRows(model.alarms, actions::silenceAlarm) }
@@ -732,9 +736,22 @@ private fun StatusCard(model: AppModel, actions: AppActions) {
     }
 }
 
+/** How an install went, in words, for the History list. */
+@Composable
+private fun outcomeText(outcome: InstallHistory.Outcome): String = stringResource(
+    when (outcome) {
+        InstallHistory.Outcome.PROMOTED -> R.string.dock_history_installed
+        InstallHistory.Outcome.FAILED -> R.string.dock_history_failed
+        InstallHistory.Outcome.ROLLED_BACK -> R.string.dock_history_rolled_back
+        InstallHistory.Outcome.BAD -> R.string.dock_history_bad
+    },
+)
+
 /**
- * The live slot and the other one, a newer release to install when npm has one, the rollback to
- * the other slot's version, and the newest of the install history with how each went.
+ * The version live and the other one kept, a newer release to install when npm has one, the
+ * rollback to the kept version, and the newest of the install history with how each went. The
+ * slots themselves are the installer's business and are not named here: to the owner there is
+ * the version running and the one to go back to.
  */
 @Composable
 private fun UpdatesCard(model: AppModel, actions: AppActions) {
@@ -745,10 +762,10 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
             return@Section
         }
         Text(
-            if (slots.live != null && slots.liveVersion != null) stringResource(R.string.dock_live, slots.liveVersion, slots.live)
+            if (slots.live != null && slots.liveVersion != null) stringResource(R.string.dock_live, slots.liveVersion)
             else stringResource(R.string.dock_nothing_live),
         )
-        slots.otherVersion?.let { Text(stringResource(R.string.dock_other, it, slots.other)) }
+        slots.otherVersion?.let { Text(stringResource(R.string.dock_other, it)) }
         if (model.installing || model.install is InstallManager.State.Failed) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (model.installing) CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp))
@@ -786,7 +803,7 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
             val format = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
             for (e in recent) {
                 Text(
-                    stringResource(R.string.dock_history_line, format.format(Date(e.at)), e.outcome.name, e.version, e.slot),
+                    stringResource(R.string.dock_history_line, format.format(Date(e.at)), e.version, outcomeText(e.outcome)),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

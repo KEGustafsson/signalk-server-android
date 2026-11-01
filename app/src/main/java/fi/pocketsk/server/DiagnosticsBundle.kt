@@ -62,6 +62,8 @@ internal object DiagnosticsBundle {
             add(Diagnostics.Copy("install-history.json", File(files, "sk/install-history.json")))
             add(Diagnostics.Copy("logs/server.log", File(logs, "server.log")))
             for (i in 1..LogFiles.KEEP) add(Diagnostics.Copy("logs/server.log.$i", File(logs, "server.log.$i")))
+            // The last install's npm output and, at its end, what made it fail.
+            add(Diagnostics.Copy("logs/install.log", File(logs, "install.log")))
         }
         try {
             file.outputStream().use { Diagnostics.write(it, texts, copies, runtime.configDir) }
@@ -89,12 +91,13 @@ internal object DiagnosticsBundle {
     }
 
     private val README = """
-        Pocket SK diagnostics
+        Signal K Server app diagnostics
 
         device.txt            the app's version, the server's state, the phone and the runtime
         settings.txt          the app's own settings (keys that name a secret are left out)
         install-history.json  the versions installed on this phone and how each one went
-        logs/                 the server's output, newest in server.log, older in server.log.1 to .3
+        logs/                 the server's output, newest in server.log, older in server.log.1 to .3;
+                              install.log, the last install of the server and how it ended
 
         Not here: anything from the server's own settings folder (.signalk): security, users,
         tokens, the plugins' settings. Bluetooth addresses are cut to their last two bytes.

@@ -204,7 +204,7 @@ test("a lost connection is opened again after a wait that doubles, and a refused
   t.after(() => s.stop());
   s.follow("http://192.168.1.9:3000", "a.b.c");
   WebSocket.made[0].fail("Received network error or non-101 status code.");
-  assert.deepEqual(states.at(-1), ["unreachable", "Received network error or non-101 status code."]);
+  assert.deepEqual(states.at(-1), ["unreachable", "no connection"]);
   await until(() => states.at(-1)?.[0] === "unauthorized" || WebSocket.made.length > 1);
   assert.ok(states.some(([state]) => state === "unauthorized"));
   await until(() => WebSocket.made.length === 3);
@@ -217,7 +217,7 @@ test("an error with no close after it, as Node's WebSocket gives a refused upgra
   t.after(() => s.stop());
   s.follow("http://192.168.1.9:3000", "a.b.c");
   WebSocket.made[0].onerror({ message: "Received network error or non-101 status code." });
-  assert.deepEqual(states.at(-1), ["unreachable", "Received network error or non-101 status code."]);
+  assert.deepEqual(states.at(-1), ["unreachable", "no connection"]);
   assert.equal(WebSocket.made[0].closed, true);
   WebSocket.made[0].onclose({ code: 1006 });
   assert.equal(states.filter(([state]) => state === "unreachable").length, 1, "the close after it changes nothing");
@@ -241,7 +241,7 @@ test("a stream that falls silent is opened again", async (t) => {
   WebSocket.made[0].hello();
   await until(() => WebSocket.made.length === 2);
   assert.equal(WebSocket.made[0].closed, true);
-  assert.ok(states.some(([state, detail]) => state === "unreachable" && /silent/.test(detail)));
+  assert.ok(states.some(([state, detail]) => state === "unreachable" && /no data for/.test(detail)));
 });
 
 test("the same target again changes nothing, another replaces it, and none is off", () => {
@@ -265,12 +265,20 @@ test("the same target again changes nothing, another replaces it, and none is of
 test("a Node without WebSocket, or one whose constructor throws, says so", async (t) => {
   const none = setup({ WebSocket: null });
   none.s.follow("http://192.168.1.9:3000", null);
-  assert.deepEqual(none.states.at(-1), ["unreachable", "this Node has no WebSocket"]);
+  assert.deepEqual(none.states.at(-1), ["unreachable", "this server's Node.js has no WebSocket"]);
   none.s.stop();
   const throwing = setup({ WebSocket: function () { throw new Error("bad url"); } });
   t.after(() => throwing.s.stop());
   throwing.s.follow("http://192.168.1.9:3000", null);
   assert.deepEqual(throwing.states.at(-1), ["unreachable", "cannot connect: bad url"]);
+  const invalid = setup({ WebSocket: function () { throw new TypeError("TypeError: Invalid URL"); } });
+  t.after(() => invalid.s.stop());
+  invalid.s.follow("http://999.1.1.1:3000", null);
+  assert.deepEqual(invalid.states.at(-1), ["unreachable", "the address is not valid"]);
+  const classed = setup({ WebSocket: function () { throw new Error("SyntaxError: bad scheme"); } });
+  t.after(() => classed.s.stop());
+  classed.s.follow("http://192.168.1.9:3000", null);
+  assert.deepEqual(classed.states.at(-1), ["unreachable", "cannot connect: bad scheme"]);
 });
 
 /** A main server that lets this phone write, the stream up and the write level heard. */

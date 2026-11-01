@@ -15,6 +15,7 @@ import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import fi.pocketsk.bridge.BridgeProtocol.Device
+import fi.pocketsk.net.Failure
 import fi.pocketsk.net.reporting
 import fi.pocketsk.net.transportThread
 import java.io.IOException
@@ -189,7 +190,7 @@ internal class UsbSerial(
             // The library closes the connection with the port; a port that never opened has not.
             reporting({}) { if (port.isOpen) port.close() else connection.close() }
             note("usb: cannot open $id: $e")
-            return e.message ?: e.toString()
+            return Failure.text(e)
         }
         // Some adapters (CDC-ACM ones above all) send nothing until the host says it is there.
         reporting({}) { port.dtr = true }
@@ -224,7 +225,7 @@ internal class UsbSerial(
         shut(o)
         open.remove(o.id)
         // Unplugged: the detach that follows lists it as gone. Anything else is kept as the reason.
-        failed[o.id] = (e as? IOException)?.message ?: e.toString()
+        failed[o.id] = Failure.text(e)
         note("usb: ${o.id} stopped: $e")
         look()
     }

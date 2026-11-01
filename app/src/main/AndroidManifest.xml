@@ -124,12 +124,6 @@
             android:taskAffinity=""
             android:turnScreenOn="true" />
 
-        <!-- The runtime checks (spikes R1–R3), opened from the Dock. -->
-        <activity
-            android:name=".SpikeActivity"
-            android:exported="false"
-            android:label="@string/spike_title" />
-
         <service
             android:name=".server.SignalKService"
             android:exported="false"

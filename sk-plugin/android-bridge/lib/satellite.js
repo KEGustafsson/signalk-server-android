@@ -15,6 +15,17 @@ const LABEL = "pocketsk-satellite";
 const STATES = ["off", "connecting", "connected", "unauthorized", "unreachable"];
 /** What the link says when the main server does not let this phone read. */
 const REFUSED = "the main server does not accept this phone's token";
+
+/**
+ * What the app's card says after "Not reached": Node's WebSocket gives one message for every
+ * failed connection, refused, unrouted or answered with something other than a WebSocket, and its
+ * wording says nothing to the owner.
+ */
+function plainError(message) {
+  if (!message || /non-101|network error/i.test(message)) return "no connection";
+  return message;
+}
+
 /** This bridge's own source names (lib/protocol.js, lib/serial.js). */
 const BRIDGE = /^android\./;
 /** A notification id as signalk-server makes them. */
@@ -235,7 +246,7 @@ class Satellite {
     const target = this.target;
     if (!target) return;
     if (typeof this.WebSocket !== "function") {
-      this.report("unreachable", "this Node has no WebSocket");
+      this.report("unreachable", "this server's Node.js has no WebSocket");
       return;
     }
     this.report("connecting", null);
@@ -244,7 +255,12 @@ class Satellite {
     try {
       socket = new this.WebSocket(stream, target.token ? { headers: { Authorization: `Bearer ${target.token}` } } : undefined);
     } catch (e) {
-      this.lost(`cannot connect: ${e.message}`);
+      // Node's WebSocket can put the error's class in its message ("TypeError: Invalid URL"): the
+      // card gets the words without it, the debug log the whole of it.
+      const raw = String(e?.message ?? e);
+      const detail = raw.replace(/^\w*Error:\s*/, "");
+      this.debug(`satellite: the WebSocket could not be made: ${raw}`);
+      this.lost(/invalid url/i.test(detail) ? "the address is not valid" : `cannot connect: ${detail}`);
       return;
     }
     this.socket = socket;
@@ -257,8 +273,11 @@ class Satellite {
     // Node's WebSocket fires error alone on an upgrade the server refuses, with no close after it:
     // either one is the end of this connection, and whichever comes second finds it gone.
     socket.onerror = (event) => {
-      const message = event?.message || event?.error?.message || "error";
+      const raw = event?.message || event?.error?.message;
+      const message = plainError(raw);
       socket.lastError = message;
+      // The owner's card gets the plain words; the debug log keeps Node's own.
+      if (raw && raw !== message) this.debug(`satellite: websocket error: ${raw}`);
       if (this.socket !== socket) return;
       this.socket = null;
       try {
@@ -272,7 +291,7 @@ class Satellite {
     socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
-      this.lost(socket.lastError || `closed (${event?.code ?? "?"})`);
+      this.lost(socket.lastError || `the connection closed (code ${event?.code ?? "?"})`);
     };
   }
 
@@ -289,7 +308,7 @@ class Satellite {
       } catch {
         // Gone already.
       }
-      this.lost(`silent for ${Math.round(this.silentMs / 1000)} s`);
+      this.lost(`no data for ${Math.round(this.silentMs / 1000)} s`);
     }, this.silentMs);
     this.watchdog.unref?.();
   }

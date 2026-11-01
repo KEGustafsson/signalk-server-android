@@ -1,0 +1,22 @@
+<resources>
+    <!-- The runtime checks screen of debug builds: spikes R1–R3 (docs/PLAN.md §3) and the
+         step 9.2/9.3 buttons, opened from the Dock. A developer's tool, so the plan's names stay. -->
+    <string name="spike_title">Runtime checks</string>
+    <string name="spike_run">Run node, npm and the R2 addons</string>
+    <string name="spike_missing">libnodeexec.so is not in this APK for this phone\'s ABI (the build carries arm64-v8a, armeabi-v7a and x86_64). nativeLibraryDir and the environment are shown so the exec path can be checked by hand.</string>
+    <string name="spike_running">Running…</string>
+    <string name="spike_install">Install signalk-server with npm (R3)</string>
+    <string name="spike_installing">Installing signalk-server into slot A…</string>
+    <string name="spike_upgrade">Install into the other slot and make it live (9.2)</string>
+    <string name="spike_upgrade_starting">Installing the latest signalk-server with InstallManager…</string>
+    <string name="spike_upgrade_installing">npm is installing signalk-server into slot %1$s…\n\n%2$s</string>
+    <string name="spike_upgrade_verifying">Smoke test of slot %1$s on port %2$d…\n\n%3$s</string>
+    <string name="spike_upgrade_done">signalk-server %1$s is live in slot %2$s. Its history:\n\n%3$s</string>
+    <string name="spike_upgrade_failed">The install failed: %1$s\n\n%2$s</string>
+    <string name="spike_service_start">Start the server service (9.3)</string>
+    <string name="spike_service_stop">Stop the server service</string>
+    <string name="spike_service_admin">Open the admin UI</string>
+    <string name="spike_service_autostart">Start the server when the phone starts</string>
+    <string name="spike_service_stopped">Stopped.</string>
+    <string name="spike_service_failed">Gave up: %1$s</string>
+</resources>
