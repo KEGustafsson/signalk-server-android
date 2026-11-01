@@ -18,6 +18,7 @@ import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LogFilter
+import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.ServerUsage
@@ -90,6 +91,12 @@ internal class AppModel {
 
     /** The backup or restore running or last finished ([fi.pocketsk.server.BackupJob]); null before the first. */
     var backup by mutableStateOf<BackupJob.State?>(null)
+
+    /** The reset running or last finished ([fi.pocketsk.server.ResetJob]); null before the first. */
+    var reset by mutableStateOf<ResetJob.State?>(null)
+
+    /** A reset runs: nothing else may touch the server's files meanwhile. */
+    val resetting: Boolean get() = reset.let { it is ResetJob.State.Stopping || it is ResetJob.State.Working }
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
@@ -175,7 +182,8 @@ internal interface AppActions {
     fun openAppRelease()
     /** Turns the Dock's daily look for a newer build of the app on or off. */
     fun setAppChecks(on: Boolean)
-    fun install(source: InstallManager.Source)
+    /** Installs [source]; [allowBad] when the owner picked a version the health gate rolled back here, and was told so. */
+    fun install(source: InstallManager.Source, allowBad: Boolean = false)
     fun pickTarball()
     fun rollBack()
     fun askPermissions()
@@ -210,6 +218,15 @@ internal interface AppActions {
 
     /** Restores a backup the owner picks, opened with [passphrase]; [passphrase] is wiped once used. */
     fun restoreBackup(passphrase: CharArray)
+
+    /**
+     * The server's settings, users, plugins and their settings back to a first start, the data
+     * kept; a running server stops for it and starts again.
+     */
+    fun resetSettings()
+
+    /** Everything deleted, the data too, and the app's data cleared by Android: the app ends and opens as installed. */
+    fun resetEverything()
 
     /** Opens a new issue on GitHub asking for [missing]'s Android build. */
     fun requestBuild(missing: MissingBuilds.Missing)

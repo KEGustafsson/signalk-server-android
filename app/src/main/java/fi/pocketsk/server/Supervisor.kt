@@ -253,11 +253,12 @@ internal class Supervisor(
             // Read once per run: a change in the Dock restarts the server to take effect.
             val lan = prefs.lanAccess
             // A restore of a backup writes .signalk's files and then has npm put the plugins back
-            // (BackupJob): a server started meanwhile would read half of it. Decided under the lock
-            // the restore looks at the state under, so either the restore finds Starting and
-            // refuses, or this finds the restore and waits for it to end.
+            // (BackupJob), and a reset empties them (ResetJob): a server started meanwhile would
+            // read half of it. Decided under the lock the restore looks at the state under, so
+            // either the restore finds Starting and refuses, or this finds the restore and waits
+            // for it to end; a reset stops the server first and waits for it.
             val restoring = synchronized(DataStore.LOCK) {
-                BackupJob.isRestoring.also { if (!it) publish(ServerState.Starting(version, slot)) }
+                held().also { if (!it) publish(ServerState.Starting(version, slot)) }
             }
             if (restoring) {
                 waitForRestore(version)?.let { return it }
@@ -486,9 +487,10 @@ internal class Supervisor(
      * longer wanted meanwhile, else null once the restore is over.
      */
     private fun waitForRestore(version: String): ServerState? {
-        log.note("waiting for the backup being restored, and its plugins, before starting")
-        while (BackupJob.isRestoring) {
-            publish(ServerState.Waiting(version, RESTORE_POLL_MS, "a backup is being restored"))
+        log.note("waiting for the backup being restored or the reset, before starting")
+        while (held()) {
+            val why = if (ResetJob.isResetting) "the server's settings are being reset" else "a backup is being restored"
+            publish(ServerState.Waiting(version, RESTORE_POLL_MS, why))
             waiter.await(RESTORE_POLL_MS)
             synchronized(this) {
                 if (!wanted) return ServerState.Stopped
@@ -496,6 +498,9 @@ internal class Supervisor(
         }
         return null
     }
+
+    /** A restore or a reset is changing `.signalk`'s files: no server starts until it is done. */
+    private fun held(): Boolean = BackupJob.isRestoring || ResetJob.isResetting
 
     private fun placeData(): ServerState? {
         while (true) {

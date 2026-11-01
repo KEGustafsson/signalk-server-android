@@ -61,11 +61,13 @@ app/                 the Android app
                      LocalNetwork, WifiLockModes, LegacyPlatform; in src/debug only,
                      SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3: a
                      developer's tool, its button in debug builds' Dock alone)
-  fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Common (sections, permission rows),
+  fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Versions (the version chooser, the
+                     wizard's and the Updates card's), Common (sections, permission rows),
                      AppModel, Theme
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      ReleaseNotesSource (GitHub's release notes, a day's cache); Slots, ServerVersion,
-                     InstallHistory, HealthGate, UpdateOffer, ReleaseNotes, MissingBuilds (the
+                     InstallHistory, HealthGate, UpdateOffer, VersionChoices (the versions the
+                     chooser lists and what each is), ReleaseNotes, MissingBuilds (the
                      addons the npm launcher found no build for, the Dock's request link)
                      (pure, tested)
   fi.pocketsk.server SignalKService (foreground, locks, notification), Supervisor (runs, restarts,
@@ -80,8 +82,11 @@ app/                 the Android app
                      at the next start), Inbox (files a computer copied over USB, into the data
                      folders), LogFilter, Diagnostics (the
                      bundle's contents, never anything under .signalk), AesZip (WinZip AES-256
-                     zips, by hand), Backup (the Dock's backup: what is in it, how it goes back)
-                     (pure, tested); BackupJob (the one backup or restore, npm for the plugins)
+                     zips, by hand), Backup (the Dock's backup: what is in it, how it goes back),
+                     ServerReset (what resetting the server's settings removes)
+                     (pure, tested); BackupJob (the one backup or restore, npm for the plugins),
+                     ResetJob (the Reset card's one reset: the settings, or everything through
+                     Android's clear of the app's data)
   fi.pocketsk.bridge Bridge (the socket, the sensors, USB and Bluetooth, run by the service),
                      BridgeServer (Unix socket files/bridge.sock, one peer, uid checked), PhoneSensors (battery,
                      barometer, GNSS, attitude, compass, cabin sensors, cellular network),

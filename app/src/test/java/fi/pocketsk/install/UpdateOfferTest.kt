@@ -8,7 +8,7 @@ import org.junit.Test
 
 /** The version the Updates card offers. */
 class UpdateOfferTest {
-    private fun versions(vararg texts: String) = ServerVersion.newestFirst(texts.toList())
+    private fun versions(vararg texts: String) = ServerVersion.newestFirst(texts.toList(), withPrereleases = true)
     private val none = InstallHistory()
 
     @Test
@@ -35,5 +35,13 @@ class UpdateOfferTest {
     fun anUnreadableOrMissingLiveVersionGetsTheNewest() {
         assertEquals("2.34.0", UpdateOffer.pick(versions("2.33.0", "2.34.0"), "local-build", none)?.text)
         assertEquals("2.34.0", UpdateOffer.pick(versions("2.33.0", "2.34.0"), null, none)?.text)
+    }
+
+    @Test
+    fun neverOffersABetaOrTestRelease() {
+        assertEquals("2.34.0", UpdateOffer.pick(versions("2.34.0", "2.35.0-beta.1", "2.3.0-canboatv2.1"), "2.33.0", none)?.text)
+        assertNull(UpdateOffer.pick(versions("2.33.0", "2.34.0-beta.2"), "2.33.0", none))
+        // Running a beta, its release is newer and offered.
+        assertEquals("2.34.0", UpdateOffer.pick(versions("2.34.0-beta.2", "2.34.0"), "2.34.0-beta.2", none)?.text)
     }
 }

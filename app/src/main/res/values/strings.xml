@@ -13,7 +13,6 @@
     <string name="setup_version_title">Which version</string>
     <string name="setup_version_loading">Asking npm which versions there are…</string>
     <string name="setup_version_failed">The versions could not be read: %1$s</string>
-    <string name="setup_version_latest">%1$s, the latest release</string>
     <string name="setup_version_file">From a file (.tgz)</string>
     <string name="setup_version_file_named">From a file: %1$s</string>
     <string name="setup_version_file_pick">Choose another file</string>
@@ -343,4 +342,49 @@
     <string name="alarm_quiet_here">Silenced on this phone</string>
     <string name="alarm_line">%1$s: %2$s</string>
     <string name="dock_alarms_title">Alarms</string>
+    <!-- Choosing a version (the setup and the Updates card's Other versions), reinstall -->
+    <string name="versions_open">Other versions…</string>
+    <string name="versions_close">Hide other versions</string>
+    <string name="versions_prereleases">Show beta and test releases</string>
+    <plurals name="versions_all">
+        <item quantity="one">Show all %1$d version</item>
+        <item quantity="other">Show all %1$d versions</item>
+    </plurals>
+    <string name="versions_web">From a web address (.tgz)</string>
+    <string name="versions_web_address">https://…/signalk-server-….tgz</string>
+    <string name="versions_web_hint">The address of a build made with npm pack: a CI build or a file attached to a release. npm downloads it as it would a version, and only https addresses are taken.</string>
+    <string name="versions_note_latest">latest release</string>
+    <string name="versions_note_installed">running now</string>
+    <string name="versions_note_kept">kept on the phone</string>
+    <string name="versions_note_prerelease">beta or test release</string>
+    <string name="versions_note_rolled_back">rolled back on this phone</string>
+    <string name="versions_warn_prerelease">%1$s is a beta or test release, for trying out what comes next: it may have bugs a release does not. The version you have now is kept, so you can roll back to it.</string>
+    <string name="versions_warn_rolled_back">%1$s stopped working after an update on this phone and was rolled back. Install it again only if you know what changed, a plugin fixed or the phone updated.</string>
+    <string name="versions_warn_installed">%1$s is the version running now: it is downloaded and installed again, which repairs an install that went wrong. Your settings and plugins stay.</string>
+    <string name="versions_warn_kept">%1$s is already kept on the phone: Roll back switches to it at once, without downloading it again.</string>
+    <string name="versions_install_anyway">Install %1$s anyway</string>
+    <string name="versions_reinstall">Reinstall %1$s</string>
+    <string name="versions_reinstall_title">Reinstall %1$s?</string>
+    <string name="versions_reinstall_text">%1$s is downloaded and installed again, checked that it starts, and then used. Your settings, plugins and data stay as they are.</string>
+    <string name="versions_reinstall_replaces">%1$s is downloaded and installed again, checked that it starts, and then used. It takes the place of %2$s, the version kept to roll back to. Your settings, plugins and data stay as they are.</string>
+
+    <!-- The Reset card -->
+    <string name="reset_title">Reset</string>
+    <string name="reset_body">Start again from the beginning. Save a backup above first if you may want the settings back; the charts and other data are in the USB folder, where a computer can copy them.</string>
+    <string name="reset_settings">Reset the server\'s settings…</string>
+    <string name="reset_everything">Reset everything…</string>
+    <string name="reset_settings_title">Reset the server\'s settings?</string>
+    <string name="reset_settings_text">The server stops and starts again as on its first day. Its settings, users and passwords, connections, installed plugins and webapps and their settings are deleted. The charts, routes, waypoints and other data stay, and so do the installed versions and this app\'s own settings.</string>
+    <string name="reset_settings_go">Reset the settings</string>
+    <string name="reset_everything_title">Reset everything?</string>
+    <string name="reset_everything_text">Everything the app has on this phone and its cards is deleted: Signal K Server and every version kept, its settings, users and plugins, the charts and all other data, and this app\'s own settings. The app then closes; open it again to set it up as new. This cannot be undone.</string>
+    <string name="reset_everything_go">Delete everything</string>
+    <string name="reset_stopping">Stopping the server…</string>
+    <string name="reset_settings_working">Resetting the server\'s settings…</string>
+    <string name="reset_everything_working">Deleting everything…</string>
+    <string name="reset_settings_done">The server\'s settings are reset. Start the server to set it up again.</string>
+    <string name="reset_settings_done_started">The server\'s settings are reset, and it is starting as new. Open the admin UI to set it up again.</string>
+    <string name="reset_busy">An install, a backup or a restore is running: try again when it is done.</string>
+    <string name="reset_still_running">The server did not stop, so nothing was reset. Stop it and try again.</string>
+    <string name="reset_failed">The reset failed: %1$s</string>
 </resources>

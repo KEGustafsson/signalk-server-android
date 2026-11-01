@@ -53,5 +53,5 @@ internal object Failure {
     private val NPM_CODE = Regex("""^npm (?:error|ERR!) code (E[A-Z_]+)\b""")
 
     /** For an exception that carries no message at all. */
-    private const val UNKNOWN = "something went wrong (the log has the details)"
+    const val UNKNOWN = "something went wrong (the log has the details)"
 }

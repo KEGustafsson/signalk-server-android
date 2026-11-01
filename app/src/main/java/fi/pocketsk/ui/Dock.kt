@@ -65,6 +65,7 @@ import fi.pocketsk.server.Backup
 import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.DataVolumes
 import fi.pocketsk.server.LogFilter
+import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerUsage
 import fi.pocketsk.signalk.SignalKUrl
@@ -111,6 +112,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier
         DevicesCard(model, actions)
         StorageCard(model, actions)
         BackupCard(model, actions)
+        ResetCard(model, actions)
         LogsCard(model, actions)
         Text(
             stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
@@ -565,7 +567,7 @@ private fun BackupCard(model: AppModel, actions: AppActions) {
     var again by remember { mutableStateOf("") }
     var asking by remember { mutableStateOf(false) }
     val job = model.backup
-    val working = job is BackupJob.State.Working
+    val working = job is BackupJob.State.Working || model.resetting
     val stopped = model.server is ServerState.Stopped || model.server is ServerState.Failed
     val ok = Backup.passphraseOk(passphrase.toCharArray())
     Section(stringResource(R.string.dock_backup_title)) {
@@ -595,6 +597,68 @@ private fun BackupCard(model: AppModel, actions: AppActions) {
             },
             dismissButton = { TextButton(onClick = { asking = false }) { Text(stringResource(R.string.dock_backup_cancel)) } },
         )
+    }
+}
+
+/**
+ * The Reset card (docs/PLAN.md §16 15): the server's settings back to a first start with the data
+ * kept, or everything back to a fresh install of the app ([ResetJob]). Each asks first, saying what
+ * goes and what stays, and points at the Backup card above for what may be wanted back.
+ */
+@Composable
+private fun ResetCard(model: AppModel, actions: AppActions) {
+    var asked by remember { mutableStateOf<ResetJob.Kind?>(null) }
+    val job = model.reset
+    val busy = model.installing || model.backup is BackupJob.State.Working || model.resetting
+    Section(stringResource(R.string.reset_title)) {
+        Text(stringResource(R.string.reset_body), style = MaterialTheme.typography.bodySmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { asked = ResetJob.Kind.SETTINGS }, enabled = !busy) { Text(stringResource(R.string.reset_settings)) }
+            OutlinedButton(onClick = { asked = ResetJob.Kind.EVERYTHING }, enabled = !busy) {
+                Text(stringResource(R.string.reset_everything), color = if (busy) Color.Unspecified else MaterialTheme.colorScheme.error)
+            }
+        }
+        job?.let { ResetOutcome(it) }
+    }
+    asked?.let { kind ->
+        val everything = kind == ResetJob.Kind.EVERYTHING
+        AlertDialog(
+            onDismissRequest = { asked = null },
+            title = { Text(stringResource(if (everything) R.string.reset_everything_title else R.string.reset_settings_title)) },
+            text = { Text(stringResource(if (everything) R.string.reset_everything_text else R.string.reset_settings_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    asked = null
+                    if (everything) actions.resetEverything() else actions.resetSettings()
+                }) {
+                    Text(
+                        stringResource(if (everything) R.string.reset_everything_go else R.string.reset_settings_go),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = { TextButton(onClick = { asked = null }) { Text(stringResource(R.string.dock_storage_cancel)) } },
+        )
+    }
+}
+
+/** How far the reset running is, or what the last one came to. */
+@Composable
+private fun ResetOutcome(state: ResetJob.State) {
+    val text = when (state) {
+        is ResetJob.State.Stopping -> stringResource(R.string.reset_stopping)
+        is ResetJob.State.Working -> stringResource(if (state.kind == ResetJob.Kind.EVERYTHING) R.string.reset_everything_working else R.string.reset_settings_working)
+        is ResetJob.State.Done -> stringResource(if (state.started) R.string.reset_settings_done_started else R.string.reset_settings_done)
+        is ResetJob.State.Failed -> when (state.why) {
+            ResetJob.Why.BUSY -> stringResource(R.string.reset_busy)
+            ResetJob.Why.STILL_RUNNING -> stringResource(R.string.reset_still_running)
+            ResetJob.Why.FAILED -> stringResource(R.string.reset_failed, state.detail)
+        }
+    }
+    val failed = state is ResetJob.State.Failed
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (state is ResetJob.State.Stopping || state is ResetJob.State.Working) CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp))
+        Text(text, color = if (failed) MaterialTheme.colorScheme.error else Color.Unspecified)
     }
 }
 
@@ -749,13 +813,37 @@ private fun outcomeText(outcome: InstallHistory.Outcome): String = stringResourc
 
 /**
  * The version live and the other one kept, a newer release to install when npm has one, the
- * rollback to the kept version, and the newest of the install history with how each went. The
+ * rollback to the kept version, the version live installed again, any other version npm has (betas
+ * and test releases among them), a file or a build's web address ([VersionChooser]), and the
+ * newest of the install history with how each went. The
  * slots themselves are the installer's business and are not named here: to the owner there is
  * the version running and the one to go back to.
  */
 @Composable
 private fun UpdatesCard(model: AppModel, actions: AppActions) {
     val slots = model.slots
+    var choosing by rememberSaveable { mutableStateOf(false) }
+    var reinstalling by remember { mutableStateOf(false) }
+    if (reinstalling && slots?.liveVersion != null) {
+        val live = slots.liveVersion
+        AlertDialog(
+            onDismissRequest = { reinstalling = false },
+            title = { Text(stringResource(R.string.versions_reinstall_title, live)) },
+            text = {
+                Text(
+                    slots.otherVersion?.takeIf { it != live }?.let { stringResource(R.string.versions_reinstall_replaces, live, it) }
+                        ?: stringResource(R.string.versions_reinstall_text, live),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    reinstalling = false
+                    actions.install(InstallManager.Source.Registry(live), allowBad = slots.history.isBad(live))
+                }) { Text(stringResource(R.string.versions_reinstall, live)) }
+            },
+            dismissButton = { TextButton(onClick = { reinstalling = false }) { Text(stringResource(R.string.dock_storage_cancel)) } },
+        )
+    }
     Section(stringResource(R.string.dock_updates_title)) {
         if (slots == null) {
             CircularProgressIndicator()
@@ -777,7 +865,7 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (model.available) {
                 is Available.Loaded -> offer?.let { v ->
-                    Button(onClick = { actions.install(InstallManager.Source.Registry(v.text)) }, enabled = !model.installing) {
+                    Button(onClick = { actions.install(InstallManager.Source.Registry(v.text)) }, enabled = !model.installing && !model.resetting) {
                         Text(stringResource(R.string.dock_install, v.text))
                     }
                 } ?: Text(stringResource(R.string.dock_up_to_date), modifier = Modifier.align(Alignment.CenterVertically))
@@ -788,15 +876,30 @@ private fun UpdatesCard(model: AppModel, actions: AppActions) {
                 Text(stringResource(R.string.dock_check_updates))
             }
             slots.otherVersion?.let { other ->
-                OutlinedButton(onClick = actions::rollBack, enabled = !model.installing && !slots.history.isBad(other)) {
+                OutlinedButton(onClick = actions::rollBack, enabled = !model.installing && !model.resetting && !slots.history.isBad(other)) {
                     Text(stringResource(R.string.dock_rollback, other))
                 }
             }
+            // Only a version npm can name can be fetched again: a build from a file cannot.
+            slots.liveVersion?.takeIf { ServerVersion.parse(it) != null }?.let { live ->
+                OutlinedButton(onClick = { reinstalling = true }, enabled = !model.installing && !model.resetting) {
+                    Text(stringResource(R.string.versions_reinstall, live))
+                }
+            }
         }
-        (model.available as? Available.Failed)?.let {
+        (model.available as? Available.Failed)?.takeIf { !choosing }?.let {
             Text(stringResource(R.string.setup_version_failed, it.reason), color = MaterialTheme.colorScheme.error)
         }
         offer?.let { WhatsNew(model.notes, slots.liveVersion, it, actions) }
+        TextButton(onClick = { choosing = !choosing }) {
+            Text(stringResource(if (choosing) R.string.versions_close else R.string.versions_open))
+        }
+        if (choosing) {
+            VersionChooser(model, actions, live = slots.liveVersion, kept = slots.otherVersion, history = slots.history) { source, allowBad ->
+                choosing = false
+                actions.install(source, allowBad)
+            }
+        }
         val recent = slots.history.newestFirst.take(HISTORY_LINES)
         if (recent.isNotEmpty()) {
             Text(stringResource(R.string.dock_history), style = MaterialTheme.typography.labelLarge)

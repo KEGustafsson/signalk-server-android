@@ -13,6 +13,7 @@ import androidx.core.net.toUri
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerEndpoint
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
@@ -48,13 +49,17 @@ internal object ServerActions {
     /**
      * Installs [source] into the slot that is not live through [InstallJob]; false when one runs
      * already. The new version owes its health gate from just before it goes live, and a running
-     * server moves to it once it is (PLAN §5.2 steps 5–6).
+     * server moves to it once it is (PLAN §5.2 steps 5–6). [allowBad]: the owner picked a version
+     * the health gate rolled back on this phone, and was told so.
      */
-    fun install(context: Context, runtime: NodeRuntime, source: InstallManager.Source): Boolean {
+    fun install(context: Context, runtime: NodeRuntime, source: InstallManager.Source, allowBad: Boolean = false): Boolean {
+        // A reset is emptying `.signalk`, which the new version's trial run copies.
+        if (ResetJob.isRunning) return false
         val app = context.applicationContext
         return InstallJob.start(
             InstallManager(app, runtime),
             source,
+            allowBad,
             onPromoting = { SignalKService.owesGate(app, it) },
             onPromoted = { SignalKService.promoted(app) },
         )

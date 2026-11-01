@@ -65,7 +65,8 @@ internal object BackupJob {
     /** Writes a backup to [uri]; false, nothing started, while another runs. Wipes [passphrase]. */
     @Synchronized
     fun save(context: Context, uri: Uri, passphrase: CharArray): Boolean {
-        if (isRunning) return false.also { passphrase.fill(' ') }
+        // A reset empties the files a backup reads: one thing at a time touches them.
+        if (isRunning || ResetJob.isRunning) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = false))
         work(app, restore = false) {
@@ -88,7 +89,7 @@ internal object BackupJob {
     /** Restores the backup at [uri]; false, nothing started, while another runs. Wipes [passphrase]. */
     @Synchronized
     fun restore(context: Context, uri: Uri, passphrase: CharArray): Boolean {
-        if (isRunning) return false.also { passphrase.fill(' ') }
+        if (isRunning || ResetJob.isRunning) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = true))
         work(app, restore = true) {

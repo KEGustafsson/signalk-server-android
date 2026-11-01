@@ -58,6 +58,7 @@ import fi.pocketsk.server.DiagnosticsBundle
 import fi.pocketsk.server.Inbox
 import fi.pocketsk.server.LanAddress
 import fi.pocketsk.server.LogFilter
+import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerPrefs
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
@@ -219,6 +220,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val resetObserver = ResetJob.Observer { state ->
+        runOnUiThread {
+            model.reset = state
+            // The plugins and webapps went with the settings.
+            if (state is ResetJob.State.Done) {
+                refreshWebapps()
+                refreshMissingBuilds()
+            }
+        }
+    }
+
     /**
      * The job's state as it is when the main thread gets to it, not as it was when posted: a state
      * a worker published just before a cancel on this thread would otherwise land after it.
@@ -307,6 +319,7 @@ class MainActivity : ComponentActivity() {
         )
         InstallJob.observe(installObserver)
         BackupJob.observe(backupObserver)
+        ResetJob.observe(resetObserver)
         SatelliteJob.observe(this, satelliteObserver)
         model.appChecks = prefs.appUpdateChecks
         model.lanAccess = prefs.lanAccess
@@ -368,6 +381,7 @@ class MainActivity : ComponentActivity() {
         ServerStatus.detach(serverObserver)
         InstallJob.detach(installObserver)
         BackupJob.detach(backupObserver)
+        ResetJob.detach(resetObserver)
         SatelliteJob.detach(satelliteObserver)
         AppUpdater.detach(appUpdateObserver)
         super.onDestroy()
@@ -521,7 +535,7 @@ class MainActivity : ComponentActivity() {
         override fun updateApp() = this@MainActivity.updateApp()
         override fun openAppRelease() = this@MainActivity.openAppRelease()
         override fun setAppChecks(on: Boolean) = this@MainActivity.setAppChecks(on)
-        override fun install(source: InstallManager.Source) = this@MainActivity.install(source)
+        override fun install(source: InstallManager.Source, allowBad: Boolean) = this@MainActivity.install(source, allowBad)
         override fun pickTarball() = this@MainActivity.pickTarball()
         override fun rollBack() = this@MainActivity.rollBack()
         override fun askPermissions() = this@MainActivity.askPermissions()
@@ -570,6 +584,14 @@ class MainActivity : ComponentActivity() {
         override fun restoreBackup(passphrase: CharArray) {
             holdPassphrase(passphrase)
             openBackup.launch(BACKUP_TYPES)
+        }
+
+        override fun resetSettings() {
+            ResetJob.settings(this@MainActivity)
+        }
+
+        override fun resetEverything() {
+            ResetJob.everything(this@MainActivity)
         }
 
         override fun filterLog(kind: LogFilter.Kind, query: String) {
@@ -655,7 +677,8 @@ class MainActivity : ComponentActivity() {
             runOnUiThread { model.available = Available.Failed(why) }
         }) {
             val result = try {
-                Available.Loaded(installs.listAvailable(maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
+                // Betas too: the version lists show them when asked, and the offer never does.
+                Available.Loaded(installs.listAvailable(withPrereleases = true, maxAgeMs = if (refresh) 0 else InstallManager.VERSIONS_MAX_AGE_MS))
             } catch (e: IOException) {
                 Available.Failed(failure("reading the versions", e))
             }
@@ -774,11 +797,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun install(source: InstallManager.Source) {
+    private fun install(source: InstallManager.Source, allowBad: Boolean) {
         model.install = null
         // Refused because one is running already (begun elsewhere, and not yet past its first
         // state): this screen follows that one, whose states reach it through the observer.
-        model.installing = ServerActions.install(this, runtime, source) || InstallJob.isRunning
+        model.installing = ServerActions.install(this, runtime, source, allowBad) || InstallJob.isRunning
     }
 
     private fun pickTarball() = pickFile.launch(TARBALL_TYPES)
