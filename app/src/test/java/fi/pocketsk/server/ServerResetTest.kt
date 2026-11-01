@@ -160,4 +160,20 @@ class ServerResetTest {
         ServerReset.settings(config, mirror = null, marker = marker)
         assertEquals(setOf("security.json", "settings.json"), Backup.restored(marker))
     }
+
+    @Test
+    fun aDotFileTheUsbFolderCopiesIsMarkedToo() {
+        // The mirror copies .npmrc; a backup does not keep it, but a reset's mark must.
+        write(File(config, ".npmrc"), "registry=https://registry.npmjs.org/")
+        val mirror = ConfigMirror(config, shown, "what this folder is\n") {}
+        mirror.sync(running = false)
+        File(shown, ".npmrc").writeText("registry=https://example.org/")
+
+        ServerReset.settings(config, mirror = null, marker = marker)
+        assertEquals(setOf(".npmrc"), Backup.restored(marker))
+        mirror.sync(running = false, ours = Backup.restored(marker))
+
+        assertFalse(File(config, ".npmrc").exists())
+        assertFalse(File(shown, ".npmrc").exists())
+    }
 }

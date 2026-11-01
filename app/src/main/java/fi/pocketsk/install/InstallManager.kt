@@ -245,8 +245,9 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                 val code = runtime.npm("install", "-g", "--prefix", dir.absolutePath, spec, *NPM_ARGS)
                     .drain(INSTALL_TIMEOUT_S) {
                         npmError = npmError ?: Failure.npm(it)
-                        // npm names the address it could not fetch: the log and the screen get it without its credential.
-                        line(log, if (spec != logged) it.replace(spec, logged) else it, now = false)
+                        // npm names the address it fetched, as it understood it: the log and the
+                        // screen get every address without its credential.
+                        line(log, VersionChoices.redact(it), now = false)
                     }
                 when {
                     code == null -> return@use fail("npm ran out of time after ${INSTALL_TIMEOUT_S / 60} min", log)

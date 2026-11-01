@@ -99,20 +99,28 @@ internal object Backup {
         return names
     }
 
-    /** The names a restore wrote that the USB folder's sync has not yet taken as the phone's ([restore]); empty without [marker]. */
+    /**
+     * The names a restore wrote, or a reset removed ([ServerReset]), that the USB folder's sync has
+     * not yet taken as the phone's ([restore]); empty without [marker]. Any settings file the
+     * mirror copies may be named, dot files among them (a reset removes `.npmrc` too), so the
+     * names are checked by where they lead ([settingsPath]), not by what a backup keeps.
+     */
     fun restored(marker: File): Set<String> =
-        if (marker.isFile) marker.readLines().filter { it.isNotEmpty() && restorable(it) }.toSortedSet() else emptySet()
+        if (marker.isFile) marker.readLines().filter { it.isNotEmpty() && settingsPath(it) }.toSortedSet() else emptySet()
 
     /**
      * Whether [rel], a path read from a backup, is one [collect] could have written: a file directly
      * in `.signalk` or in its `plugin-config-data`, by a name [kept] accepts. A backup is opened by
      * its passphrase alone, so a name with `..` or a slash must not take a file anywhere else.
      */
-    fun restorable(rel: String): Boolean {
+    fun restorable(rel: String): Boolean = settingsPath(rel) && kept(rel.substringAfterLast('/'))
+
+    /** Whether [rel] names a file directly in `.signalk` or in its `plugin-config-data`, and nothing anywhere else. */
+    private fun settingsPath(rel: String): Boolean {
         val parts = rel.split('/')
         val placed = parts.size == 1 || (parts.size == 2 && parts[0] == DataStore.PLUGIN_DATA)
         val name = parts.last()
-        return placed && name.isNotEmpty() && name != "." && name != ".." && '\\' !in name && '\u0000' !in name && kept(name)
+        return placed && name.isNotEmpty() && name != "." && name != ".." && '\\' !in name && '\u0000' !in name
     }
 
     /** The name a new backup is offered under: `pocketsk-backup-2026-10-26-1930.zip`, in local time. */

@@ -94,5 +94,13 @@ internal object VersionChoices {
         WEB_ADDRESS
     }
 
+    /**
+     * [line] of npm's output with every web address in it put through [forLog]: npm prints the
+     * address it fetched as it understood it (the scheme lowercased, a redirect's target), not as
+     * the owner typed it, so the addresses are found by their form rather than matched exactly.
+     */
+    fun redact(line: String): String = URL_IN_TEXT.replace(line) { forLog(it.value) }
+
     private const val WEB_ADDRESS = "a web address"
+    private val URL_IN_TEXT = Regex("""(?i)\bhttps?://[^\s'"<>]+""")
 }

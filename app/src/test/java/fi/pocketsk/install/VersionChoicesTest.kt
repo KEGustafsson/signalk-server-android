@@ -71,4 +71,18 @@ class VersionChoicesTest {
         assertEquals("https://example.org:8443/a.tgz", VersionChoices.forLog("https://example.org:8443/a.tgz"))
         assertEquals("a web address", VersionChoices.forLog("not a url at all %"))
     }
+
+    @Test
+    fun npmsLinesLoseEveryAddressesCredentialHoweverNpmWroteIt() {
+        // npm lowercases the scheme it was given, and names a redirect's target, not the address typed.
+        assertEquals(
+            "npm error 403 Forbidden - GET https://example.org/a.tgz",
+            VersionChoices.redact("npm error 403 Forbidden - GET https://example.org/a.tgz?signature=secret"),
+        )
+        assertEquals(
+            "npm error fetch https://cdn.example.org/b.tgz failed, reason: 'https://cdn.example.org/b.tgz'",
+            VersionChoices.redact("npm error fetch https://u:p@cdn.example.org/b.tgz#x failed, reason: 'https://cdn.example.org/b.tgz?X-Amz-Signature=1'"),
+        )
+        assertEquals("added 758 packages in 3m", VersionChoices.redact("added 758 packages in 3m"))
+    }
 }

@@ -75,10 +75,18 @@ internal object ResetJob {
         stop(app)?.let { return@begin it }
         publish(State.Working(Kind.SETTINGS))
         val runtime = NodeRuntime(app)
-        val removed = synchronized(DataStore.LOCK) {
-            ServerReset.settings(runtime.configDir, mirror(app, prefs), BackupJob.restoredMarker(runtime))
-        }
         val log = ServerStatus.log(app)
+        val removed = try {
+            synchronized(DataStore.LOCK) {
+                ServerReset.settings(runtime.configDir, mirror(app, prefs), BackupJob.restoredMarker(runtime))
+            }
+        } catch (e: IOException) {
+            // Stopped for the reset, so started again for what remains: a file that could not be
+            // deleted must not also leave the boat without its server.
+            log.note("the reset failed: $e")
+            if (wasRunning) start(app)
+            return@begin State.Failed(Kind.SETTINGS, Why.FAILED, Failure.text(e))
+        }
         log.note("the server's settings were reset: ${removed.joinToString().ifEmpty { "nothing to remove" }}")
         val started = wasRunning && start(app)
         State.Done(removed.size, started)
