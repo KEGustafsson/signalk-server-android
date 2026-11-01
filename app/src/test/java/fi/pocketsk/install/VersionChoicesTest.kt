@@ -89,6 +89,15 @@ class VersionChoicesTest {
             "npm error 404 Not Found - GET https://example.org/o'brien.tgz",
             VersionChoices.redact("npm error 404 Not Found - GET https://example.org/o'brien.tgz?signature=secret"),
         )
+        // Addresses side by side, as a script prints a list: each loses its own credential.
+        assertEquals(
+            "['https://one.example/a.tgz','https://two.example/b.tgz']",
+            VersionChoices.redact("['https://one.example/a.tgz?s=1','https://user:secret@two.example/b.tgz']"),
+        )
+        assertEquals(
+            "https://one.example/ahttps://two.example/b",
+            VersionChoices.redact("https://one.example/a?sig=1https://user:secret@two.example/b?t=2"),
+        )
         assertEquals(
             "fetch failed: \"https://example.org:8443/a.tgz\" (redirected)",
             VersionChoices.redact("fetch failed: \"https://example.org:8443/a.tgz#frag\" (redirected)"),

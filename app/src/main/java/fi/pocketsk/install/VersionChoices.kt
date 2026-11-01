@@ -106,6 +106,13 @@ internal object VersionChoices {
 
     private const val WEB_ADDRESS = "a web address"
 
-    /** Scheme; a user and password (dropped); host, port and path; a query or fragment (dropped). */
-    private val URL_IN_TEXT = Regex("""(?i)\b(https?)://(?:[^\s/?#@"<>]*@)?([^\s?#"<>]*)(?:[?#][^\s"'<>]*)?""")
+    /**
+     * Scheme; a user and password (dropped); host, port and path; a query or fragment (dropped).
+     * Neither the path nor the query runs into another address (`'https://a/x','https://u:p@b/y'`,
+     * a list a script printed): each address is matched, and its credential dropped, on its own,
+     * even one that follows another with no break between them (no `\b`: `1https` has none).
+     */
+    private val URL_IN_TEXT = Regex(
+        """(?i)(https?)://(?:[^\s/?#@"'<>]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#](?:(?!https?://)[^\s"'<>])*)?""",
+    )
 }
