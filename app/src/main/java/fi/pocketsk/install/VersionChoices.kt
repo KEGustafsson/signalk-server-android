@@ -98,9 +98,8 @@ internal object VersionChoices {
      * [line] of npm's output with every web address in it cut to scheme, host and path, as
      * [forLog] cuts the typed one: npm prints the address it fetched as it understood it (the
      * scheme lowercased, a redirect's target), not as the owner typed it, so the addresses are
-     * found by their form rather than matched exactly. npm writes them through Node's URL, which
-     * percent-encodes an apostrophe in a query but not in a path: so a path may hold one
-     * (`o'brien.tgz`), and the query, which goes, ends at one, as a quoted address does.
+     * found by their form rather than matched exactly. A path may hold an apostrophe
+     * (`o'brien.tgz`), which Node's URL leaves unencoded there.
      */
     fun redact(line: String): String = URL_IN_TEXT.replace(line) { "${it.groupValues[1]}://${it.groupValues[2]}" }
 
@@ -110,11 +109,13 @@ internal object VersionChoices {
      * Scheme; a user and password (dropped); host, port and path; a query or fragment (dropped).
      * The path stops where another address begins (`'https://a/x','https://u:p@b/y'`, a list a
      * script printed), so each address is matched, and its credential dropped, on its own, even
-     * one straight after another (no `\b`: `1https` has none). The query runs to the end of the
-     * address whatever it holds, another address included (`?next=https://b/f&token=…`), and goes
-     * whole: what follows a `?` is never kept, so nothing in it can be.
+     * one straight after another (no `\b`: `1https` has none). A query or fragment goes to the
+     * next whitespace, which no address holds unencoded, whatever is in it: another address, an
+     * apostrophe, a quote (`?next=https://b/o'brien.tgz?token=…`). Nothing after a `?` is kept, so
+     * nothing in it can be; a quote or bracket closing the address goes with it, which costs the
+     * log a character, not a credential.
      */
     private val URL_IN_TEXT = Regex(
-        """(?i)(https?)://(?:[^\s/?#@"'<>]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#][^\s"'<>]*)?""",
+        """(?i)(https?)://(?:[^\s/?#@"'<>]*@)?((?:(?!https?://)[^\s?#"<>])*)(?:[?#]\S*)?""",
     )
 }

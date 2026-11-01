@@ -80,18 +80,24 @@ class VersionChoicesTest {
             VersionChoices.redact("npm error 403 Forbidden - GET https://example.org/a.tgz?signature=secret"),
         )
         assertEquals(
-            "npm error fetch https://cdn.example.org/b.tgz failed, reason: 'https://cdn.example.org/b.tgz'",
+            // The quote that closed the second address went with its query: a character, not a credential.
+            "npm error fetch https://cdn.example.org/b.tgz failed, reason: 'https://cdn.example.org/b.tgz",
             VersionChoices.redact("npm error fetch https://u:p@cdn.example.org/b.tgz#x failed, reason: 'https://cdn.example.org/b.tgz?X-Amz-Signature=1'"),
         )
         assertEquals("added 758 packages in 3m", VersionChoices.redact("added 758 packages in 3m"))
-        // An apostrophe is allowed in a path; Node's URL encodes one in a query, so the query ends at it.
+        // An apostrophe is allowed in a path, and kept there.
         assertEquals(
             "npm error 404 Not Found - GET https://example.org/o'brien.tgz",
             VersionChoices.redact("npm error 404 Not Found - GET https://example.org/o'brien.tgz?signature=secret"),
         )
-        // Addresses side by side, as a script prints a list: each loses its own credential.
+        // Addresses side by side, as a script prints a list: each loses its own credential, and
+        // what follows a query in the same word goes with it.
         assertEquals(
             "['https://one.example/a.tgz','https://two.example/b.tgz']",
+            VersionChoices.redact("['https://one.example/a.tgz','https://user:secret@two.example/b.tgz']"),
+        )
+        assertEquals(
+            "['https://one.example/a.tgz",
             VersionChoices.redact("['https://one.example/a.tgz?s=1','https://user:secret@two.example/b.tgz']"),
         )
         // Run together, the second address is in the first's query, and goes with it.
@@ -104,13 +110,18 @@ class VersionChoicesTest {
             "https://one.example/ahttps://two.example/b",
             VersionChoices.redact("https://one.example/ahttps://user:secret@two.example/b?t=2"),
         )
+        // An address inside a query, an apostrophe in its path or not, does not end it.
+        assertEquals(
+            "npm error GET https://ci.example/a failed",
+            VersionChoices.redact("npm error GET https://ci.example/a?next=https://cdn.example/o'brien.tgz?token=secret failed"),
+        )
         // An address inside a query does not end it: what follows it in the query goes too.
         assertEquals(
             "npm error GET https://ci.example/a.tgz failed",
             VersionChoices.redact("npm error GET https://ci.example/a.tgz?next=https://cdn.example/file&token=secret failed"),
         )
         assertEquals(
-            "fetch failed: \"https://example.org:8443/a.tgz\" (redirected)",
+            "fetch failed: \"https://example.org:8443/a.tgz (redirected)",
             VersionChoices.redact("fetch failed: \"https://example.org:8443/a.tgz#frag\" (redirected)"),
         )
     }
