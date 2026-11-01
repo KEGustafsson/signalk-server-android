@@ -95,12 +95,17 @@ internal object VersionChoices {
     }
 
     /**
-     * [line] of npm's output with every web address in it put through [forLog]: npm prints the
-     * address it fetched as it understood it (the scheme lowercased, a redirect's target), not as
-     * the owner typed it, so the addresses are found by their form rather than matched exactly.
+     * [line] of npm's output with every web address in it cut to scheme, host and path, as
+     * [forLog] cuts the typed one: npm prints the address it fetched as it understood it (the
+     * scheme lowercased, a redirect's target), not as the owner typed it, so the addresses are
+     * found by their form rather than matched exactly. npm writes them through Node's URL, which
+     * percent-encodes an apostrophe in a query but not in a path: so a path may hold one
+     * (`o'brien.tgz`), and the query, which goes, ends at one, as a quoted address does.
      */
-    fun redact(line: String): String = URL_IN_TEXT.replace(line) { forLog(it.value) }
+    fun redact(line: String): String = URL_IN_TEXT.replace(line) { "${it.groupValues[1]}://${it.groupValues[2]}" }
 
     private const val WEB_ADDRESS = "a web address"
-    private val URL_IN_TEXT = Regex("""(?i)\bhttps?://[^\s'"<>]+""")
+
+    /** Scheme; a user and password (dropped); host, port and path; a query or fragment (dropped). */
+    private val URL_IN_TEXT = Regex("""(?i)\b(https?)://(?:[^\s/?#@"<>]*@)?([^\s?#"<>]*)(?:[?#][^\s"'<>]*)?""")
 }

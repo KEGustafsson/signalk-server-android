@@ -84,5 +84,14 @@ class VersionChoicesTest {
             VersionChoices.redact("npm error fetch https://u:p@cdn.example.org/b.tgz#x failed, reason: 'https://cdn.example.org/b.tgz?X-Amz-Signature=1'"),
         )
         assertEquals("added 758 packages in 3m", VersionChoices.redact("added 758 packages in 3m"))
+        // An apostrophe is allowed in a path; Node's URL encodes one in a query, so the query ends at it.
+        assertEquals(
+            "npm error 404 Not Found - GET https://example.org/o'brien.tgz",
+            VersionChoices.redact("npm error 404 Not Found - GET https://example.org/o'brien.tgz?signature=secret"),
+        )
+        assertEquals(
+            "fetch failed: \"https://example.org:8443/a.tgz\" (redirected)",
+            VersionChoices.redact("fetch failed: \"https://example.org:8443/a.tgz#frag\" (redirected)"),
+        )
     }
 }
