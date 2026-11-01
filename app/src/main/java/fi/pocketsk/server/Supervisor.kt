@@ -365,9 +365,14 @@ internal class Supervisor(
         var answering: Boolean? = null
         var trial = false
         while (n.process.isAlive) {
+            // The client has no log of its own here: every poll fails until the server listens.
+            var why: String? = null
             val ok = when (val r = client.endpoints()) {
                 is SignalKClient.Result.Ok -> true
-                is SignalKClient.Result.Failed -> endpoint.alive(ok = false, httpCode = r.httpCode)
+                is SignalKClient.Result.Failed -> {
+                    why = r.detail
+                    endpoint.alive(ok = false, httpCode = r.httpCode)
+                }
             }
             val now = SystemClock.elapsedRealtime()
             // Decided and published under the lock, so a stop that has published Stopping is
@@ -395,7 +400,7 @@ internal class Supervisor(
                 val onTrial = gate != null
                 // Nothing before the first answer: until then the run is Starting.
                 if ((ok || answering != null) && (ok != answering || onTrial != trial)) {
-                    if (answering == true && !ok) log.note("not answering on $base")
+                    if (answering == true && !ok) log.note("not answering on $base" + (why?.let { ": $it" } ?: ""))
                     publish(ServerState.Running(version, slot, endpoint.port, ok, onTrial, startedAt, n.groupIdOrNull, lan))
                     answering = ok
                     trial = onTrial

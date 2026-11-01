@@ -193,7 +193,9 @@ internal object AppUpdater {
             AppRelease.parse(text, Build.SUPPORTED_ABIS.toList())
         } catch (e: Json.ParseException) {
             File(context.cacheDir, RELEASE_CACHE).delete()
-            return State.Failed("GitHub's answer could not be read: ${e.message}", null)
+            // The parser's position ("expected , or } at 123") is for the log, not the owner.
+            failure(context, "reading GitHub's answer", e)
+            return State.Failed("GitHub's answer could not be read", null)
         }
         return if (release != null && AppRelease.isNewer(release, BuildConfig.VERSION_CODE.toLong())) State.Available(release)
         else State.UpToDate
