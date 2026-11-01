@@ -237,14 +237,16 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
                     is Source.Tarball -> source.file.absolutePath
                     is Source.Url -> source.url
                 }
-                logOnly(log, "$ npm install -g --prefix $dir $spec ${NPM_ARGS.joinToString(" ")}")
+                val logged = (source as? Source.Url)?.let { VersionChoices.forLog(it.url) } ?: spec
+                logOnly(log, "$ npm install -g --prefix $dir $logged ${NPM_ARGS.joinToString(" ")}")
                 // Published now, not with npm's first line: a screen recreated before it has a state to replay.
                 listener.onState(State.Installing(slot, tailText()))
                 var npmError: String? = null
                 val code = runtime.npm("install", "-g", "--prefix", dir.absolutePath, spec, *NPM_ARGS)
                     .drain(INSTALL_TIMEOUT_S) {
                         npmError = npmError ?: Failure.npm(it)
-                        line(log, it, now = false)
+                        // npm names the address it could not fetch: the log and the screen get it without its credential.
+                        line(log, if (spec != logged) it.replace(spec, logged) else it, now = false)
                     }
                 when {
                     code == null -> return@use fail("npm ran out of time after ${INSTALL_TIMEOUT_S / 60} min", log)
@@ -403,7 +405,7 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
             val from = when (source) {
                 is Source.Registry -> SOURCE_REGISTRY
                 is Source.Tarball -> source.file.name
-                is Source.Url -> source.url
+                is Source.Url -> VersionChoices.forLog(source.url)
             }
             try {
                 writeHistory(readHistory() + InstallHistory.Entry(System.currentTimeMillis(), version, slot, from, outcome, detail))

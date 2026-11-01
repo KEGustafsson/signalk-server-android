@@ -124,7 +124,10 @@ internal fun VersionChooser(
         }
         chosen?.let { Warnings(it) }
         val bad = chosen != null && Note.ROLLED_BACK in chosen.notes
-        Button(enabled = source != null && !model.installing && !model.resetting, onClick = { if (source != null) onInstall(source, bad) }) {
+        // A file or a build's address is one particular build the owner chose: its version, known
+        // only once npm has installed it, is not refused for a release of that number rolled back here.
+        val allowBad = bad || choice == FROM_FILE || choice == FROM_WEB
+        Button(enabled = source != null && !model.installing && !model.resetting, onClick = { if (source != null) onInstall(source, allowBad) }) {
             Text(
                 when {
                     chosen == null -> stringResource(R.string.setup_install)

@@ -23,6 +23,8 @@ class ServerResetTest {
         shown = File(tmp.newFolder("Android", "data", "fi.pocketsk", "files"), DataStore.CARD_DIR)
     }
 
+    private val marker get() = File(config.parentFile, ".pocketsk-restored")
+
     private fun write(f: File, text: String = "x") {
         f.parentFile.mkdirs()
         f.writeText(text)
@@ -40,7 +42,7 @@ class ServerResetTest {
         write(File(config, "charts/a.mbtiles"), "a chart")
         write(File(config, "serverstate/course/settings.json"), "the course")
 
-        val removed = ServerReset.settings(config, mirror = null)
+        val removed = ServerReset.settings(config, mirror = null, marker = marker)
 
         assertEquals(
             listOf("node_modules", "package.json", "security.json", "settings.json", "ssl-key.pem", "plugin-config-data/anchoralarm.json"),
@@ -66,7 +68,7 @@ class ServerResetTest {
         write(File(charts, "a.mbtiles"), "a chart")
         Files.createSymbolicLink(File(config, "charts").toPath(), charts.toPath())
 
-        ServerReset.settings(config, mirror = shown)
+        ServerReset.settings(config, mirror = shown, marker = marker)
 
         assertEquals("the bridge", File(plugin, "index.js").readText())
         assertTrue(Files.isSymbolicLink(File(config, "charts").toPath()))
@@ -83,7 +85,7 @@ class ServerResetTest {
         assertTrue(File(shown, "settings.json").exists())
         write(File(shown, "charts/a.mbtiles"), "a chart")
 
-        ServerReset.settings(config, mirror = shown)
+        ServerReset.settings(config, mirror = shown, marker = marker)
         assertFalse(File(shown, "settings.json").exists())
         assertFalse(File(shown, "plugin-config-data/anchoralarm.json").exists())
 
@@ -100,8 +102,8 @@ class ServerResetTest {
         val mirror = ConfigMirror(config, shown, "what this folder is\n") {}
         mirror.sync(running = false)
 
-        ServerReset.settings(config, mirror = null)
-        mirror.sync(running = false)
+        ServerReset.settings(config, mirror = null, marker = marker)
+        mirror.sync(running = false, ours = Backup.restored(marker))
 
         assertFalse(File(config, "settings.json").exists())
         assertFalse(File(shown, "settings.json").exists())
@@ -109,7 +111,53 @@ class ServerResetTest {
 
     @Test
     fun anEmptyOrMissingSignalkIsNothingToDo() {
-        assertEquals(emptyList<String>(), ServerReset.settings(config, mirror = shown))
-        assertEquals(emptyList<String>(), ServerReset.settings(File(tmp.root, "none"), mirror = null))
+        assertEquals(emptyList<String>(), ServerReset.settings(config, mirror = shown, marker = marker))
+        assertEquals(emptyList<String>(), ServerReset.settings(File(tmp.root, "none"), mirror = null, marker = marker))
+        assertFalse(marker.exists())
+    }
+
+    @Test
+    fun aSettingsFileOnlyTheComputerHasGoesTooItsFolderFilesStay() {
+        write(File(config, "settings.json"), "{\"port\":3000}")
+        val mirror = ConfigMirror(config, shown, "what this folder is\n") {}
+        mirror.sync(running = false)
+        // Put there on a computer while the phone had none: it would be taken in at the next start.
+        write(File(shown, "security.json"), "{\"users\":[{\"username\":\"someone\"}]}")
+        write(File(shown, "plugin-config-data/anchoralarm.json"), "{}")
+
+        ServerReset.settings(config, mirror = shown, marker = marker)
+        mirror.sync(running = false, ours = Backup.restored(marker))
+
+        assertFalse(File(config, "security.json").exists())
+        assertFalse(File(config, "plugin-config-data/anchoralarm.json").exists())
+        assertFalse(File(shown, "security.json").exists())
+        assertTrue(File(shown, ConfigMirror.README).exists())
+    }
+
+    @Test
+    fun aCopyEditedOnACardThatWasOutDuringTheResetIsNotTakenBackIn() {
+        write(File(config, "settings.json"), "{\"port\":3000}")
+        write(File(config, "security.json"), "{\"users\":[{\"username\":\"admin\"}]}")
+        val mirror = ConfigMirror(config, shown, "what this folder is\n") {}
+        mirror.sync(running = false)
+        // Edited on a computer, then the card went out of the phone before the reset.
+        File(shown, "security.json").writeText("{\"users\":[{\"username\":\"edited\"}]}")
+
+        ServerReset.settings(config, mirror = null, marker = marker)
+        assertEquals(setOf("security.json", "settings.json"), Backup.restored(marker))
+        val r = mirror.sync(running = false, ours = Backup.restored(marker))
+
+        assertEquals(emptyList<String>(), r.taken)
+        assertFalse(File(config, "security.json").exists())
+        assertFalse(File(shown, "security.json").exists())
+        assertFalse(File(shown, "settings.json").exists())
+    }
+
+    @Test
+    fun aRestoreNotYetSyncedKeepsItsNamesInTheMarker() {
+        marker.writeText("settings.json\n")
+        write(File(config, "security.json"))
+        ServerReset.settings(config, mirror = null, marker = marker)
+        assertEquals(setOf("security.json", "settings.json"), Backup.restored(marker))
     }
 }

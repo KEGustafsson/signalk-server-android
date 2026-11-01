@@ -76,8 +76,7 @@ internal object ResetJob {
         publish(State.Working(Kind.SETTINGS))
         val runtime = NodeRuntime(app)
         val removed = synchronized(DataStore.LOCK) {
-            BackupJob.restoredMarker(runtime).delete()
-            ServerReset.settings(runtime.configDir, mirror(app, prefs))
+            ServerReset.settings(runtime.configDir, mirror(app, prefs), BackupJob.restoredMarker(runtime))
         }
         val log = ServerStatus.log(app)
         log.note("the server's settings were reset: ${removed.joinToString().ifEmpty { "nothing to remove" }}")

@@ -61,4 +61,14 @@ class VersionChoicesTest {
         assertNull(VersionChoices.webAddress(""))
         assertNull(VersionChoices.webAddress("file:///sdcard/a.tgz"))
     }
+
+    @Test
+    fun theLogKeepsNoCredentialFromTheAddress() {
+        assertEquals(
+            "https://ci.example.org/builds/signalk-server-2.36.0.tgz",
+            VersionChoices.forLog("https://user:secret@ci.example.org/builds/signalk-server-2.36.0.tgz?X-Amz-Signature=abc#top"),
+        )
+        assertEquals("https://example.org:8443/a.tgz", VersionChoices.forLog("https://example.org:8443/a.tgz"))
+        assertEquals("a web address", VersionChoices.forLog("not a url at all %"))
+    }
 }

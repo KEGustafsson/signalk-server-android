@@ -81,4 +81,18 @@ internal object VersionChoices {
         if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrEmpty()) return null
         return t
     }
+
+    /**
+     * [url] as the install history and the install log may keep it: scheme, host and path, without
+     * a user, a password, a query or a fragment, which a signed link to a CI build carries as its
+     * credential and the diagnostics bundle would then share. npm is given the whole address.
+     */
+    fun forLog(url: String): String = try {
+        val u = URI(url.trim())
+        if (u.scheme == null || u.host.isNullOrEmpty()) WEB_ADDRESS else "${u.scheme}://${u.host}${if (u.port >= 0) ":${u.port}" else ""}${u.rawPath.orEmpty()}"
+    } catch (_: URISyntaxException) {
+        WEB_ADDRESS
+    }
+
+    private const val WEB_ADDRESS = "a web address"
 }
