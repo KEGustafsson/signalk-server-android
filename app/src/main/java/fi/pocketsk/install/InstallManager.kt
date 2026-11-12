@@ -152,9 +152,15 @@ internal class InstallManager(context: Context, private val runtime: NodeRuntime
      * install: the health gate's verdict is about one version, and an install may have made
      * another live while the rollback waited for it. That newer version is then left alone,
      * not marked bad for its predecessor's failure, and null is returned.
+     *
+     * [onlyFromSlot] is the slot the caller saw live, checked the same way: the Version page's
+     * Roll back names it, so a second tap before the page caught up finds the other slot live
+     * and does nothing, even when both slots hold the same version (after a reinstall), which a
+     * version alone cannot tell apart.
      */
-    fun rollback(bad: Boolean, reason: String? = null, onlyFrom: String? = null): String? = synchronized(LOCK) {
+    fun rollback(bad: Boolean, reason: String? = null, onlyFrom: String? = null, onlyFromSlot: String? = null): String? = synchronized(LOCK) {
         val live = liveSlot() ?: return null
+        if (onlyFromSlot != null && live != onlyFromSlot) return null
         if (onlyFrom != null && installedVersion(live) != onlyFrom) return null
         val target = Slots.inactive(live)
         val targetVersion = installedVersion(target) ?: return null

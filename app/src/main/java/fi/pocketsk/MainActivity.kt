@@ -546,7 +546,7 @@ class MainActivity : ComponentActivity() {
         override fun setAppChecks(on: Boolean) = this@MainActivity.setAppChecks(on)
         override fun install(source: InstallManager.Source, allowBad: Boolean) = this@MainActivity.install(source, allowBad)
         override fun pickTarball() = this@MainActivity.pickTarball()
-        override fun rollBack(from: String) = this@MainActivity.rollBack(from)
+        override fun rollBack(fromSlot: String) = this@MainActivity.rollBack(fromSlot)
         override fun askPermissions() = this@MainActivity.askPermissions()
         override fun askLocation() = this@MainActivity.askLocation()
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
@@ -816,12 +816,12 @@ class MainActivity : ComponentActivity() {
     private fun pickTarball() = pickFile.launch(TARBALL_TYPES)
 
     /** Back to the other slot's version, by hand: no version is marked bad, and a running server moves to it. */
-    private fun rollBack(from: String) {
+    private fun rollBack(fromSlot: String) {
         val app = applicationContext
         transportThread("dock-rollback", onError = { e -> ServerStatus.log(app).note("rollback failed: $e") }) {
-            // Only from the version the owner saw running: a second tap before the page caught up
-            // would otherwise switch straight back.
-            val to = installs.rollback(bad = false, reason = getString(R.string.dock_rollback_reason), onlyFrom = from)
+            // Only from the slot the owner saw live: a second tap before the page caught up would
+            // otherwise switch straight back, the same version in both slots or not.
+            val to = installs.rollback(bad = false, reason = getString(R.string.dock_rollback_reason), onlyFromSlot = fromSlot)
             ServerStatus.log(app).note(to?.let { "rolled back by hand: slot $it is live" } ?: "nothing to roll back to")
             if (to != null) SignalKService.promoted(app)
             refreshSlots()

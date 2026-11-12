@@ -98,7 +98,7 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
                 Text(stringResource(R.string.dock_check_updates))
             }
             slots.otherVersion?.let { other ->
-                val live = slots.liveVersion
+                val live = slots.live
                 OutlinedButton(onClick = { live?.let(actions::rollBack) }, enabled = live != null && !busy && !slots.history.isBad(other)) {
                     Text(stringResource(R.string.dock_rollback, other))
                 }

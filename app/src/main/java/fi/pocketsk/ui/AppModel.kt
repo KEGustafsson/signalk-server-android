@@ -185,8 +185,8 @@ internal interface AppActions {
     /** Installs [source]; [allowBad] when the owner picked a version the health gate rolled back here, and was told so. */
     fun install(source: InstallManager.Source, allowBad: Boolean = false)
     fun pickTarball()
-    /** Makes the version kept live again, if [from] is still the one running: a second tap before the page catches up does nothing. */
-    fun rollBack(from: String)
+    /** Makes the version kept live again, if [fromSlot] is still the slot live: a second tap before the page catches up does nothing. */
+    fun rollBack(fromSlot: String)
     fun askPermissions()
     fun askLocation()
     fun openBatterySettings()
