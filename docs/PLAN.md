@@ -43,7 +43,7 @@ An Android app that turns any phone or tablet into a full Signal K Server. The A
 | Native addons | Prebuilt `android-arm64` / `armeabi-v7a` binaries from our own GitHub Releases, put in place by the phone's npm after each install (§9.2) | No compiler on the phone; prebuild ecosystems have no Android targets |
 | Hardware I/O | Kotlin bridge exposing USB serial, BT SPP and phone sensors over a Unix domain socket to a small Signal K provider plugin | No `/dev/tty*` without root |
 | UI | Native Compose "Dock" for anything that must work when the server is down; the admin UI and webapps in a browser, the phone's own or any device's on the boat's network (§8.2) | Don't reimplement Signal K's UI, or wrap it: it already works in any browser |
-| Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.8, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
+| Toolchain | AGP 9.4 built-in Kotlin, Gradle 9.9, JDK 17 toolchain (no auto-download), compileSdk/targetSdk 37, **minSdk 29**, R8 with names kept, Lint warnings-as-errors, dependency verification metadata | Identical to Crew Radio, so its files, CI and release process drop in. nodejs-mobile needs only API 24, so minSdk 29 costs nothing real |
 | Distribution | GitHub Releases with the in-app self-updater (F-Droid and IzzyOnDroid dropped, §12); Play Store later | Play's "downloaded executable code" policy is a gray area for plugins |
 
 ## 2. Repository layout
