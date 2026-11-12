@@ -175,7 +175,7 @@ internal fun needsInput(model: AppModel): Needs.Input {
         serverFailed = model.server is ServerState.Failed,
         // Unknown until the slots are read: nothing is asked for meanwhile.
         serverInstalled = slots == null || slots.liveVersion != null,
-        idle = !model.installing && !model.resetting && model.backup !is BackupJob.State.Working,
+        idle = !model.busy,
         permissionsMissing = p.notifications == false || p.localNetwork == false,
         gpsRestart = p.location && model.locationHeld == false && model.server.isActive,
         usbWaiting = model.devices.any { it.kind == BridgeProtocol.USB && it.state == BridgeProtocol.Device.NEEDS_PERMISSION },

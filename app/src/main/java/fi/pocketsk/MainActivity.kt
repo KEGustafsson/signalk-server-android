@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
@@ -250,7 +251,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPassphrase: CharArray? = null
 
     private val createBackup = registerForActivityResult(ActivityResultContracts.CreateDocument(BACKUP_TYPE)) { uri ->
-        withPassphrase(uri) { u, p -> BackupJob.save(this, u, p) }
+        withPassphrase(uri, created = true) { u, p -> BackupJob.save(this, u, p) }
     }
 
     private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -637,13 +638,28 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Hands the picked file and the passphrase held for it to [run]; a cancelled pick wipes the passphrase. */
-    private fun withPassphrase(uri: Uri?, run: (Uri, CharArray) -> Unit) {
+    private fun withPassphrase(uri: Uri?, created: Boolean = false, run: (Uri, CharArray) -> Boolean) {
         val p = pendingPassphrase
         pendingPassphrase = null
         when {
             uri == null -> p?.fill(' ')
             p == null -> Toast.makeText(this, R.string.dock_backup_again_please, Toast.LENGTH_LONG).show()
-            else -> run(uri, p)
+            // Refused: an install, a reset or the app's update began while the picker was open.
+            // The file a new backup was to go in is empty, and is removed rather than left there.
+            !run(uri, p) -> {
+                if (created) {
+                    try {
+                        DocumentsContract.deleteDocument(contentResolver, uri)
+                    } catch (e: IOException) {
+                        // A provider that cannot delete keeps an empty file; the owner was told.
+                        ServerStatus.log(this).note("could not remove the unused backup file: $e")
+                    } catch (e: RuntimeException) {
+                        // Refused or unsupported by the provider: the same.
+                        ServerStatus.log(this).note("could not remove the unused backup file: $e")
+                    }
+                }
+                Toast.makeText(this, R.string.backup_busy, Toast.LENGTH_LONG).show()
+            }
         }
     }
 

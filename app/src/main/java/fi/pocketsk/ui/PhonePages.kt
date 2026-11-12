@@ -123,6 +123,7 @@ internal fun AppUpdatePage(model: AppModel, actions: AppActions, onBack: () -> U
         offered?.let { release ->
             // The installer replaces the app's process, which runs an install, a backup, a restore or a reset.
             val busy = model.installing || model.resetting || model.backup is BackupJob.State.Working
+
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = actions::updateApp, enabled = !busy) { Text(stringResource(R.string.dock_app_update, release.versionName)) }
                 TextButton(onClick = actions::openAppRelease) { Text(stringResource(R.string.dock_app_whats_new)) }

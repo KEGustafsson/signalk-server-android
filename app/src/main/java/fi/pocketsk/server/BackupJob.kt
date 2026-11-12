@@ -7,6 +7,7 @@ import fi.pocketsk.install.InstallJob
 import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.update.AppUpdater
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -67,8 +68,8 @@ internal object BackupJob {
     @Synchronized
     fun save(context: Context, uri: Uri, passphrase: CharArray): Boolean {
         // A reset empties the files a backup reads: one thing at a time touches them.
-        // An install's trial run copies `.signalk` as this writes it.
-        if (isRunning || ResetJob.isRunning || InstallJob.isRunning) return false.also { passphrase.fill(' ') }
+        // An install's trial run copies `.signalk` as this writes it; the app's update ends the process.
+        if (isRunning || ResetJob.isRunning || InstallJob.isRunning || AppUpdater.updating) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = false))
         work(app, restore = false) {
@@ -91,8 +92,8 @@ internal object BackupJob {
     /** Restores the backup at [uri]; false, nothing started, while another runs. Wipes [passphrase]. */
     @Synchronized
     fun restore(context: Context, uri: Uri, passphrase: CharArray): Boolean {
-        // An install's trial run copies `.signalk` as this writes it.
-        if (isRunning || ResetJob.isRunning || InstallJob.isRunning) return false.also { passphrase.fill(' ') }
+        // An install's trial run copies `.signalk` as this writes it; the app's update ends the process.
+        if (isRunning || ResetJob.isRunning || InstallJob.isRunning || AppUpdater.updating) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = true))
         work(app, restore = true) {

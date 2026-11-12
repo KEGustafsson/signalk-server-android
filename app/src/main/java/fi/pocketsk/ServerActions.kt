@@ -20,6 +20,7 @@ import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.SignalKService
 import fi.pocketsk.signalk.Webapps
+import fi.pocketsk.update.AppUpdater
 
 /** What the Dock, the setup wizard and the runtime checks do to the server, written once. */
 internal object ServerActions {
@@ -57,6 +58,8 @@ internal object ServerActions {
         // A reset emptying `.signalk`, or a restore writing it, as the new version's trial run
         // copies it: the trial would run on half of one.
         if (ResetJob.isRunning || BackupJob.isRunning) return false
+        // The app's update ends the process the install runs in.
+        if (AppUpdater.updating) return false
         val app = context.applicationContext
         return InstallJob.start(
             InstallManager(app, runtime),

@@ -65,8 +65,8 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
         CircularProgressIndicator()
         return
     }
-    // One job at a time touches the server's files: an install waits for a backup or restore too.
-    val busy = model.installing || model.resetting || model.backup is BackupJob.State.Working
+    // One job at a time: an install waits for a backup, a restore, a reset or the app's update.
+    val busy = model.busy
     var reinstalling by remember { mutableStateOf(false) }
     Block {
         Text(
@@ -315,7 +315,8 @@ private class Choice(val volume: DataVolumes.Volume?)
 internal fun BackupPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
     PageHeader(stringResource(R.string.backup_title), onBack)
     val job = model.backup
-    val working = job is BackupJob.State.Working || model.resetting
+    // An install, a reset or the app's update refuses a backup or restore, so the buttons wait for them.
+    val working = model.busy
     val stopped = model.server is ServerState.Stopped || model.server is ServerState.Failed
     job?.let { Block { BackupOutcome(it) } }
     Section(stringResource(R.string.backup_save_title)) {
@@ -477,7 +478,7 @@ internal fun MissingPage(model: AppModel, actions: AppActions, onBack: () -> Uni
 internal fun ResetPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
     PageHeader(stringResource(R.string.reset_title), onBack)
     var asked by remember { mutableStateOf<ResetJob.Kind?>(null) }
-    val busy = model.installing || model.backup is BackupJob.State.Working || model.resetting
+    val busy = model.busy
     model.reset?.let { Block { ResetOutcome(it) } }
     Note(stringResource(R.string.reset_body))
     Section(stringResource(R.string.reset_settings_title)) {

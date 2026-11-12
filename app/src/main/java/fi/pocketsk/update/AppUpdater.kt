@@ -11,8 +11,11 @@ import android.os.Build
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.LegacyPlatform
 import fi.pocketsk.bridge.Json
+import fi.pocketsk.install.InstallJob
 import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
+import fi.pocketsk.server.BackupJob
+import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerStatus
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -76,6 +79,12 @@ internal object AppUpdater {
         observers -= observer
     }
 
+    /**
+     * The update is downloading or with the installer, which ends this process when it commits:
+     * no install, backup, restore or reset may start meanwhile, since none would finish.
+     */
+    val updating: Boolean get() = state.let { it is State.Downloading || it is State.Installing }
+
     /** Whether this install updates itself: not when a store that keeps it current installed it. */
     fun selfUpdates(context: Context): Boolean = AppRelease.selfUpdates(installer(context))
 
@@ -101,6 +110,9 @@ internal object AppUpdater {
      */
     @Synchronized
     fun update(context: Context) {
+        // The installer ends this process, and with it an install, backup, restore or reset
+        // running in it: those finish first.
+        if (InstallJob.isRunning || BackupJob.isRunning || ResetJob.isRunning) return
         val release = when (val s = state) {
             is State.Available -> s.release
             is State.Failed -> s.release ?: return

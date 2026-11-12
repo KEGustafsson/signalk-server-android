@@ -367,7 +367,7 @@
     <string name="reset_everything_working">Deleting everything…</string>
     <string name="reset_settings_done">The server\'s settings are reset. Start the server to set it up again.</string>
     <string name="reset_settings_done_started">The server\'s settings are reset, and it is starting as new. Open the admin UI to set it up again.</string>
-    <string name="reset_busy">An install, a backup or a restore is running: try again when it is done.</string>
+    <string name="reset_busy">An install, a backup, a restore or the app\'s update is running: try again when it is done.</string>
     <string name="reset_still_running">The server did not stop, so nothing was reset. Stop it and try again.</string>
     <string name="reset_failed">The reset failed: %1$s</string>
 
@@ -486,6 +486,7 @@
     <string name="backup_summary_restored">Backup restored</string>
     <string name="backup_save_title">Save a backup</string>
     <string name="backup_again">Passphrase again</string>
+    <string name="backup_busy">An install, a reset or the app\'s update is running: try again when it is done.</string>
     <string name="backup_restore_title">Restore a backup</string>
     <string name="backup_restore_passphrase">The backup\'s passphrase</string>
     <string name="log_summary">The newest lines, and a zip for whoever helps you</string>

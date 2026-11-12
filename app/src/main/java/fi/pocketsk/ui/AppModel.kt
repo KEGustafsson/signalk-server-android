@@ -98,6 +98,16 @@ internal class AppModel {
     /** A reset runs: nothing else may touch the server's files meanwhile. */
     val resetting: Boolean get() = reset.let { it is ResetJob.State.Stopping || it is ResetJob.State.Working }
 
+    /** The app's update is downloading or with the installer, which ends this process when it commits. */
+    val appUpdating: Boolean get() = app.let { it is AppUpdater.State.Downloading || it is AppUpdater.State.Installing }
+
+    /**
+     * Something runs that the others must wait for: an install, a backup or restore, a reset, or
+     * the app's own update. One at a time, as the jobs themselves enforce; the screens disable
+     * what would be refused rather than let it fail.
+     */
+    val busy: Boolean get() = installing || resetting || backup is BackupJob.State.Working || appUpdating
+
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
     var tarballName by mutableStateOf<String?>(null)
