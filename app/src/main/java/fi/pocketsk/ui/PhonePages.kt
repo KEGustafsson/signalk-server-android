@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
 import fi.pocketsk.power.PowerProfile
+import fi.pocketsk.server.BackupJob
 import fi.pocketsk.update.AppRelease
 import fi.pocketsk.update.AppUpdater
 
@@ -120,10 +121,13 @@ internal fun AppUpdatePage(model: AppModel, actions: AppActions, onBack: () -> U
             is AppUpdater.State.Refused -> Problem(refusalText(state.refusal, state.release.versionName))
         }
         offered?.let { release ->
+            // The installer replaces the app's process, which runs an install, a backup, a restore or a reset.
+            val busy = model.installing || model.resetting || model.backup is BackupJob.State.Working
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = actions::updateApp) { Text(stringResource(R.string.dock_app_update, release.versionName)) }
+                Button(onClick = actions::updateApp, enabled = !busy) { Text(stringResource(R.string.dock_app_update, release.versionName)) }
                 TextButton(onClick = actions::openAppRelease) { Text(stringResource(R.string.dock_app_whats_new)) }
             }
+            if (busy) Note(stringResource(R.string.app_update_busy))
             if (!model.appInstallsAllowed) Note(stringResource(R.string.dock_app_allow))
         }
     }

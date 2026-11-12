@@ -11,7 +11,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -110,10 +109,8 @@ internal fun BluetoothPage(model: AppModel, actions: AppActions, onBack: () -> U
         }
         if (model.permissions.bluetooth && model.server.isActive) {
             for (d in bluetooth) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (d.chosen) deviceText(d) else "${d.name} (${d.id})", modifier = Modifier.weight(1f))
-                    Switch(checked = d.chosen, onCheckedChange = { actions.chooseBluetooth(d.address, it) })
-                }
+                // One control, so a screen reader says which device the switch is for.
+                SwitchRow(if (d.chosen) deviceText(d) else "${d.name} (${d.id})", d.chosen) { actions.chooseBluetooth(d.address, it) }
             }
         }
     }

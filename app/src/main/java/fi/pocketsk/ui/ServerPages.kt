@@ -65,7 +65,8 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
         CircularProgressIndicator()
         return
     }
-    val busy = model.installing || model.resetting
+    // One job at a time touches the server's files: an install waits for a backup or restore too.
+    val busy = model.installing || model.resetting || model.backup is BackupJob.State.Working
     var reinstalling by remember { mutableStateOf(false) }
     Block {
         Text(
@@ -97,7 +98,8 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
                 Text(stringResource(R.string.dock_check_updates))
             }
             slots.otherVersion?.let { other ->
-                OutlinedButton(onClick = actions::rollBack, enabled = !busy && !slots.history.isBad(other)) {
+                val live = slots.liveVersion
+                OutlinedButton(onClick = { live?.let(actions::rollBack) }, enabled = live != null && !busy && !slots.history.isBad(other)) {
                     Text(stringResource(R.string.dock_rollback, other))
                 }
             }
@@ -323,7 +325,12 @@ internal fun BackupPage(model: AppModel, actions: AppActions, onBack: () -> Unit
         PassphraseField(passphrase, stringResource(R.string.dock_backup_passphrase)) { passphrase = it }
         Note(stringResource(R.string.dock_backup_rule))
         PassphraseField(again, stringResource(R.string.backup_again)) { again = it }
-        Button(onClick = { actions.saveBackup(passphrase.toCharArray()) }, enabled = ok && again == passphrase && !working) {
+        Button(onClick = {
+            actions.saveBackup(passphrase.toCharArray())
+            // Kept nowhere once handed off: the fields are empty when the file picker closes.
+            passphrase = ""
+            again = ""
+        }, enabled = ok && again == passphrase && !working) {
             Text(stringResource(R.string.dock_backup_save))
         }
     }
@@ -343,6 +350,7 @@ internal fun BackupPage(model: AppModel, actions: AppActions, onBack: () -> Unit
                     TextButton(onClick = {
                         asking = false
                         actions.restoreBackup(passphrase.toCharArray())
+                        passphrase = ""
                     }) { Text(stringResource(R.string.dock_backup_confirm_go)) }
                 },
                 dismissButton = { TextButton(onClick = { asking = false }) { Text(stringResource(R.string.dock_backup_cancel)) } },

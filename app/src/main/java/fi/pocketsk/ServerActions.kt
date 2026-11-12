@@ -13,6 +13,7 @@ import androidx.core.net.toUri
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerEndpoint
 import fi.pocketsk.server.ServerState
@@ -53,8 +54,9 @@ internal object ServerActions {
      * the health gate rolled back on this phone, and was told so.
      */
     fun install(context: Context, runtime: NodeRuntime, source: InstallManager.Source, allowBad: Boolean = false): Boolean {
-        // A reset is emptying `.signalk`, which the new version's trial run copies.
-        if (ResetJob.isRunning) return false
+        // A reset emptying `.signalk`, or a restore writing it, as the new version's trial run
+        // copies it: the trial would run on half of one.
+        if (ResetJob.isRunning || BackupJob.isRunning) return false
         val app = context.applicationContext
         return InstallJob.start(
             InstallManager(app, runtime),

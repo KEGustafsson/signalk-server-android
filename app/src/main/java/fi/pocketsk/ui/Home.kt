@@ -378,7 +378,12 @@ private fun needAction(need: Needs.Need, model: AppModel, actions: AppActions, o
         Needs.Need.BATTERY -> actions.openBatterySettings()
         Needs.Need.PASSAGE_OVERLAY -> actions.openOverlaySettings()
         Needs.Need.SERVER_UPDATE -> serverOffer(model)?.let { actions.install(InstallManager.Source.Registry(it.text)) }
-        Needs.Need.APP_UPDATE -> actions.updateApp()
+        Needs.Need.APP_UPDATE -> {
+            // The page shows the download, the installer's answer and a failure, which this card,
+            // gone once the update starts, cannot.
+            open(Page.APP_UPDATE)
+            actions.updateApp()
+        }
         Needs.Need.INBOX -> actions.takeInbox()
     }
 }

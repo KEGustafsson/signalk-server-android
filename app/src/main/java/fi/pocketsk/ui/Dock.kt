@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -89,6 +90,8 @@ internal fun DockScreen(model: AppModel, actions: AppActions) {
     BackHandler(enabled = page != null || tab != Tab.HOME) {
         if (page != null) page = null else tab = Tab.HOME
     }
+    // npm's versions (a day's copy), so Home can say a newer server is out without a check by hand.
+    LaunchedEffect(Unit) { actions.loadVersions(refresh = false) }
     val needs = Needs.list(needsInput(model))
     Scaffold(
         bottomBar = {
@@ -229,14 +232,14 @@ private fun DevicesTab(model: AppModel, open: (Page) -> Unit) {
             alert = waiting != null,
         )
         RowDivider()
-        val chosen = bluetooth.count { it.chosen }
+        val open = bluetooth.count { it.state == BridgeProtocol.Device.OPEN }
         NavRow(
             stringResource(R.string.bluetooth_title),
             when {
                 !p.bluetooth -> stringResource(R.string.bluetooth_summary_not_allowed)
                 !model.server.isActive -> stringResource(R.string.devices_summary_stopped)
                 bluetooth.isEmpty() -> stringResource(R.string.bluetooth_summary_none)
-                else -> pluralStringResource(R.plurals.bluetooth_summary, bluetooth.size, chosen, bluetooth.size)
+                else -> pluralStringResource(R.plurals.bluetooth_summary, bluetooth.size, open, bluetooth.size)
             },
             onClick = { open(Page.BLUETOOTH) },
         )

@@ -89,7 +89,8 @@ internal object Needs {
         if (input.batteryRestricted && input.serverInstalled) add(Need.BATTERY)
         if (input.passageNeedsOverlay) add(Need.PASSAGE_OVERLAY)
         if (input.serverUpdate && input.idle && input.serverInstalled) add(Need.SERVER_UPDATE)
-        if (input.appUpdate) add(Need.APP_UPDATE)
+        // The installer replaces the app's process, which runs the backup, restore or install.
+        if (input.appUpdate && input.idle) add(Need.APP_UPDATE)
         if (input.inboxFiles > 0 && input.idle) add(Need.INBOX)
     }.sortedBy { it.ordinal }
 

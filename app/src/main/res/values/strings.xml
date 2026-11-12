@@ -455,12 +455,13 @@
     <string name="main_summary_off">Not following one</string>
     <string name="main_summary_following">Following %1$s</string>
     <string name="main_summary_asking">Waiting for %1$s to approve this phone</string>
-    <string name="main_summary_ended">%1$s did not let this phone in</string>
+    <string name="main_summary_ended">Could not follow %1$s</string>
     <plurals name="main_summary_found">
         <item quantity="one">%1$d found on this network</item>
         <item quantity="other">%1$d found on this network</item>
     </plurals>
     <string name="main_found_title">Follow a server</string>
+    <string name="main_own_server">That is this phone\'s own server.</string>
     <string name="main_send_title">What this phone sends it</string>
 
     <!-- Server tab. -->
@@ -496,7 +497,7 @@
     </plurals>
     <string name="reset_summary">Start again from the beginning</string>
     <string name="reset_settings_what">Settings, users, plugins and webapps go; the charts and other data stay.</string>
-    <string name="reset_everything_what">Everything goes, the charts and data too, and the app opens as just installed.</string>
+    <string name="reset_everything_what">Everything goes, the charts and data too. The app closes; opened again, it starts as just installed.</string>
 
     <!-- Phone tab. -->
     <string name="helm_summary_not_allowed">Needs display over other apps</string>
@@ -510,5 +511,6 @@
         <item quantity="one">%1$d to allow</item>
         <item quantity="other">%1$d to allow</item>
     </plurals>
+    <string name="app_update_busy">The app updates once the install, backup, restore or reset running now is done.</string>
     <string name="app_summary_offer">%1$s is out</string>
 </resources>

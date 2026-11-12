@@ -41,8 +41,8 @@ class NeedsTest {
     @Test
     fun nothingThatStartsAnotherJobIsOfferedWhileOneRuns() {
         val busy = Input(idle = false, serverFailed = true, serverUpdate = true, inboxFiles = 2, appUpdate = true)
-        // The app's own update does not touch the server's files; the rest wait.
-        assertEquals(listOf(Need.APP_UPDATE), Needs.list(busy))
+        // Not even the app's own update, whose installer replaces the process running the job.
+        assertEquals(emptyList<Need>(), Needs.list(busy))
     }
 
     @Test

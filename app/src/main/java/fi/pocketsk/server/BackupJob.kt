@@ -3,6 +3,7 @@ package fi.pocketsk.server
 import android.content.Context
 import android.net.Uri
 import fi.pocketsk.bridge.BridgePlugin
+import fi.pocketsk.install.InstallJob
 import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
@@ -66,7 +67,8 @@ internal object BackupJob {
     @Synchronized
     fun save(context: Context, uri: Uri, passphrase: CharArray): Boolean {
         // A reset empties the files a backup reads: one thing at a time touches them.
-        if (isRunning || ResetJob.isRunning) return false.also { passphrase.fill(' ') }
+        // An install's trial run copies `.signalk` as this writes it.
+        if (isRunning || ResetJob.isRunning || InstallJob.isRunning) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = false))
         work(app, restore = false) {
@@ -89,7 +91,8 @@ internal object BackupJob {
     /** Restores the backup at [uri]; false, nothing started, while another runs. Wipes [passphrase]. */
     @Synchronized
     fun restore(context: Context, uri: Uri, passphrase: CharArray): Boolean {
-        if (isRunning || ResetJob.isRunning) return false.also { passphrase.fill(' ') }
+        // An install's trial run copies `.signalk` as this writes it.
+        if (isRunning || ResetJob.isRunning || InstallJob.isRunning) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = true))
         work(app, restore = true) {

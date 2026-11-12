@@ -496,6 +496,11 @@ class MainActivity : ComponentActivity() {
 
     /** Satellite mode: [url] asked for access ([SatelliteJob]), the link handed to the plugin once approved. */
     private fun followServer(url: String, name: String) {
+        // Following this phone's own server is a loop; a typed address can name it.
+        if (Satellite.own(url, ownAddresses())) {
+            Toast.makeText(this, R.string.main_own_server, Toast.LENGTH_LONG).show()
+            return
+        }
         SatelliteJob.follow(this, url, name)
         // Android 17 holds every connection to the boat's network behind Nearby devices.
         askPermissions()
@@ -541,7 +546,7 @@ class MainActivity : ComponentActivity() {
         override fun setAppChecks(on: Boolean) = this@MainActivity.setAppChecks(on)
         override fun install(source: InstallManager.Source, allowBad: Boolean) = this@MainActivity.install(source, allowBad)
         override fun pickTarball() = this@MainActivity.pickTarball()
-        override fun rollBack() = this@MainActivity.rollBack()
+        override fun rollBack(from: String) = this@MainActivity.rollBack(from)
         override fun askPermissions() = this@MainActivity.askPermissions()
         override fun askLocation() = this@MainActivity.askLocation()
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
@@ -811,10 +816,12 @@ class MainActivity : ComponentActivity() {
     private fun pickTarball() = pickFile.launch(TARBALL_TYPES)
 
     /** Back to the other slot's version, by hand: no version is marked bad, and a running server moves to it. */
-    private fun rollBack() {
+    private fun rollBack(from: String) {
         val app = applicationContext
         transportThread("dock-rollback", onError = { e -> ServerStatus.log(app).note("rollback failed: $e") }) {
-            val to = installs.rollback(bad = false, reason = getString(R.string.dock_rollback_reason))
+            // Only from the version the owner saw running: a second tap before the page caught up
+            // would otherwise switch straight back.
+            val to = installs.rollback(bad = false, reason = getString(R.string.dock_rollback_reason), onlyFrom = from)
             ServerStatus.log(app).note(to?.let { "rolled back by hand: slot $it is live" } ?: "nothing to roll back to")
             if (to != null) SignalKService.promoted(app)
             refreshSlots()

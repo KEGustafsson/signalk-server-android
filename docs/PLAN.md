@@ -295,9 +295,11 @@ Published to npm with Signal K keywords so it also appears in the App Store, but
 
 ## 8. Phase 5 — UI
 
-### 8.1 Dock (native Compose, bottom nav tab 1)
+### 8.1 Dock (native Compose; four tabs since §16 16)
 
 **First screen done** (§16 step 9.4, `fi.pocketsk.ui.DockScreen`): Status (state, version and slot, the LAN and on-phone URLs, Start/Stop/Restart, Open the admin UI), Updates (both slots, Check for updates, Install the newest release that is newer and not rolled back as bad — `UpdateOffer`, pure, tested — Roll back to the other slot's version, Reinstall the one running and Other versions, betas and builds among them (§16 15), the newest of the history), Settings (the wizard's permission rows and autostart) and the newest of the log. Uptime, CPU and memory on the Status card are in (§16 10.1), the delta rate (10.2), the Updates card's changelog (10.3), the Logs card's filter and diagnostics bundle (10.4), and the Webapps card with its home-screen shortcuts (10.5, §8.3). The Backup card is in (10.8), the Power card (10.9), and the Reset card (§16 15). The bottom navigation and the tabs came with the redesign (§16 16). The spike screen stays reachable from the Dock as "Runtime checks" until §3's spikes have passed on the phones they name.
+
+*Since §16 16 these are no longer cards on one page: Status is Home's ring, Updates the Server tab's Version page, Devices and Sensors the Devices tab, Power and the helm screen the Phone tab, Logs and Backup the Server tab. The list below is the original design, kept for what each part does.*
 
 - **Status card**: running/stopped, version, uptime, URL(s), CPU/RAM of child process, delta rate.
 - **Updates**: current slot, available versions, "Install", "Rollback to <prev>", install history with pass/fail. Changelog pulled from GitHub releases.
