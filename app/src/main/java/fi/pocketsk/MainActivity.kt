@@ -649,7 +649,10 @@ class MainActivity : ComponentActivity() {
             !run(uri, p) -> {
                 if (created) {
                     try {
-                        DocumentsContract.deleteDocument(contentResolver, uri)
+                        // A provider may answer false rather than throw: the file stayed.
+                        if (!DocumentsContract.deleteDocument(contentResolver, uri)) {
+                            ServerStatus.log(this).note("could not remove the unused backup file: the provider kept it")
+                        }
                     } catch (e: IOException) {
                         // A provider that cannot delete keeps an empty file; the owner was told.
                         ServerStatus.log(this).note("could not remove the unused backup file: $e")
