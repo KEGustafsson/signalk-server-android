@@ -265,12 +265,16 @@ class MainActivity : ComponentActivity() {
         prefs = ServerPrefs(this)
         setContent {
             PocketTheme {
-                Scaffold { padding ->
-                    val inner = Modifier.padding(padding)
-                    when (setupDone) {
-                        null -> Box(inner.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        false -> SetupScreen(model, actions, inner)
-                        true -> DockScreen(model, actions, inner)
+                // The Dock has a scaffold of its own, for its bottom bar.
+                if (setupDone == true) {
+                    DockScreen(model, actions)
+                } else {
+                    Scaffold { padding ->
+                        val inner = Modifier.padding(padding)
+                        when (setupDone) {
+                            false -> SetupScreen(model, actions, inner)
+                            else -> Box(inner.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        }
                     }
                 }
             }

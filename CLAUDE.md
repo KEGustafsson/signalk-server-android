@@ -61,9 +61,13 @@ app/                 the Android app
                      LocalNetwork, WifiLockModes, LegacyPlatform; in src/debug only,
                      SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3: a
                      developer's tool, its button in debug builds' Dock alone)
-  fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Versions (the version chooser, the
-                     wizard's and the Updates card's), Common (sections, permission rows),
-                     AppModel, Theme
+  fi.pocketsk.ui     DockScreen (the bottom bar's four tabs, Home, Devices, Server, Phone, their
+                     rows and the pages they open), Home (the status ring, Needs you, webapps,
+                     the helm strip), DevicePages, ServerPages, PhonePages, SetupScreen,
+                     AlarmScreen, Versions (the version chooser, the wizard's and the Version
+                     page's), Common (blocks, rows, switches, the "How this works" fold,
+                     permission rows), AppModel, Theme; Needs (what Home's "Needs you" lists,
+                     pure, tested)
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      ReleaseNotesSource (GitHub's release notes, a day's cache); Slots, ServerVersion,
                      InstallHistory, HealthGate, UpdateOffer, VersionChoices (the versions the
