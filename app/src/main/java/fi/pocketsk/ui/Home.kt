@@ -1,7 +1,11 @@
 package fi.pocketsk.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.os.Build
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -19,10 +23,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -36,11 +41,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
@@ -81,7 +87,7 @@ internal fun HomeTab(model: AppModel, actions: AppActions, open: (Page) -> Unit)
     }
     StatusRing(model)
     MainAction(model, actions, open)
-    Reach(model, open)
+    AddressCard(model, open)
 }
 
 /** How the server stands, as the ring's colour. */
@@ -226,25 +232,112 @@ private fun MainAction(model: AppModel, actions: AppActions, open: (Page) -> Uni
 }
 
 /**
- * Where the boat reaches the running server: the address a tablet or plotter types, large and
- * selectable, or that only this phone does, with the way to change it.
+ * Where the boat reaches the server: the address a tablet or plotter types, large, on one line,
+ * with a button that copies it, the phone's own address under it; this phone's address in its
+ * place when only the phone reaches the server, or no network is there, with a line saying so;
+ * and, on Home, the row that changes who may reach it. While the server is stopped the address
+ * is shown dimmed and without a port, since the port is the server's own setting, known only
+ * once it runs.
  */
 @Composable
-private fun Reach(model: AppModel, open: (Page) -> Unit) {
-    val running = model.server as? ServerState.Running ?: return
-    Block {
-        // The run's own, not the setting's: a change takes effect with the restart it asks for.
-        val lan = model.lanAddress?.takeIf { running.lan }
-        if (lan != null) {
-            Text(stringResource(R.string.reach_title), style = MaterialTheme.typography.labelLarge)
-            SelectionContainer {
-                Text("http://$lan:${running.port}", style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Monospace)
+internal fun AddressCard(model: AppModel, open: ((Page) -> Unit)?) {
+    val running = model.server as? ServerState.Running
+    // The run's own reach, not the setting's: a change takes effect with the restart it asks for.
+    val lanOn = running?.lan ?: model.lanAccess
+    val lan = model.lanAddress?.takeIf { lanOn }
+    if (running == null && lan == null) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painterResource(if (lan != null) R.drawable.ic_wifi else R.drawable.ic_tab_phone),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    stringResource(if (lan != null) R.string.reach_lan_label else R.string.reach_phone_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
             }
-        } else {
-            Text(stringResource(if (running.lan) R.string.reach_no_network else R.string.reach_phone_only), style = MaterialTheme.typography.labelLarge)
+            // The address a tablet types: the boat's network's, or this phone's own when only it
+            // reaches the server; dimmed, without a port, while the server is stopped.
+            val local = running?.port?.let { ServerActions.localUrl(it).removePrefix("http://") }
+            val shown = when {
+                lan != null -> running?.port?.let { "$lan:$it" } ?: lan
+                else -> local
+            }
+            shown?.let {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (running != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (running != null) CopyButton("http://$it")
+                }
+            }
+            Text(
+                stringResource(
+                    when {
+                        running == null -> R.string.reach_when_running
+                        lan != null -> R.string.reach_type_it
+                        running.lan -> R.string.reach_no_network
+                        else -> R.string.reach_phone_only
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+            // The phone's own address under the boat's, unless it is the one shown already.
+            if (lan != null && local != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp, end = 8.dp)) {
+                    Text(
+                        stringResource(R.string.reach_phone_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(local, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
-        Note(stringResource(R.string.dock_url_phone, ServerActions.localUrl(running.port)))
-        TextButton(onClick = { open(Page.ACCESS) }) { Text(stringResource(R.string.reach_change)) }
+        open?.let { go ->
+            RowDivider()
+            NavRow(
+                stringResource(R.string.access_title),
+                stringResource(if (model.lanAccess) R.string.access_lan else R.string.access_phone),
+                onClick = { go(Page.ACCESS) },
+            )
+        }
+    }
+}
+
+/**
+ * Copies the address for pasting into a tablet's browser or a message. Android 13 and later show
+ * their own confirmation of a copy; below that the app says it, as Android asks.
+ */
+@Composable
+private fun CopyButton(url: String) {
+    val context = LocalContext.current
+    IconButton(onClick = {
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(url, url))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(context, R.string.reach_copied, Toast.LENGTH_SHORT).show()
+        }
+    }) {
+        Icon(painterResource(R.drawable.ic_copy), contentDescription = stringResource(R.string.reach_copy), tint = MaterialTheme.colorScheme.primary)
     }
 }
 

@@ -58,8 +58,6 @@
     <string name="dock_uptime">Up %1$s</string>
     <string name="dock_running_on_trial">Running %1$s, watched for its first minutes</string>
     <string name="dock_failed">Stopped: %1$s</string>
-    <string name="dock_url_lan">On the boat\'s network: %1$s</string>
-    <string name="dock_url_phone">On this phone: %1$s</string>
     <string name="dock_missing_title">Missing Android builds</string>
     <string name="dock_missing_text">These native addons were installed without an Android build, so the plugins that need them will not load:</string>
     <string name="dock_missing_package">%1$s %2$s</string>
@@ -69,7 +67,8 @@
     <string name="dock_satellite_why">If the boat has a Signal K server of its own, this phone\'s server can follow it: the boat\'s data comes in from it, the webapps here show it, and they keep the phone\'s own data if the Wi-Fi drops.</string>
     <string name="dock_satellite_none">No other Signal K server found on this network.</string>
     <string name="dock_satellite_follow">Follow</string>
-    <string name="dock_satellite_address">Or its address, e.g. 192.168.1.9:3000</string>
+    <string name="dock_satellite_address">Or type its address</string>
+    <string name="dock_satellite_address_example">192.168.1.9:3000</string>
     <string name="dock_satellite_bad_address">A plain http address of a Signal K server</string>
     <string name="dock_satellite_reaching">Trying to reach %1$s…</string>
     <string name="dock_satellite_asked">Asked %1$s for access. On its admin UI, approve this phone\'s request under Security, Access Requests.</string>
@@ -188,6 +187,7 @@
     <string name="dock_webapps_title">Webapps</string>
     <string name="dock_webapps_none">No webapps installed. Freeboard-SK, KIP and others are in the admin UI\'s App Store.</string>
     <string name="dock_webapps_pin">Home screen</string>
+    <string name="webapps_opens">Opens in the browser</string>
     <string name="webapps_summary_none">None installed yet</string>
     <string name="dock_webapps_pin_none">This home screen does not take shortcuts</string>
     <string name="dock_log_title">Log</string>
@@ -395,10 +395,14 @@
     <string name="usage_deltas">%1$s updates a second</string>
     <string name="home_start">Start the server</string>
     <string name="home_install">Install the server</string>
-    <string name="reach_title">Tablets and plotters on the boat\'s network open</string>
-    <string name="reach_no_network">The phone is on no network the boat can reach it on.</string>
-    <string name="reach_phone_only">Only this phone reaches the server.</string>
-    <string name="reach_change">Who can reach it</string>
+    <string name="reach_lan_label">On the boat\'s network</string>
+    <string name="reach_phone_label">On this phone</string>
+    <string name="reach_type_it">Open it in any browser on board.</string>
+    <string name="reach_when_running">Tablets and plotters reach the server here once it runs.</string>
+    <string name="reach_copy">Copy the address</string>
+    <string name="reach_copied">Address copied</string>
+    <string name="reach_no_network">The phone is on no network the boat can reach it on: join the boat\'s Wi-Fi or turn on the hotspot.</string>
+    <string name="reach_phone_only">Only this phone reaches the server: tablets and plotters on board cannot.</string>
 
     <!-- Home: Needs you, only what wants a tap now. -->
 
@@ -450,7 +454,6 @@
     <string name="access_lan">The boat\'s network</string>
     <string name="access_phone">This phone only</string>
     <string name="access_restarts">The server restarts to take a change.</string>
-    <string name="access_addresses">Its addresses now</string>
     <string name="data_title">Where the data is</string>
     <string name="data_summary">%1$s · %2$s</string>
     <string name="data_free">%1$s free</string>

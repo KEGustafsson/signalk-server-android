@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,19 +43,18 @@ internal fun HelmPage(model: AppModel, actions: AppActions, onBack: () -> Unit) 
         Explain(stringResource(R.string.dock_helm_body))
         return
     }
+    // One block, a hairline between its three switches, each slider under its own switch.
     Block {
         SwitchRow(stringResource(R.string.dock_helm_filter), night.filter) { actions.setNight(model.night.copy(filter = it)) }
         if (night.filter) {
             PercentSlider(stringResource(R.string.dock_helm_strength, night.strength), night.strength, 0) { actions.setNight(model.night.copy(strength = it)) }
         }
-    }
-    Block {
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHighest)
         SwitchRow(stringResource(R.string.dock_helm_dim), night.dim) { actions.setNight(model.night.copy(dim = it)) }
         if (night.dim) {
             PercentSlider(stringResource(R.string.dock_helm_brightness, night.brightness), night.brightness, 1) { actions.setNight(model.night.copy(brightness = it)) }
         }
-    }
-    Block {
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainerHighest)
         SwitchRow(stringResource(R.string.dock_helm_keep_on), night.keepOn) { actions.setNight(model.night.copy(keepOn = it)) }
     }
     Explain(stringResource(R.string.dock_helm_body))
