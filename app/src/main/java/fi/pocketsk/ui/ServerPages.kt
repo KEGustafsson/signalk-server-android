@@ -1,12 +1,19 @@
 package fi.pocketsk.ui
 
 import android.text.format.Formatter
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,11 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.R
-import fi.pocketsk.ServerActions
 import fi.pocketsk.install.InstallHistory
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.install.ReleaseNotes
@@ -85,7 +92,7 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
         val offer = serverOffer(model)
         when (model.available) {
             is Available.Loaded -> offer?.let { v ->
-                Button(onClick = { actions.install(InstallManager.Source.Registry(v.text)) }, enabled = !busy) {
+                Button(onClick = { actions.install(InstallManager.Source.Registry(v.text)) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.dock_install, v.text))
                 }
             } ?: Note(stringResource(R.string.dock_up_to_date))
@@ -94,19 +101,20 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
             Available.Unknown -> Unit
         }
         offer?.let { WhatsNew(model.notes, slots.liveVersion, it, actions) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { actions.loadVersions(refresh = true) }, enabled = model.available != Available.Loading) {
+        // One under another, the width of the block: three actions of one kind, read top to bottom.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            OutlinedButton(onClick = { actions.loadVersions(refresh = true) }, enabled = model.available != Available.Loading, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.dock_check_updates))
             }
             slots.otherVersion?.let { other ->
                 val live = slots.live
-                OutlinedButton(onClick = { live?.let(actions::rollBack) }, enabled = live != null && !busy && !slots.history.isBad(other)) {
+                OutlinedButton(onClick = { live?.let(actions::rollBack) }, enabled = live != null && !busy && !slots.history.isBad(other), modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.dock_rollback, other))
                 }
             }
             // Only a version npm can name can be fetched again: a build from a file cannot.
             slots.liveVersion?.takeIf { ServerVersion.parse(it) != null }?.let { live ->
-                OutlinedButton(onClick = { reinstalling = true }, enabled = !busy) { Text(stringResource(R.string.versions_reinstall, live)) }
+                OutlinedButton(onClick = { reinstalling = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.versions_reinstall, live)) }
             }
         }
     }
@@ -115,7 +123,7 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
         Note(stringResource(R.string.versions_other_text))
         var choosing by rememberSaveable { mutableStateOf(false) }
         if (!choosing) {
-            OutlinedButton(onClick = { choosing = true }) { Text(stringResource(R.string.versions_open)) }
+            OutlinedButton(onClick = { choosing = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.versions_open)) }
         } else {
             VersionChooser(model, actions, live = slots.liveVersion, kept = slots.otherVersion, history = slots.history) { source, allowBad ->
                 choosing = false
@@ -230,12 +238,7 @@ internal fun AccessPage(model: AppModel, actions: AppActions, onBack: () -> Unit
         }
         if (model.server.isActive) Note(stringResource(R.string.access_restarts))
     }
-    (model.server as? ServerState.Running)?.let { running ->
-        Section(stringResource(R.string.access_addresses)) {
-            if (running.lan) model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:${running.port}")) }
-            Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(running.port)))
-        }
-    }
+    AddressCard(model, open = null)
 }
 
 /**
@@ -549,3 +552,50 @@ private const val NOTE_RELEASES = 10
 
 /** A release's lines shown: the head of a long list of changes, the rest counted. */
 private const val NOTE_LINES = 12
+
+/**
+ * The webapps installed (docs/PLAN.md §8.3): a tap opens one in the browser, a stopped
+ * server started first; with a launcher that takes them, each can be pinned to the home screen,
+ * where one tap does the same ([fi.pocketsk.WebappShortcuts]). A row each, the tap on it the
+ * open, the button the pin. On the Server tab: the App Store
+ * installs them into the server, beside its plugins, and the server serves them.
+ */
+@Composable
+internal fun WebappsPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
+    PageHeader(stringResource(R.string.dock_webapps_title), onBack)
+    val webapps = model.webapps ?: return
+    if (webapps.isEmpty()) {
+        Note(stringResource(R.string.dock_webapps_none))
+        return
+    }
+    RowGroup {
+        webapps.forEachIndexed { i, w ->
+            if (i > 0) RowDivider()
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(role = Role.Button) { actions.openWebapp(w.name) }
+                    .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+                ) {
+                    Text(
+                        // A mark, not words: the first letter, upper case by Unicode alone.
+                        w.title.trim().take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(w.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Text(stringResource(R.string.webapps_opens), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (model.canPin) {
+                    TextButton(onClick = { actions.pinWebapp(w.name) }) { Text(stringResource(R.string.dock_webapps_pin)) }
+                }
+            }
+        }
+    }
+}
+

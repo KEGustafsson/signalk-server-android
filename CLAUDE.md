@@ -62,11 +62,11 @@ app/                 the Android app
                      SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3: a
                      developer's tool, its button in debug builds' Dock alone)
   fi.pocketsk.ui     DockScreen (the bottom bar's four tabs, Home, Devices, Server, Phone, their
-                     rows and the pages they open), Home (the status ring, Needs you, webapps,
-                     the helm strip), DevicePages, ServerPages, PhonePages, SetupScreen,
-                     AlarmScreen, Versions (the version chooser, the wizard's and the Version
+                     rows and the pages they open), Home (the status ring, the main action, the
+                     address: install, start, stop), DevicePages, ServerPages (the webapps'
+                     tiles among them), PhonePages, SetupScreen, AlarmScreen, Versions (the version chooser, the wizard's and the Version
                      page's), Common (blocks, rows, switches, the "How this works" fold,
-                     permission rows), AppModel, Theme; Needs (what Home's "Needs you" lists,
+                     permission rows), AppModel, Theme; Needs (what wants the owner: the tabs' dots,
                      pure, tested)
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      ReleaseNotesSource (GitHub's release notes, a day's cache); Slots, ServerVersion,

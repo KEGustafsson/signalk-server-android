@@ -1,5 +1,6 @@
 package fi.pocketsk.ui
 
+import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
@@ -28,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -44,7 +46,7 @@ import fi.pocketsk.update.AppUpdater
 
 /**
  * The Dock's four places, in the bottom bar (docs/PLAN.md §8.1, §16 16): Home, what the server is
- * doing and what needs the owner; Devices, what feeds it; Server, its versions, reach, data,
+ * doing and its one action; Devices, what feeds it; Server, its versions, webapps, reach, data,
  * backups, log and reset; Phone, what the phone does for it.
  */
 internal enum class Tab(@StringRes val label: Int, @DrawableRes val icon: Int) {
@@ -67,6 +69,7 @@ internal enum class Page(val tab: Tab) {
     LOG(Tab.SERVER),
     MISSING(Tab.SERVER),
     RESET(Tab.SERVER),
+    WEBAPPS(Tab.SERVER),
     HELM(Tab.PHONE),
     POWER(Tab.PHONE),
     PERMISSIONS(Tab.PHONE),
@@ -76,8 +79,8 @@ internal enum class Page(val tab: Tab) {
 /**
  * The Dock (docs/PLAN.md §8.1): the bottom bar's four tabs, each a short list, each row opening a
  * page with one subject on it. Back goes from a page to its tab, and from a tab to Home. A tab
- * with something in it that wants the owner carries a dot, the same things Home lists under
- * "Needs you".
+ * with something in it that wants the owner ([Needs]) carries a dot, and the row that deals with
+ * it is marked; Home stays the server's state and its one action alone, as the owner asked.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions) {
@@ -97,7 +100,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions) {
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 for (t in Tab.entries) {
-                    val dot = t != Tab.HOME && needs.any { needTab(it) == t }
+                    val dot = needs.any { needTab(it) == t }
                     NavigationBarItem(
                         selected = tab == t,
                         onClick = {
@@ -128,7 +131,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions) {
                 val back = { page = null }
                 when (val p = place.page) {
                     null -> when (place.tab) {
-                        Tab.HOME -> HomeTab(model, actions, needs, open)
+                        Tab.HOME -> HomeTab(model, actions, open)
                         Tab.DEVICES -> DevicesTab(model, open)
                         Tab.SERVER -> ServerTab(model, open)
                         Tab.PHONE -> PhoneTab(model, open)
@@ -144,6 +147,7 @@ internal fun DockScreen(model: AppModel, actions: AppActions) {
                     Page.LOG -> LogPage(model, actions, back)
                     Page.MISSING -> MissingPage(model, actions, back)
                     Page.RESET -> ResetPage(model, actions, back)
+                    Page.WEBAPPS -> WebappsPage(model, actions, back)
                     Page.HELM -> HelmPage(model, actions, back)
                     Page.POWER -> PowerPage(model, actions, back)
                     Page.PERMISSIONS -> PermissionsPage(model, actions, back)
@@ -262,7 +266,7 @@ private fun DevicesTab(model: AppModel, open: (Page) -> Unit) {
     }
 }
 
-/** Server: its version, who reaches it, where its data is, its backups, its log; the reset apart, last. */
+/** Server: its version, its webapps, who reaches it, where its data is, its backups, its log; the reset apart, last. */
 @Composable
 private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
     TabHeader(stringResource(R.string.tab_server))
@@ -284,6 +288,17 @@ private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
             accent = offer != null,
         )
         RowDivider()
+        val webapps = model.webapps
+        NavRow(
+            stringResource(R.string.dock_webapps_title),
+            when {
+                webapps == null -> null
+                webapps.isEmpty() -> stringResource(R.string.webapps_summary_none)
+                else -> webapps.joinToString(", ") { it.title }
+            },
+            onClick = { open(Page.WEBAPPS) },
+        )
+        RowDivider()
         NavRow(
             stringResource(R.string.access_title),
             stringResource(if (model.lanAccess) R.string.access_lan else R.string.access_phone),
@@ -292,11 +307,14 @@ private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
         RowDivider()
         val storage = model.storage
         val missing = storage?.chosen != null && storage.volumes.none { it.mounted && it.uuid == storage.chosen }
+        val inbox = storage?.inbox?.takeIf { it.files > 0 }
         NavRow(
             stringResource(R.string.data_title),
             when {
                 storage == null -> null
                 missing -> stringResource(R.string.dock_storage_missing, storage.chosenName ?: storage.chosen.orEmpty())
+                // Files a computer copied over USB wait for the page's Take them in.
+                inbox != null -> pluralStringResource(R.plurals.dock_inbox_waiting, inbox.files, inbox.files, Formatter.formatShortFileSize(LocalContext.current, inbox.bytes))
                 storage.chosen == null -> stringResource(R.string.data_summary, stringResource(R.string.dock_storage_phone), freeText(storage.phoneFree))
                 else -> storage.volumes.firstOrNull { it.uuid == storage.chosen }?.let {
                     stringResource(R.string.data_summary, it.name, freeText(it.free))
@@ -304,6 +322,7 @@ private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
             },
             onClick = { open(Page.DATA) },
             alert = missing,
+            accent = inbox != null,
         )
         RowDivider()
         NavRow(stringResource(R.string.backup_title), backupSummary(model.backup), onClick = { open(Page.BACKUP) })
@@ -359,13 +378,19 @@ private fun PhoneTab(model: AppModel, open: (Page) -> Unit) {
             onClick = { open(Page.HELM) },
         )
         RowDivider()
-        NavRow(stringResource(R.string.dock_power_title), stringResource(powerName(model.power)), onClick = { open(Page.POWER) })
+        NavRow(
+            stringResource(R.string.dock_power_title),
+            stringResource(powerName(model.power)),
+            onClick = { open(Page.POWER) },
+            // Passage dims through the helm screen's overlay, which the phone has not allowed.
+            alert = model.power == PowerProfile.PASSAGE && !model.nightAllowed,
+        )
         RowDivider()
         NavRow(
             stringResource(R.string.permissions_title),
             if (toAllow == 0) stringResource(R.string.permissions_summary_all) else pluralStringResource(R.plurals.permissions_summary, toAllow, toAllow),
             onClick = { open(Page.PERMISSIONS) },
-            alert = p.notifications == false || p.localNetwork == false,
+            alert = p.notifications == false || p.localNetwork == false || !p.batteryUnrestricted,
         )
         model.app?.let { app ->
             RowDivider()

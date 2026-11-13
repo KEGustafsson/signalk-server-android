@@ -4,6 +4,7 @@ import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -187,11 +188,13 @@ internal fun MainServerPage(model: AppModel, actions: AppActions, onBack: () -> 
                 }
                 var typed by rememberSaveable { mutableStateOf("") }
                 val url = SignalKUrl.normalise(typed)?.takeIf { Satellite.target(it) != null }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // The field the block's width, so its label fits on a line; the button under it.
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = typed,
                         onValueChange = { typed = it },
                         label = { Text(stringResource(R.string.dock_satellite_address)) },
+                        placeholder = { Text(stringResource(R.string.dock_satellite_address_example)) },
                         isError = typed.isNotBlank() && url == null,
                         supportingText = if (typed.isNotBlank() && url == null) {
                             { Text(stringResource(R.string.dock_satellite_bad_address)) }
@@ -200,9 +203,9 @@ internal fun MainServerPage(model: AppModel, actions: AppActions, onBack: () -> 
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    TextButton(onClick = { url?.let { actions.followServer(it, SignalKUrl.describe(it)) } }, enabled = url != null) {
+                    Button(onClick = { url?.let { actions.followServer(it, SignalKUrl.describe(it)) } }, enabled = url != null, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.dock_satellite_follow))
                     }
                 }
