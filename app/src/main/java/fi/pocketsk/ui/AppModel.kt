@@ -98,6 +98,22 @@ internal class AppModel {
     /** A reset runs: nothing else may touch the server's files meanwhile. */
     val resetting: Boolean get() = reset.let { it is ResetJob.State.Stopping || it is ResetJob.State.Working }
 
+    /** The app's update is downloading or with the installer, which ends this process when it commits. */
+    val appUpdating: Boolean get() = app.let { it is AppUpdater.State.Downloading || it is AppUpdater.State.Installing }
+
+    /**
+     * Something runs that the others must wait for: an install, a backup or restore, a reset, or
+     * the app's own update. One at a time, as the jobs themselves enforce; the screens disable
+     * what would be refused rather than let it fail.
+     */
+    val busy: Boolean get() = installing || resetting || backup is BackupJob.State.Working || appUpdating || installerStuck
+
+    /**
+     * An earlier run's app update may still be with Android's installer, which could not be
+     * cleared ([fi.pocketsk.update.AppUpdater.staleSession]): the server's jobs wait for it.
+     */
+    var installerStuck by mutableStateOf(false)
+
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
     var tarballName by mutableStateOf<String?>(null)
@@ -180,12 +196,16 @@ internal interface AppActions {
     fun updateApp()
     /** The app's own release on offer, on GitHub in the browser. */
     fun openAppRelease()
+    /** Looks for a newer build of the app now, GitHub asked afresh, the daily look on or not. */
+    fun checkAppUpdate()
+
     /** Turns the Dock's daily look for a newer build of the app on or off. */
     fun setAppChecks(on: Boolean)
     /** Installs [source]; [allowBad] when the owner picked a version the health gate rolled back here, and was told so. */
     fun install(source: InstallManager.Source, allowBad: Boolean = false)
     fun pickTarball()
-    fun rollBack()
+    /** Makes the version kept live again, if [fromSlot] is still the slot live: a second tap before the page catches up does nothing. */
+    fun rollBack(fromSlot: String)
     fun askPermissions()
     fun askLocation()
     fun openBatterySettings()

@@ -9,7 +9,7 @@ pipeline and several files were lifted (PLAN §17).
 
 ## Stack
 - Android Gradle Plugin 9.4 with its built-in Kotlin (the Kotlin Android plugin is applied nowhere;
-  the root build puts Kotlin 2.4 on the build classpath), Gradle 9.8, compileSdk 37, minSdk 29,
+  the root build puts Kotlin 2.4 on the build classpath), Gradle 9.9, compileSdk 37, minSdk 29,
   targetSdk 37, JDK 17 (a real toolchain: Gradle will not download one). R8 shrinks release builds
   with names kept. Dependabot keeps AndroidX current; the toolchain is moved by hand.
 - No third-party libraries beyond AndroidX (Compose among them, from its BOM, for the Dock) and
@@ -61,9 +61,13 @@ app/                 the Android app
                      LocalNetwork, WifiLockModes, LegacyPlatform; in src/debug only,
                      SpikeActivity + SpikeInstall (the runtime checks, spikes R1–R3: a
                      developer's tool, its button in debug builds' Dock alone)
-  fi.pocketsk.ui     DockScreen, SetupScreen, AlarmScreen, Versions (the version chooser, the
-                     wizard's and the Updates card's), Common (sections, permission rows),
-                     AppModel, Theme
+  fi.pocketsk.ui     DockScreen (the bottom bar's four tabs, Home, Devices, Server, Phone, their
+                     rows and the pages they open), Home (the status ring, Needs you, webapps,
+                     the helm strip), DevicePages, ServerPages, PhonePages, SetupScreen,
+                     AlarmScreen, Versions (the version chooser, the wizard's and the Version
+                     page's), Common (blocks, rows, switches, the "How this works" fold,
+                     permission rows), AppModel, Theme; Needs (what Home's "Needs you" lists,
+                     pure, tested)
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      ReleaseNotesSource (GitHub's release notes, a day's cache); Slots, ServerVersion,
                      InstallHistory, HealthGate, UpdateOffer, VersionChoices (the versions the

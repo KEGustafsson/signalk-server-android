@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.widget.Toast
@@ -166,6 +167,9 @@ class MainActivity : ComponentActivity() {
     private val appUpdateObserver = AppUpdater.Observer { state ->
         runOnUiThread {
             model.app = state
+            // An update started here tries the old session's cleanup again first: whatever it
+            // found shows at once, not only at the next return to the app.
+            model.installerStuck = AppUpdater.staleSession
             showInstallConfirmation()
         }
     }
@@ -250,7 +254,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPassphrase: CharArray? = null
 
     private val createBackup = registerForActivityResult(ActivityResultContracts.CreateDocument(BACKUP_TYPE)) { uri ->
-        withPassphrase(uri) { u, p -> BackupJob.save(this, u, p) }
+        withPassphrase(uri, created = true) { u, p -> BackupJob.save(this, u, p) }
     }
 
     private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -265,12 +269,16 @@ class MainActivity : ComponentActivity() {
         prefs = ServerPrefs(this)
         setContent {
             PocketTheme {
-                Scaffold { padding ->
-                    val inner = Modifier.padding(padding)
-                    when (setupDone) {
-                        null -> Box(inner.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        false -> SetupScreen(model, actions, inner)
-                        true -> DockScreen(model, actions, inner)
+                // The Dock has a scaffold of its own, for its bottom bar.
+                if (setupDone == true) {
+                    DockScreen(model, actions)
+                } else {
+                    Scaffold { padding ->
+                        val inner = Modifier.padding(padding)
+                        when (setupDone) {
+                            false -> SetupScreen(model, actions, inner)
+                            else -> Box(inner.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        }
                     }
                 }
             }
@@ -336,6 +344,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // An earlier run's update the installer would not give up: tried again, and the Dock
+        // told whether the server's jobs still wait for it.
+        AppUpdater.updating(this)
+        model.installerStuck = AppUpdater.staleSession
         // Settings opened from here (battery, an app permission) may have changed something.
         refreshPermissions()
         refreshAddress()
@@ -492,6 +504,11 @@ class MainActivity : ComponentActivity() {
 
     /** Satellite mode: [url] asked for access ([SatelliteJob]), the link handed to the plugin once approved. */
     private fun followServer(url: String, name: String) {
+        // Following this phone's own server is a loop; a typed address can name it.
+        if (Satellite.own(url, ownAddresses())) {
+            Toast.makeText(this, R.string.main_own_server, Toast.LENGTH_LONG).show()
+            return
+        }
         SatelliteJob.follow(this, url, name)
         // Android 17 holds every connection to the boat's network behind Nearby devices.
         askPermissions()
@@ -534,10 +551,14 @@ class MainActivity : ComponentActivity() {
         override fun openReleases() = this@MainActivity.openReleases()
         override fun updateApp() = this@MainActivity.updateApp()
         override fun openAppRelease() = this@MainActivity.openAppRelease()
+        override fun checkAppUpdate() {
+            if (selfUpdates) AppUpdater.check(this@MainActivity, maxAgeMs = 0)
+        }
+
         override fun setAppChecks(on: Boolean) = this@MainActivity.setAppChecks(on)
         override fun install(source: InstallManager.Source, allowBad: Boolean) = this@MainActivity.install(source, allowBad)
         override fun pickTarball() = this@MainActivity.pickTarball()
-        override fun rollBack() = this@MainActivity.rollBack()
+        override fun rollBack(fromSlot: String) = this@MainActivity.rollBack(fromSlot)
         override fun askPermissions() = this@MainActivity.askPermissions()
         override fun askLocation() = this@MainActivity.askLocation()
         override fun openBatterySettings() = this@MainActivity.openBatterySettings()
@@ -628,13 +649,31 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Hands the picked file and the passphrase held for it to [run]; a cancelled pick wipes the passphrase. */
-    private fun withPassphrase(uri: Uri?, run: (Uri, CharArray) -> Unit) {
+    private fun withPassphrase(uri: Uri?, created: Boolean = false, run: (Uri, CharArray) -> Boolean) {
         val p = pendingPassphrase
         pendingPassphrase = null
         when {
             uri == null -> p?.fill(' ')
             p == null -> Toast.makeText(this, R.string.dock_backup_again_please, Toast.LENGTH_LONG).show()
-            else -> run(uri, p)
+            // Refused: an install, a reset or the app's update began while the picker was open.
+            // The file a new backup was to go in is empty, and is removed rather than left there.
+            !run(uri, p) -> {
+                if (created) {
+                    try {
+                        // A provider may answer false rather than throw: the file stayed.
+                        if (!DocumentsContract.deleteDocument(contentResolver, uri)) {
+                            ServerStatus.log(this).note("could not remove the unused backup file: the provider kept it")
+                        }
+                    } catch (e: IOException) {
+                        // A provider that cannot delete keeps an empty file; the owner was told.
+                        ServerStatus.log(this).note("could not remove the unused backup file: $e")
+                    } catch (e: RuntimeException) {
+                        // Refused or unsupported by the provider: the same.
+                        ServerStatus.log(this).note("could not remove the unused backup file: $e")
+                    }
+                }
+                Toast.makeText(this, R.string.backup_busy, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -807,10 +846,12 @@ class MainActivity : ComponentActivity() {
     private fun pickTarball() = pickFile.launch(TARBALL_TYPES)
 
     /** Back to the other slot's version, by hand: no version is marked bad, and a running server moves to it. */
-    private fun rollBack() {
+    private fun rollBack(fromSlot: String) {
         val app = applicationContext
         transportThread("dock-rollback", onError = { e -> ServerStatus.log(app).note("rollback failed: $e") }) {
-            val to = installs.rollback(bad = false, reason = getString(R.string.dock_rollback_reason))
+            // Only from the slot the owner saw live: a second tap before the page caught up would
+            // otherwise switch straight back, the same version in both slots or not.
+            val to = installs.rollback(bad = false, reason = getString(R.string.dock_rollback_reason), onlyFromSlot = fromSlot)
             ServerStatus.log(app).note(to?.let { "rolled back by hand: slot $it is live" } ?: "nothing to roll back to")
             if (to != null) SignalKService.promoted(app)
             refreshSlots()

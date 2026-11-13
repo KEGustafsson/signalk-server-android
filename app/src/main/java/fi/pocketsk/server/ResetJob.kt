@@ -6,6 +6,7 @@ import fi.pocketsk.install.InstallJob
 import fi.pocketsk.net.Failure
 import fi.pocketsk.net.transportThread
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.update.AppUpdater
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArraySet
@@ -134,7 +135,8 @@ internal object ResetJob {
     private fun begin(context: Context, kind: Kind, body: (Context) -> State): Boolean {
         if (isRunning) return false
         val app = context.applicationContext
-        if (InstallJob.isRunning || BackupJob.isRunning) {
+        // The app's update ends the process, and the reset with it.
+        if (InstallJob.isRunning || BackupJob.isRunning || AppUpdater.updating(context)) {
             publish(State.Failed(kind, Why.BUSY))
             return true
         }

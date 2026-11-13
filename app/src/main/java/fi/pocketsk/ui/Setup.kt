@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -43,6 +44,10 @@ internal fun SetupScreen(model: AppModel, actions: AppActions, modifier: Modifie
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.headlineSmall)
+        // Where in the wizard the owner is, so its length is known from its first page.
+        val steps = SetupStep.entries.size
+        LinearProgressIndicator(progress = { (step.ordinal + 1f) / steps }, modifier = Modifier.fillMaxWidth())
+        Note(stringResource(R.string.setup_step, step.ordinal + 1, steps))
         when (step) {
             SetupStep.WELCOME -> WelcomePage(onNext = { step = SetupStep.VERSION })
             SetupStep.VERSION -> VersionPage(model, actions, onInstall = { step = SetupStep.INSTALL })

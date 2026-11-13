@@ -4,6 +4,7 @@ import android.app.Application
 import fi.pocketsk.night.NightFilter
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
+import fi.pocketsk.update.AppUpdater
 import fi.pocketsk.widget.BoatWidget
 
 /**
@@ -28,5 +29,8 @@ class App : Application() {
             }
         }
         night.apply()
+        // Before any screen or job: an earlier run's update, still with the installer, would end
+        // a backup, restore or reset this run starts.
+        AppUpdater.abandonStale(this)
     }
 }

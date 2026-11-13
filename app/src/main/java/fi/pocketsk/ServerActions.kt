@@ -13,12 +13,14 @@ import androidx.core.net.toUri
 import fi.pocketsk.install.InstallJob
 import fi.pocketsk.install.InstallManager
 import fi.pocketsk.node.NodeRuntime
+import fi.pocketsk.server.BackupJob
 import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerEndpoint
 import fi.pocketsk.server.ServerState
 import fi.pocketsk.server.ServerStatus
 import fi.pocketsk.server.SignalKService
 import fi.pocketsk.signalk.Webapps
+import fi.pocketsk.update.AppUpdater
 
 /** What the Dock, the setup wizard and the runtime checks do to the server, written once. */
 internal object ServerActions {
@@ -53,8 +55,11 @@ internal object ServerActions {
      * the health gate rolled back on this phone, and was told so.
      */
     fun install(context: Context, runtime: NodeRuntime, source: InstallManager.Source, allowBad: Boolean = false): Boolean {
-        // A reset is emptying `.signalk`, which the new version's trial run copies.
-        if (ResetJob.isRunning) return false
+        // A reset emptying `.signalk`, or a restore writing it, as the new version's trial run
+        // copies it: the trial would run on half of one.
+        if (ResetJob.isRunning || BackupJob.isRunning) return false
+        // The app's update ends the process the install runs in.
+        if (AppUpdater.updating(context)) return false
         val app = context.applicationContext
         return InstallJob.start(
             InstallManager(app, runtime),

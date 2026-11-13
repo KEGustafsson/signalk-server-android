@@ -1,1040 +1,391 @@
 package fi.pocketsk.ui
 
-import android.text.format.DateUtils
-import android.text.format.Formatter
+import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
-import fi.pocketsk.ServerActions
 import fi.pocketsk.bridge.BridgeProtocol
-import fi.pocketsk.install.InstallHistory
-import fi.pocketsk.install.InstallManager
-import fi.pocketsk.install.MissingBuilds
-import fi.pocketsk.install.ReleaseNotes
-import fi.pocketsk.install.ServerVersion
 import fi.pocketsk.install.UpdateOffer
-import fi.pocketsk.night.NightSettings
 import fi.pocketsk.power.PowerProfile
-import fi.pocketsk.satellite.Satellite
 import fi.pocketsk.satellite.SatelliteJob
-import fi.pocketsk.server.Backup
 import fi.pocketsk.server.BackupJob
-import fi.pocketsk.server.DataVolumes
-import fi.pocketsk.server.LogFilter
-import fi.pocketsk.server.ResetJob
 import fi.pocketsk.server.ServerState
-import fi.pocketsk.server.ServerUsage
-import fi.pocketsk.signalk.SignalKUrl
-import fi.pocketsk.update.AppRelease
 import fi.pocketsk.update.AppUpdater
-import java.text.DateFormat
-import java.util.Date
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /**
- * The Dock's first screen (docs/PLAN.md §8.1): the server's state and its address, updates and
- * rollback, the webapps installed, the helm screen (night filter, dimming, the screen kept on), the
- * boat's alarms while there are any, what the phone grants it, the phone's sensors, its serial
- * devices, where the data is and its log with the diagnostics bundle. The Power and Backup cards
- * come with their own steps.
+ * The Dock's four places, in the bottom bar (docs/PLAN.md §8.1, §16 16): Home, what the server is
+ * doing and what needs the owner; Devices, what feeds it; Server, its versions, reach, data,
+ * backups, log and reset; Phone, what the phone does for it.
  */
-@Composable
-internal fun DockScreen(model: AppModel, actions: AppActions, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            // A developer's tool (spikes R1–R3), in debug builds only.
-            if (BuildConfig.DEBUG) {
-                TextButton(onClick = actions::openRuntimeChecks) { Text(stringResource(R.string.dock_runtime_checks)) }
-            }
-        }
-        if (model.alarms.alarms.isNotEmpty()) {
-            Section(stringResource(R.string.dock_alarms_title)) { AlarmRows(model.alarms, actions::silenceAlarm) }
-        }
-        StatusCard(model, actions)
-        if (model.missingBuilds.isNotEmpty()) MissingBuildsCard(model.missingBuilds, actions)
-        SatelliteCard(model, actions)
-        WebappsCard(model, actions)
-        HelmCard(model, actions)
-        PowerCard(model, actions)
-        UpdatesCard(model, actions)
-        model.app?.let { AppUpdateCard(it, model, actions) }
-        Section(stringResource(R.string.dock_settings_title)) { PermissionRows(model.permissions, actions) }
-        SensorsCard(model, actions)
-        DevicesCard(model, actions)
-        StorageCard(model, actions)
-        BackupCard(model, actions)
-        ResetCard(model, actions)
-        LogsCard(model, actions)
-        Text(
-            stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
+internal enum class Tab(@StringRes val label: Int, @DrawableRes val icon: Int) {
+    HOME(R.string.tab_home, R.drawable.ic_tab_home),
+    DEVICES(R.string.tab_devices, R.drawable.ic_tab_devices),
+    SERVER(R.string.tab_server, R.drawable.ic_tab_server),
+    PHONE(R.string.tab_phone, R.drawable.ic_tab_phone),
+}
+
+/** A page of its own, one subject each, opened from a row of [tab] or from a card on Home. */
+internal enum class Page(val tab: Tab) {
+    SENSORS(Tab.DEVICES),
+    USB(Tab.DEVICES),
+    BLUETOOTH(Tab.DEVICES),
+    MAIN_SERVER(Tab.DEVICES),
+    VERSIONS(Tab.SERVER),
+    ACCESS(Tab.SERVER),
+    DATA(Tab.SERVER),
+    BACKUP(Tab.SERVER),
+    LOG(Tab.SERVER),
+    MISSING(Tab.SERVER),
+    RESET(Tab.SERVER),
+    HELM(Tab.PHONE),
+    POWER(Tab.PHONE),
+    PERMISSIONS(Tab.PHONE),
+    APP_UPDATE(Tab.PHONE),
 }
 
 /**
- * Native addons installed without an Android build ([MissingBuilds], docs/PLAN.md §16 12.4): the
- * plugins that need them do not load, which the server's log only says when it loads them. Each
- * can be asked for, and is put in place at the next install once the Release has it.
+ * The Dock (docs/PLAN.md §8.1): the bottom bar's four tabs, each a short list, each row opening a
+ * page with one subject on it. Back goes from a page to its tab, and from a tab to Home. A tab
+ * with something in it that wants the owner carries a dot, the same things Home lists under
+ * "Needs you".
  */
 @Composable
-private fun MissingBuildsCard(missing: List<MissingBuilds.Missing>, actions: AppActions) {
-    Section(stringResource(R.string.dock_missing_title)) {
-        Text(stringResource(R.string.dock_missing_text))
-        for (m in missing) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.dock_missing_package, m.name, m.version), modifier = Modifier.weight(1f))
-                TextButton(onClick = { actions.requestBuild(m) }) { Text(stringResource(R.string.dock_missing_request)) }
-            }
-        }
-        Text(stringResource(R.string.dock_missing_after), style = MaterialTheme.typography.bodySmall)
+internal fun DockScreen(model: AppModel, actions: AppActions) {
+    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
+    var page by rememberSaveable { mutableStateOf<Page?>(null) }
+    val open: (Page) -> Unit = {
+        tab = it.tab
+        page = it
     }
-}
-
-/**
- * Satellite mode (docs/PLAN.md §8.4, §16 13.1): the boat's main Signal K server, found over mDNS
- * while the Dock is in front or typed, followed by this phone's server once its admin approves the
- * access request ([SatelliteJob]), and how the bridge's plugin says its stream stands.
- */
-@Composable
-private fun SatelliteCard(model: AppModel, actions: AppActions) {
-    Section(stringResource(R.string.dock_satellite_title)) {
-        when (val s = model.satellite) {
-            is SatelliteJob.State.Following -> {
-                Text(stringResource(R.string.dock_satellite_following, s.name, SignalKUrl.describe(s.url)))
-                Text(
-                    when (s.link) {
-                        BridgeProtocol.SatelliteLink.CONNECTED -> stringResource(R.string.dock_satellite_connected)
-                        BridgeProtocol.SatelliteLink.CONNECTING -> stringResource(R.string.dock_satellite_connecting)
-                        BridgeProtocol.SatelliteLink.UNAUTHORIZED -> stringResource(R.string.dock_satellite_unauthorized)
-                        BridgeProtocol.SatelliteLink.UNREACHABLE -> stringResource(R.string.dock_satellite_unreachable, s.detail.orEmpty())
-                        BridgeProtocol.SatelliteLink.OFF, null -> stringResource(R.string.dock_satellite_waiting)
-                    },
-                    color = if (s.link == BridgeProtocol.SatelliteLink.UNAUTHORIZED) MaterialTheme.colorScheme.error else Color.Unspecified,
-                )
-                if (!s.secured) Text(stringResource(R.string.dock_satellite_open), style = MaterialTheme.typography.bodySmall)
-                SatellitePush(s, actions)
-                OutlinedButton(onClick = actions::stopFollowing) { Text(stringResource(R.string.dock_satellite_stop)) }
-            }
-            is SatelliteJob.State.Asking -> {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Text(
-                        stringResource(if (s.reached) R.string.dock_satellite_asked else R.string.dock_satellite_reaching, s.name),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                s.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                OutlinedButton(onClick = actions::stopFollowing) { Text(stringResource(R.string.dock_satellite_cancel)) }
-            }
-            SatelliteJob.State.Off, is SatelliteJob.State.Ended -> {
-                (s as? SatelliteJob.State.Ended)?.let { Text(stringResource(endedText(it), it.name), color = MaterialTheme.colorScheme.error) }
-                Text(stringResource(R.string.dock_satellite_why), style = MaterialTheme.typography.bodySmall)
-                if (model.satelliteFound.isEmpty()) {
-                    Text(stringResource(R.string.dock_satellite_none), style = MaterialTheme.typography.bodySmall)
-                }
-                for (found in model.satelliteFound) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(found.name)
-                            Text(SignalKUrl.describe(found.url), style = MaterialTheme.typography.bodySmall)
-                        }
-                        TextButton(onClick = { actions.followServer(found.url, found.name) }) { Text(stringResource(R.string.dock_satellite_follow)) }
-                    }
-                }
-                var typed by rememberSaveable { mutableStateOf("") }
-                val url = SignalKUrl.normalise(typed)?.takeIf { Satellite.target(it) != null }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = typed,
-                        onValueChange = { typed = it },
-                        label = { Text(stringResource(R.string.dock_satellite_address)) },
-                        isError = typed.isNotBlank() && url == null,
-                        supportingText = if (typed.isNotBlank() && url == null) {
-                            { Text(stringResource(R.string.dock_satellite_bad_address)) }
-                        } else {
-                            null
+    BackHandler(enabled = page != null || tab != Tab.HOME) {
+        if (page != null) page = null else tab = Tab.HOME
+    }
+    // npm's versions (a day's copy), so Home can say a newer server is out without a check by hand.
+    LaunchedEffect(Unit) { actions.loadVersions(refresh = false) }
+    val needs = Needs.list(needsInput(model))
+    Scaffold(
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+                for (t in Tab.entries) {
+                    val dot = t != Tab.HOME && needs.any { needTab(it) == t }
+                    NavigationBarItem(
+                        selected = tab == t,
+                        onClick = {
+                            tab = t
+                            page = null
                         },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        modifier = Modifier.weight(1f),
+                        icon = {
+                            BadgedBox(badge = { if (dot) Badge() }) {
+                                Icon(painterResource(t.icon), contentDescription = null)
+                            }
+                        },
+                        label = { Text(stringResource(t.label)) },
                     )
-                    TextButton(onClick = { url?.let { actions.followServer(it, SignalKUrl.describe(it)) } }, enabled = url != null) {
-                        Text(stringResource(R.string.dock_satellite_follow))
+                }
+            }
+        },
+    ) { padding ->
+        AnimatedContent(
+            targetState = Place(tab, page),
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "dock",
+        ) { place ->
+            Column(
+                modifier = Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                val back = { page = null }
+                when (val p = place.page) {
+                    null -> when (place.tab) {
+                        Tab.HOME -> HomeTab(model, actions, needs, open)
+                        Tab.DEVICES -> DevicesTab(model, open)
+                        Tab.SERVER -> ServerTab(model, open)
+                        Tab.PHONE -> PhoneTab(model, open)
                     }
+                    Page.SENSORS -> SensorsPage(model, actions, back)
+                    Page.USB -> UsbPage(model, actions, back)
+                    Page.BLUETOOTH -> BluetoothPage(model, actions, back)
+                    Page.MAIN_SERVER -> MainServerPage(model, actions, back)
+                    Page.VERSIONS -> VersionsPage(model, actions, back)
+                    Page.ACCESS -> AccessPage(model, actions, back)
+                    Page.DATA -> DataPage(model, actions, back)
+                    Page.BACKUP -> BackupPage(model, actions, back)
+                    Page.LOG -> LogPage(model, actions, back)
+                    Page.MISSING -> MissingPage(model, actions, back)
+                    Page.RESET -> ResetPage(model, actions, back)
+                    Page.HELM -> HelmPage(model, actions, back)
+                    Page.POWER -> PowerPage(model, actions, back)
+                    Page.PERMISSIONS -> PermissionsPage(model, actions, back)
+                    Page.APP_UPDATE -> AppUpdatePage(model, actions, back)
                 }
             }
         }
     }
 }
 
-private fun endedText(s: SatelliteJob.State.Ended): Int = when {
-    s.denied -> R.string.dock_satellite_denied
-    s.why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_no_requests
-    s.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_already
-    s.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_expired
-    else -> R.string.dock_satellite_not_signalk
+/** Where the Dock is: a tab, and the page open on it if any. */
+private data class Place(val tab: Tab, val page: Page?)
+
+/** The tab a need is dealt with on, which carries its dot in the bottom bar. */
+private fun needTab(need: Needs.Need): Tab = when (need) {
+    Needs.Need.GPS_RESTART, Needs.Need.USB_PERMISSION, Needs.Need.MAIN_SERVER -> Tab.DEVICES
+    Needs.Need.SERVER_FAILED, Needs.Need.NO_SERVER, Needs.Need.CARD_MISSING, Needs.Need.MISSING_BUILDS,
+    Needs.Need.SERVER_UPDATE, Needs.Need.INBOX -> Tab.SERVER
+    Needs.Need.PERMISSIONS, Needs.Need.BATTERY, Needs.Need.PASSAGE_OVERLAY, Needs.Need.APP_UPDATE -> Tab.PHONE
 }
 
-/** A request for read/write ended without it: the link reads on, and asking again is the remedy. */
-private fun writeEndedText(u: SatelliteJob.Upgrade.Ended): Int = when {
-    u.denied -> R.string.dock_satellite_write_denied
-    u.why == Satellite.Why.NO_DEVICE_REQUESTS -> R.string.dock_satellite_write_no_requests
-    u.why == Satellite.Why.ALREADY_ASKED -> R.string.dock_satellite_write_already
-    u.why == Satellite.Why.EXPIRED -> R.string.dock_satellite_write_expired
-    else -> R.string.dock_satellite_not_signalk
-}
-
-/**
- * The push (docs/PLAN.md §16 13.2): which of the phone's own data goes to the main server, and
- * whether the main server lets this phone write, with the request for read/write when it does not.
- */
-@Composable
-private fun SatellitePush(s: SatelliteJob.State.Following, actions: AppActions) {
-    HelmSwitch(stringResource(R.string.dock_satellite_push_sensors), s.push.sensors) { on -> actions.setSatellitePush { it.copy(sensors = on) } }
-    HelmSwitch(stringResource(R.string.dock_satellite_push_serial), s.push.serial) { on -> actions.setSatellitePush { it.copy(serial = on) } }
-    val sending = s.push.sensors || s.push.serial
-    when (val u = s.upgrade) {
-        is SatelliteJob.Upgrade.Asking -> {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                Text(
-                    stringResource(if (u.reached) R.string.dock_satellite_write_asked else R.string.dock_satellite_reaching, s.name),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            u.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            TextButton(onClick = actions::cancelWrite) { Text(stringResource(R.string.dock_satellite_cancel)) }
-        }
-        else -> when (s.write) {
-            true -> if (sending) Text(stringResource(R.string.dock_satellite_may_write), style = MaterialTheme.typography.bodySmall)
-            false -> {
-                (u as? SatelliteJob.Upgrade.Ended)?.let { Text(stringResource(writeEndedText(it), s.name), color = MaterialTheme.colorScheme.error) }
-                Text(stringResource(R.string.dock_satellite_read_only, s.name), style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = actions::askWrite) { Text(stringResource(R.string.dock_satellite_ask_write)) }
-            }
-            null -> if (sending) Text(stringResource(R.string.dock_satellite_write_unknown, s.name), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-/**
- * The webapps installed (docs/PLAN.md §8.3): each opens in the browser, and with a launcher that
- * takes them each can be pinned to the home screen, where one tap starts a stopped server and
- * opens the webapp once it answers ([fi.pocketsk.WebappShortcuts]).
- */
-@Composable
-private fun WebappsCard(model: AppModel, actions: AppActions) {
-    val webapps = model.webapps ?: return
-    Section(stringResource(R.string.dock_webapps_title)) {
-        if (webapps.isEmpty()) {
-            Text(stringResource(R.string.dock_webapps_none), style = MaterialTheme.typography.bodySmall)
-            return@Section
-        }
-        Text(
-            stringResource(if (model.canPin) R.string.dock_webapps_why_pin else R.string.dock_webapps_why),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        for (w in webapps) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(w.title, modifier = Modifier.weight(1f))
-                TextButton(onClick = { actions.openWebapp(w.name) }) { Text(stringResource(R.string.dock_webapps_open)) }
-                if (model.canPin) {
-                    TextButton(onClick = { actions.pinWebapp(w.name) }) { Text(stringResource(R.string.dock_webapps_pin)) }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The server's log (docs/PLAN.md §8.1, Logs): its newest lines as they come, narrowed to the
- * problems or to the app's own lines and to the words typed ([LogFilter]), and the diagnostics
- * bundle, shared through the share sheet ([fi.pocketsk.server.DiagnosticsBundle]) after saying
- * what is in it and what is not.
- */
-@Composable
-private fun LogsCard(model: AppModel, actions: AppActions) {
-    Section(stringResource(R.string.dock_log_title)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (kind in LogFilter.Kind.entries) {
-                FilterChip(
-                    selected = model.logKind == kind,
-                    onClick = { actions.filterLog(kind, model.logQuery) },
-                    label = { Text(stringResource(logKindLabel(kind))) },
-                )
-            }
-        }
-        OutlinedTextField(
-            value = model.logQuery,
-            onValueChange = { actions.filterLog(model.logKind, it) },
-            label = { Text(stringResource(R.string.dock_log_filter)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        val filtered = model.logKind != LogFilter.Kind.ALL || model.logQuery.isNotBlank()
-        LogText(model.log.ifEmpty { stringResource(if (filtered) R.string.dock_log_none_match else R.string.dock_log_empty) })
-        Text(stringResource(R.string.dock_log_share_why), style = MaterialTheme.typography.bodySmall)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = actions::shareDiagnostics, enabled = !model.sharing) {
-                Text(stringResource(R.string.dock_log_share))
-            }
-            if (model.sharing) CircularProgressIndicator(modifier = Modifier.size(24.dp))
-        }
-    }
-}
-
-private fun logKindLabel(kind: LogFilter.Kind): Int = when (kind) {
-    LogFilter.Kind.ALL -> R.string.dock_log_all
-    LogFilter.Kind.PROBLEMS -> R.string.dock_log_problems
-    LogFilter.Kind.APP -> R.string.dock_log_app
-}
-
-/**
- * The helm screen (docs/PLAN.md §8.3): the red night filter and its strength, the screen dimmed
- * below the phone's own lowest, and the screen kept on, over every app ([fi.pocketsk.night.NightFilter]).
- * Each change shows at once, so the owner sets them looking at the screen; the Quick Settings tile
- * turns the filter on and off at the helm. They need the app allowed to draw over other apps,
- * which the card asks for first.
- */
-@Composable
-private fun HelmCard(model: AppModel, actions: AppActions) {
-    val night = model.night
-    Section(stringResource(R.string.dock_helm_title)) {
-        Text(stringResource(R.string.dock_helm_body), style = MaterialTheme.typography.bodySmall)
-        if (!model.nightAllowed) {
-            Text(stringResource(R.string.dock_helm_overlay_why), color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = actions::openOverlaySettings) { Text(stringResource(R.string.dock_helm_overlay_allow)) }
-            return@Section
-        }
-        HelmSwitch(stringResource(R.string.dock_helm_filter), night.filter) { actions.setNight(night.copy(filter = it)) }
-        if (night.filter) {
-            HelmSlider(stringResource(R.string.dock_helm_strength, night.strength), night.strength, 0) {
-                actions.setNight(night.copy(strength = it))
-            }
-        }
-        HelmSwitch(stringResource(R.string.dock_helm_dim), night.dim) { actions.setNight(night.copy(dim = it)) }
-        if (night.dim) {
-            HelmSlider(stringResource(R.string.dock_helm_brightness, night.brightness), night.brightness, 1) {
-                actions.setNight(night.copy(brightness = it))
-            }
-        }
-        HelmSwitch(stringResource(R.string.dock_helm_keep_on), night.keepOn) { actions.setNight(night.copy(keepOn = it)) }
-    }
-}
-
-/** The whole row is the switch, so a screen reader reads the label with the state and a tap on the words works. */
-@Composable
-private fun HelmSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = null)
-    }
-}
-
-/** A percentage from [min] to 100, in whole steps; the slider carries its label for a screen reader. */
-@Composable
-private fun HelmSlider(label: String, value: Int, min: Int, onChange: (Int) -> Unit) {
-    Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.clearAndSetSemantics {})
-    Slider(
-        value = value.toFloat(),
-        onValueChange = { onChange(it.roundToInt()) },
-        valueRange = min.toFloat()..100f,
-        modifier = Modifier.semantics { contentDescription = label },
+/** The facts [Needs] decides from, as [AppModel] holds them now. */
+internal fun needsInput(model: AppModel): Needs.Input {
+    val slots = model.slots
+    val storage = model.storage
+    val satellite = model.satellite
+    val p = model.permissions
+    return Needs.Input(
+        serverFailed = model.server is ServerState.Failed,
+        // Unknown until the slots are read: nothing is asked for meanwhile.
+        serverInstalled = slots == null || slots.liveVersion != null,
+        idle = !model.busy,
+        permissionsMissing = p.notifications == false || p.localNetwork == false,
+        gpsRestart = p.location && model.locationHeld == false && model.server.isActive,
+        usbWaiting = model.devices.any { it.kind == BridgeProtocol.USB && it.state == BridgeProtocol.Device.NEEDS_PERMISSION },
+        cardMissing = storage?.chosen != null && storage.volumes.none { it.mounted && it.uuid == storage.chosen },
+        mainServerTrouble = satellite is SatelliteJob.State.Ended ||
+            (satellite as? SatelliteJob.State.Following)?.link == BridgeProtocol.SatelliteLink.UNAUTHORIZED,
+        missingBuilds = model.missingBuilds.isNotEmpty(),
+        batteryRestricted = !p.batteryUnrestricted,
+        passageNeedsOverlay = model.power == PowerProfile.PASSAGE && !model.nightAllowed,
+        serverUpdate = serverOffer(model) != null,
+        appUpdate = model.app is AppUpdater.State.Available,
+        inboxFiles = storage?.inbox?.files ?: 0,
     )
 }
 
-/**
- * The power profiles (docs/PLAN.md §8.1): what the phone spends on the server, which runs in all
- * three ([fi.pocketsk.power.PowerRules]). Each row says what it does, since the names alone do
- * not; Passage dims with the helm screen's overlay, so the card says when that is not allowed.
- */
-@Composable
-private fun PowerCard(model: AppModel, actions: AppActions) {
-    Section(stringResource(R.string.dock_power_title)) {
-        Text(stringResource(R.string.dock_power_body), style = MaterialTheme.typography.bodySmall)
-        for (p in PowerProfile.entries) {
-            val (name, what) = when (p) {
-                PowerProfile.HARBOR -> R.string.dock_power_harbor to R.string.dock_power_harbor_what
-                PowerProfile.PASSAGE -> R.string.dock_power_passage to R.string.dock_power_passage_what
-                PowerProfile.SAVER -> R.string.dock_power_saver to R.string.dock_power_saver_what
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-                    .selectable(selected = model.power == p, role = Role.RadioButton) { if (model.power != p) actions.setPower(p) },
-            ) {
-                RadioButton(selected = model.power == p, onClick = null)
-                Column(modifier = Modifier.padding(start = 8.dp)) {
-                    Text(stringResource(name))
-                    Text(stringResource(what), style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        if (model.power == PowerProfile.PASSAGE && !model.nightAllowed) {
-            Text(stringResource(R.string.dock_power_passage_overlay), color = MaterialTheme.colorScheme.error)
-        }
-    }
+/** The newer release of the server on offer, if npm has been asked and has one. */
+internal fun serverOffer(model: AppModel) = model.slots?.let { slots ->
+    (model.available as? Available.Loaded)?.let { UpdateOffer.pick(it.versions, slots.liveVersion, slots.history) }
 }
 
-/**
- * The phone's sensors: which ones the server reports is the bridge plugin's settings, in the admin
- * UI; what only the phone can do is here: "level now", the attitude's mounting calibration
- * (docs/PLAN.md §8.1), taken with the boat lying level and the phone in its holder.
- */
+/** Devices: what feeds the server, a row each with how it stands. */
 @Composable
-private fun SensorsCard(model: AppModel, actions: AppActions) {
-    Section(stringResource(R.string.dock_sensors_title)) {
-        Text(stringResource(R.string.dock_sensors_body), style = MaterialTheme.typography.bodySmall)
-        if (model.permissions.location && model.locationHeld == false && model.server.isActive) {
-            Text(stringResource(R.string.dock_gps_restart_why), color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = actions::restartWithLocation) { Text(stringResource(R.string.dock_gps_restart)) }
-        }
-        Text(stringResource(R.string.dock_level_why), style = MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick = actions::levelAttitude, enabled = model.server is ServerState.Running) {
-            Text(stringResource(R.string.dock_level))
-        }
-    }
-}
-
-/**
- * The serial devices (docs/PLAN.md §8.1, Devices): the USB ones plugged in, each with how it
- * stands, the bytes read and Allow for one waiting for the owner's permission, and the paired
- * Bluetooth ones, each with a switch that chooses it, since pairing alone says nothing (headsets
- * and cars are paired too). The USB baud rates are the bridge plugin's settings, since the plugin
- * is what reads the devices' sentences.
- */
-@Composable
-private fun DevicesCard(model: AppModel, actions: AppActions) {
+private fun DevicesTab(model: AppModel, open: (Page) -> Unit) {
+    TabHeader(stringResource(R.string.tab_devices))
+    Note(stringResource(R.string.devices_intro))
     val usb = model.devices.filter { it.kind == BridgeProtocol.USB }
     val bluetooth = model.devices.filter { it.kind == BridgeProtocol.BLUETOOTH }
-    Section(stringResource(R.string.dock_devices_title)) {
-        Text(stringResource(R.string.dock_devices_body), style = MaterialTheme.typography.bodySmall)
-        if (!model.server.isActive) {
-            Text(stringResource(R.string.dock_devices_stopped))
-            return@Section
-        }
-        Text(stringResource(R.string.dock_devices_usb), style = MaterialTheme.typography.titleSmall)
-        if (usb.isEmpty()) Text(stringResource(R.string.dock_devices_none))
-        for (d in usb) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(deviceText(d), modifier = Modifier.weight(1f))
-                if (d.state == BridgeProtocol.Device.NEEDS_PERMISSION) {
-                    OutlinedButton(onClick = { actions.allowDevice(d.address) }) { Text(stringResource(R.string.dock_device_allow)) }
-                }
-            }
-        }
-        Text(stringResource(R.string.dock_devices_bluetooth), style = MaterialTheme.typography.titleSmall)
-        when {
-            !model.permissions.bluetooth -> {
-                Text(stringResource(R.string.dock_bluetooth_why), style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = actions::askBluetooth) { Text(stringResource(R.string.dock_bluetooth_allow)) }
-            }
-            bluetooth.isEmpty() -> Text(stringResource(R.string.dock_bluetooth_none))
-        }
-        for (d in bluetooth) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (d.chosen) deviceText(d) else "${d.name} (${d.id})", modifier = Modifier.weight(1f))
-                Switch(checked = d.chosen, onCheckedChange = { actions.chooseBluetooth(d.address, it) })
-            }
-        }
-    }
-}
-
-/**
- * Where the server keeps its data (docs/PLAN.md §16 9.5.9): the phone or a card, each with its
- * room. A choice is confirmed first, since it restarts the server and may copy gigabytes; a chosen
- * card that is out of the phone stays listed, so the owner can see why the server waits.
- */
-@Composable
-private fun StorageCard(model: AppModel, actions: AppActions) {
-    val view = model.storage ?: return
-    var asked by remember { mutableStateOf<Choice?>(null) }
-    Section(stringResource(R.string.dock_storage_title)) {
-        Text(stringResource(R.string.dock_storage_body), style = MaterialTheme.typography.bodySmall)
-        StorageRow(
-            stringResource(R.string.dock_storage_phone) + " · " + room(view.phoneFree, view.phoneTotal),
-            selected = view.chosen == null,
-        ) { if (view.chosen != null) asked = Choice(null) }
-        val inPhone = view.volumes.filter { it.mounted }
-        for (v in inPhone) {
-            StorageRow("${v.name} · ${room(v.free, v.total)}", selected = v.uuid == view.chosen) {
-                if (v.uuid != view.chosen) asked = Choice(v)
-            }
-        }
-        if (view.chosen != null && inPhone.none { it.uuid == view.chosen }) {
-            StorageRow(stringResource(R.string.dock_storage_missing, view.chosenName ?: view.chosen), selected = true, enabled = false) {}
-        }
-        if (inPhone.isEmpty()) Text(stringResource(R.string.dock_storage_none), style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.dock_storage_usb), style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.dock_storage_upload), style = MaterialTheme.typography.bodySmall)
-        view.inbox?.let { waiting ->
-            Text(stringResource(R.string.dock_inbox_where), style = MaterialTheme.typography.bodySmall)
-            if (waiting.files > 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        pluralStringResource(R.plurals.dock_inbox_waiting, waiting.files, waiting.files, Formatter.formatShortFileSize(LocalContext.current, waiting.bytes)),
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlinedButton(onClick = actions::takeInbox) { Text(stringResource(R.string.dock_inbox_take)) }
-                }
-            }
-        }
-    }
-    asked?.let { choice ->
-        AlertDialog(
-            onDismissRequest = { asked = null },
-            title = { Text(stringResource(R.string.dock_storage_confirm_title)) },
-            text = {
-                Text(
-                    choice.volume?.let { stringResource(R.string.dock_storage_confirm_card, it.name) }
-                        ?: stringResource(R.string.dock_storage_confirm_phone),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    asked = null
-                    actions.chooseStorage(choice.volume)
-                }) { Text(stringResource(R.string.dock_storage_move)) }
-            },
-            dismissButton = { TextButton(onClick = { asked = null }) { Text(stringResource(R.string.dock_storage_cancel)) } },
+    val p = model.permissions
+    RowGroup {
+        val gpsRestart = p.location && model.locationHeld == false && model.server.isActive
+        NavRow(
+            stringResource(R.string.sensors_title),
+            stringResource(
+                when {
+                    gpsRestart -> R.string.sensors_summary_no_gps_now
+                    !p.location -> R.string.sensors_summary_no_gps
+                    else -> R.string.sensors_summary
+                },
+            ),
+            onClick = { open(Page.SENSORS) },
+            alert = gpsRestart,
         )
-    }
-}
-
-/**
- * The Backup card (docs/PLAN.md §8.1, §16 10.8): the server's settings saved as an AES zip where the
- * owner picks, and restored from one ([fi.pocketsk.server.BackupJob]). The passphrase is typed
- * each time and kept nowhere but these fields; a new backup asks for it twice, since a mistyped
- * one would lock the owner out of it for good. A restore asks first, and only with the server
- * stopped.
- */
-@Composable
-private fun BackupCard(model: AppModel, actions: AppActions) {
-    var passphrase by remember { mutableStateOf("") }
-    var again by remember { mutableStateOf("") }
-    var asking by remember { mutableStateOf(false) }
-    val job = model.backup
-    val working = job is BackupJob.State.Working || model.resetting
-    val stopped = model.server is ServerState.Stopped || model.server is ServerState.Failed
-    val ok = Backup.passphraseOk(passphrase.toCharArray())
-    Section(stringResource(R.string.dock_backup_title)) {
-        Text(stringResource(R.string.dock_backup_body), style = MaterialTheme.typography.bodySmall)
-        PassphraseField(passphrase, stringResource(R.string.dock_backup_passphrase)) { passphrase = it }
-        Text(stringResource(R.string.dock_backup_rule), style = MaterialTheme.typography.bodySmall)
-        PassphraseField(again, stringResource(R.string.dock_backup_again)) { again = it }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { actions.saveBackup(passphrase.toCharArray()) }, enabled = ok && again == passphrase && !working) {
-                Text(stringResource(R.string.dock_backup_save))
-            }
-            OutlinedButton(onClick = { asking = true }, enabled = ok && stopped && !working) { Text(stringResource(R.string.dock_backup_restore)) }
-        }
-        if (!stopped) Text(stringResource(R.string.dock_backup_stop_first), style = MaterialTheme.typography.bodySmall)
-        job?.let { BackupOutcome(it) }
-    }
-    if (asking) {
-        AlertDialog(
-            onDismissRequest = { asking = false },
-            title = { Text(stringResource(R.string.dock_backup_confirm_title)) },
-            text = { Text(stringResource(R.string.dock_backup_confirm)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    asking = false
-                    actions.restoreBackup(passphrase.toCharArray())
-                }) { Text(stringResource(R.string.dock_backup_confirm_go)) }
-            },
-            dismissButton = { TextButton(onClick = { asking = false }) { Text(stringResource(R.string.dock_backup_cancel)) } },
-        )
-    }
-}
-
-/**
- * The Reset card (docs/PLAN.md §16 15): the server's settings back to a first start with the data
- * kept, or everything back to a fresh install of the app ([ResetJob]). Each asks first, saying what
- * goes and what stays, and points at the Backup card above for what may be wanted back.
- */
-@Composable
-private fun ResetCard(model: AppModel, actions: AppActions) {
-    var asked by remember { mutableStateOf<ResetJob.Kind?>(null) }
-    val job = model.reset
-    val busy = model.installing || model.backup is BackupJob.State.Working || model.resetting
-    Section(stringResource(R.string.reset_title)) {
-        Text(stringResource(R.string.reset_body), style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { asked = ResetJob.Kind.SETTINGS }, enabled = !busy) { Text(stringResource(R.string.reset_settings)) }
-            OutlinedButton(onClick = { asked = ResetJob.Kind.EVERYTHING }, enabled = !busy) {
-                Text(stringResource(R.string.reset_everything), color = if (busy) Color.Unspecified else MaterialTheme.colorScheme.error)
-            }
-        }
-        job?.let { ResetOutcome(it) }
-    }
-    asked?.let { kind ->
-        val everything = kind == ResetJob.Kind.EVERYTHING
-        AlertDialog(
-            onDismissRequest = { asked = null },
-            title = { Text(stringResource(if (everything) R.string.reset_everything_title else R.string.reset_settings_title)) },
-            text = { Text(stringResource(if (everything) R.string.reset_everything_text else R.string.reset_settings_text)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    asked = null
-                    if (everything) actions.resetEverything() else actions.resetSettings()
-                }) {
-                    Text(
-                        stringResource(if (everything) R.string.reset_everything_go else R.string.reset_settings_go),
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            },
-            dismissButton = { TextButton(onClick = { asked = null }) { Text(stringResource(R.string.dock_storage_cancel)) } },
-        )
-    }
-}
-
-/** How far the reset running is, or what the last one came to. */
-@Composable
-private fun ResetOutcome(state: ResetJob.State) {
-    val text = when (state) {
-        is ResetJob.State.Stopping -> stringResource(R.string.reset_stopping)
-        is ResetJob.State.Working -> stringResource(if (state.kind == ResetJob.Kind.EVERYTHING) R.string.reset_everything_working else R.string.reset_settings_working)
-        is ResetJob.State.Done -> stringResource(if (state.started) R.string.reset_settings_done_started else R.string.reset_settings_done)
-        is ResetJob.State.Failed -> when (state.why) {
-            ResetJob.Why.BUSY -> stringResource(R.string.reset_busy)
-            ResetJob.Why.STILL_RUNNING -> stringResource(R.string.reset_still_running)
-            ResetJob.Why.FAILED -> stringResource(R.string.reset_failed, state.detail)
-        }
-    }
-    val failed = state is ResetJob.State.Failed
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (state is ResetJob.State.Stopping || state is ResetJob.State.Working) CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp))
-        Text(text, color = if (failed) MaterialTheme.colorScheme.error else Color.Unspecified)
-    }
-}
-
-@Composable
-private fun PassphraseField(value: String, label: String, onChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label) },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
-/** What the last backup or restore came to, or how far the one running is. */
-@Composable
-private fun BackupOutcome(state: BackupJob.State) {
-    val text = when (state) {
-        is BackupJob.State.Working -> stringResource(
+        RowDivider()
+        val waiting = usb.firstOrNull { it.state == BridgeProtocol.Device.NEEDS_PERMISSION }
+        NavRow(
+            stringResource(R.string.usb_title),
             when {
-                !state.restore -> R.string.dock_backup_saving
-                state.installing -> R.string.dock_backup_installing
-                else -> R.string.dock_backup_restoring
+                waiting != null -> stringResource(R.string.usb_summary_waiting, waiting.name)
+                !model.server.isActive -> stringResource(R.string.devices_summary_stopped)
+                usb.isEmpty() -> stringResource(R.string.usb_summary_none)
+                else -> pluralStringResource(R.plurals.usb_summary, usb.size, usb.size)
             },
+            onClick = { open(Page.USB) },
+            alert = waiting != null,
         )
-        is BackupJob.State.Saved -> pluralStringResource(R.plurals.dock_backup_saved, state.files, state.files)
-        is BackupJob.State.Restored ->
-            if (state.npmCode == 0) {
-                pluralStringResource(R.plurals.dock_backup_restored, state.files, state.files)
-            } else {
-                pluralStringResource(R.plurals.dock_backup_restored_no_plugins, state.files, state.files)
-            }
-        is BackupJob.State.Failed -> when (state.why) {
-            BackupJob.Why.WRONG_PASSPHRASE -> stringResource(R.string.dock_backup_wrong)
-            BackupJob.Why.NOT_A_BACKUP -> stringResource(R.string.dock_backup_not_ours, state.detail)
-            BackupJob.Why.SERVER_RUNNING -> stringResource(R.string.dock_backup_stop_first)
-            BackupJob.Why.NO_SERVER_YET -> stringResource(R.string.dock_backup_no_server)
-            BackupJob.Why.FAILED -> stringResource(if (state.restore) R.string.dock_backup_restore_failed else R.string.dock_backup_save_failed, state.detail)
-        }
-    }
-    val failed = state is BackupJob.State.Failed || (state is BackupJob.State.Restored && state.npmCode != 0)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (state is BackupJob.State.Working) CircularProgressIndicator(modifier = Modifier.size(24.dp))
-        Text(text, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-/** A volume's free and total room in a line. */
-@Composable
-private fun room(free: Long, total: Long): String {
-    val context = LocalContext.current
-    return stringResource(
-        R.string.dock_storage_free,
-        Formatter.formatShortFileSize(context, free),
-        Formatter.formatShortFileSize(context, total),
-    )
-}
-
-/** A choice waiting for its confirmation: a card, or the phone when [volume] is null. */
-private class Choice(val volume: DataVolumes.Volume?)
-
-@Composable
-private fun StorageRow(text: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
-    ) {
-        RadioButton(selected = selected, onClick = null, enabled = enabled)
-        Text(text, modifier = Modifier.padding(start = 8.dp))
+        RowDivider()
+        val open = bluetooth.count { it.state == BridgeProtocol.Device.OPEN }
+        NavRow(
+            stringResource(R.string.bluetooth_title),
+            when {
+                !p.bluetooth -> stringResource(R.string.bluetooth_summary_not_allowed)
+                !model.server.isActive -> stringResource(R.string.devices_summary_stopped)
+                bluetooth.isEmpty() -> stringResource(R.string.bluetooth_summary_none)
+                else -> pluralStringResource(R.plurals.bluetooth_summary, bluetooth.size, open, bluetooth.size)
+            },
+            onClick = { open(Page.BLUETOOTH) },
+        )
+        RowDivider()
+        val s = model.satellite
+        NavRow(
+            stringResource(R.string.dock_satellite_title),
+            when (s) {
+                is SatelliteJob.State.Following -> stringResource(R.string.main_summary_following, s.name)
+                is SatelliteJob.State.Asking -> stringResource(R.string.main_summary_asking, s.name)
+                is SatelliteJob.State.Ended -> stringResource(R.string.main_summary_ended, s.name)
+                SatelliteJob.State.Off ->
+                    if (model.satelliteFound.isEmpty()) stringResource(R.string.main_summary_off)
+                    else pluralStringResource(R.plurals.main_summary_found, model.satelliteFound.size, model.satelliteFound.size)
+            },
+            onClick = { open(Page.MAIN_SERVER) },
+            alert = s is SatelliteJob.State.Ended ||
+                (s as? SatelliteJob.State.Following)?.link == BridgeProtocol.SatelliteLink.UNAUTHORIZED,
+        )
     }
 }
 
-/** One device's line: its name and id, then how it stands. */
+/** Server: its version, who reaches it, where its data is, its backups, its log; the reset apart, last. */
 @Composable
-private fun deviceText(d: BridgeProtocol.Device): String {
-    val label = "${d.name} (${d.id})"
-    val read = Formatter.formatShortFileSize(LocalContext.current, d.bytes)
-    return when (d.state) {
-        BridgeProtocol.Device.OPEN ->
-            if (d.kind == BridgeProtocol.BLUETOOTH) stringResource(R.string.dock_device_connected, label, read)
-            else stringResource(R.string.dock_device_open, label, d.baud, read)
-        BridgeProtocol.Device.CONNECTING ->
-            d.detail?.let { stringResource(R.string.dock_device_retrying, label, it) } ?: stringResource(R.string.dock_device_connecting, label)
-        BridgeProtocol.Device.NEEDS_PERMISSION -> stringResource(R.string.dock_device_permission, label)
-        BridgeProtocol.Device.IDLE -> stringResource(R.string.dock_device_idle, label)
-        else -> stringResource(R.string.dock_device_error, label, d.detail.orEmpty())
-    }
-}
-
-/**
- * Running or not, which version from which slot, for how long and at what cost (CPU, memory),
- * where the boat reaches it, and whether it may (LAN access, docs/PLAN.md §11); Start, Stop,
- * Restart, admin UI.
- */
-@Composable
-private fun StatusCard(model: AppModel, actions: AppActions) {
-    val state = model.server
-    val running = state as? ServerState.Running
-    val port = running?.port
-    Section(stringResource(R.string.dock_status_title)) {
-        Text(serverStateText(state, ServerActions.localUrl(port ?: ServerActions.port())))
-        if (state is ServerState.Running) {
-            model.usage?.let { Text(usageText(it), style = MaterialTheme.typography.bodySmall) }
-            model.deltaRate?.let { Text(stringResource(R.string.dock_delta_rate, deltaRateText(it)), style = MaterialTheme.typography.bodySmall) }
-        }
-        if (running != null) {
-            // The run's own, not the switch's: a change takes effect with the restart it asks for.
-            if (running.lan) model.lanAddress?.let { Text(stringResource(R.string.dock_url_lan, "http://$it:${running.port}")) }
-            Text(stringResource(R.string.dock_url_phone, ServerActions.localUrl(running.port)))
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().toggleable(value = model.lanAccess, role = Role.Switch, onValueChange = actions::setLanAccess),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.dock_lan_access))
-                Text(
-                    stringResource(if (model.lanAccess) R.string.dock_lan_access_on else R.string.dock_lan_access_off),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(checked = model.lanAccess, onCheckedChange = null)
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.isActive) {
-                OutlinedButton(onClick = actions::stopServer) { Text(stringResource(R.string.server_action_stop)) }
-                OutlinedButton(onClick = actions::restartServer) { Text(stringResource(R.string.server_action_restart)) }
-            } else {
-                Button(onClick = actions::startServer, enabled = model.slots?.liveVersion != null) {
-                    Text(stringResource(R.string.dock_start))
-                }
-            }
-            Button(onClick = actions::openAdmin, enabled = state is ServerState.Running && state.answering) {
-                Text(stringResource(R.string.dock_open_admin))
-            }
-        }
-    }
-}
-
-/** How an install went, in words, for the History list. */
-@Composable
-private fun outcomeText(outcome: InstallHistory.Outcome): String = stringResource(
-    when (outcome) {
-        InstallHistory.Outcome.PROMOTED -> R.string.dock_history_installed
-        InstallHistory.Outcome.FAILED -> R.string.dock_history_failed
-        InstallHistory.Outcome.ROLLED_BACK -> R.string.dock_history_rolled_back
-        InstallHistory.Outcome.BAD -> R.string.dock_history_bad
-    },
-)
-
-/**
- * The version live and the other one kept, a newer release to install when npm has one, the
- * rollback to the kept version, the version live installed again, any other version npm has (betas
- * and test releases among them), a file or a build's web address ([VersionChooser]), and the
- * newest of the install history with how each went. The
- * slots themselves are the installer's business and are not named here: to the owner there is
- * the version running and the one to go back to.
- */
-@Composable
-private fun UpdatesCard(model: AppModel, actions: AppActions) {
+private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
+    TabHeader(stringResource(R.string.tab_server))
     val slots = model.slots
-    var choosing by rememberSaveable { mutableStateOf(false) }
-    var reinstalling by remember { mutableStateOf(false) }
-    if (reinstalling && slots?.liveVersion != null) {
-        val live = slots.liveVersion
-        AlertDialog(
-            onDismissRequest = { reinstalling = false },
-            title = { Text(stringResource(R.string.versions_reinstall_title, live)) },
-            text = {
-                Text(
-                    slots.otherVersion?.takeIf { it != live }?.let { stringResource(R.string.versions_reinstall_replaces, live, it) }
-                        ?: stringResource(R.string.versions_reinstall_text, live),
-                )
+    val offer = serverOffer(model)
+    RowGroup {
+        NavRow(
+            stringResource(R.string.versions_title),
+            when {
+                model.installing -> installStateText(model.install)
+                slots == null -> null
+                slots.liveVersion == null -> stringResource(R.string.dock_nothing_live)
+                offer != null -> stringResource(R.string.versions_summary_offer, slots.liveVersion, offer.text)
+                model.available is Available.Loaded -> stringResource(R.string.versions_summary_current, slots.liveVersion)
+                else -> slots.liveVersion
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    reinstalling = false
-                    actions.install(InstallManager.Source.Registry(live), allowBad = slots.history.isBad(live))
-                }) { Text(stringResource(R.string.versions_reinstall, live)) }
+            onClick = { open(Page.VERSIONS) },
+            alert = slots?.liveVersion == null && slots != null,
+            accent = offer != null,
+        )
+        RowDivider()
+        NavRow(
+            stringResource(R.string.access_title),
+            stringResource(if (model.lanAccess) R.string.access_lan else R.string.access_phone),
+            onClick = { open(Page.ACCESS) },
+        )
+        RowDivider()
+        val storage = model.storage
+        val missing = storage?.chosen != null && storage.volumes.none { it.mounted && it.uuid == storage.chosen }
+        NavRow(
+            stringResource(R.string.data_title),
+            when {
+                storage == null -> null
+                missing -> stringResource(R.string.dock_storage_missing, storage.chosenName ?: storage.chosen.orEmpty())
+                storage.chosen == null -> stringResource(R.string.data_summary, stringResource(R.string.dock_storage_phone), freeText(storage.phoneFree))
+                else -> storage.volumes.firstOrNull { it.uuid == storage.chosen }?.let {
+                    stringResource(R.string.data_summary, it.name, freeText(it.free))
+                }
             },
-            dismissButton = { TextButton(onClick = { reinstalling = false }) { Text(stringResource(R.string.dock_storage_cancel)) } },
+            onClick = { open(Page.DATA) },
+            alert = missing,
         )
-    }
-    Section(stringResource(R.string.dock_updates_title)) {
-        if (slots == null) {
-            CircularProgressIndicator()
-            return@Section
-        }
-        Text(
-            if (slots.live != null && slots.liveVersion != null) stringResource(R.string.dock_live, slots.liveVersion)
-            else stringResource(R.string.dock_nothing_live),
+        RowDivider()
+        NavRow(stringResource(R.string.backup_title), backupSummary(model.backup), onClick = { open(Page.BACKUP) })
+        RowDivider()
+        NavRow(
+            stringResource(R.string.dock_log_title),
+            stringResource(if (model.server is ServerState.Failed) R.string.log_summary_failed else R.string.log_summary),
+            onClick = { open(Page.LOG) },
+            alert = model.server is ServerState.Failed,
         )
-        slots.otherVersion?.let { Text(stringResource(R.string.dock_other, it)) }
-        if (model.installing || model.install is InstallManager.State.Failed) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (model.installing) CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp))
-                Text(installStateText(model.install))
-            }
-            installTail(model.install).takeIf { it.isNotEmpty() }?.let { LogText(it.lines().takeLast(INSTALL_LINES).joinToString("\n")) }
+        if (model.missingBuilds.isNotEmpty()) {
+            RowDivider()
+            NavRow(
+                stringResource(R.string.dock_missing_title),
+                pluralStringResource(R.plurals.missing_summary, model.missingBuilds.size, model.missingBuilds.size),
+                onClick = { open(Page.MISSING) },
+                alert = true,
+            )
         }
-        val offer = (model.available as? Available.Loaded)?.let { UpdateOffer.pick(it.versions, slots.liveVersion, slots.history) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            when (model.available) {
-                is Available.Loaded -> offer?.let { v ->
-                    Button(onClick = { actions.install(InstallManager.Source.Registry(v.text)) }, enabled = !model.installing && !model.resetting) {
-                        Text(stringResource(R.string.dock_install, v.text))
-                    }
-                } ?: Text(stringResource(R.string.dock_up_to_date), modifier = Modifier.align(Alignment.CenterVertically))
-                Available.Loading -> CircularProgressIndicator()
-                else -> Unit
-            }
-            OutlinedButton(onClick = { actions.loadVersions(refresh = true) }, enabled = model.available != Available.Loading) {
-                Text(stringResource(R.string.dock_check_updates))
-            }
-            slots.otherVersion?.let { other ->
-                OutlinedButton(onClick = actions::rollBack, enabled = !model.installing && !model.resetting && !slots.history.isBad(other)) {
-                    Text(stringResource(R.string.dock_rollback, other))
-                }
-            }
-            // Only a version npm can name can be fetched again: a build from a file cannot.
-            slots.liveVersion?.takeIf { ServerVersion.parse(it) != null }?.let { live ->
-                OutlinedButton(onClick = { reinstalling = true }, enabled = !model.installing && !model.resetting) {
-                    Text(stringResource(R.string.versions_reinstall, live))
-                }
-            }
-        }
-        (model.available as? Available.Failed)?.takeIf { !choosing }?.let {
-            Text(stringResource(R.string.setup_version_failed, it.reason), color = MaterialTheme.colorScheme.error)
-        }
-        offer?.let { WhatsNew(model.notes, slots.liveVersion, it, actions) }
-        TextButton(onClick = { choosing = !choosing }) {
-            Text(stringResource(if (choosing) R.string.versions_close else R.string.versions_open))
-        }
-        if (choosing) {
-            VersionChooser(model, actions, live = slots.liveVersion, kept = slots.otherVersion, history = slots.history) { source, allowBad ->
-                choosing = false
-                actions.install(source, allowBad)
-            }
-        }
-        val recent = slots.history.newestFirst.take(HISTORY_LINES)
-        if (recent.isNotEmpty()) {
-            Text(stringResource(R.string.dock_history), style = MaterialTheme.typography.labelLarge)
-            val format = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-            for (e in recent) {
-                Text(
-                    stringResource(R.string.dock_history_line, format.format(Date(e.at)), e.version, outcomeText(e.outcome)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
+    }
+    RowGroup {
+        NavRow(stringResource(R.string.reset_title), stringResource(R.string.reset_summary), onClick = { open(Page.RESET) }, danger = true)
     }
 }
 
-/**
- * The app's own update (docs/PLAN.md §10): whether a newer build is published, its download, and
- * what Android's installer or the checks before it said. Shown only where the app updates itself,
- * not where a store keeps it current.
- */
+/** What the last backup or restore came to, in the Server tab's row. */
 @Composable
-private fun AppUpdateCard(state: AppUpdater.State, model: AppModel, actions: AppActions) {
-    Section(stringResource(R.string.dock_app_update_title)) {
-        Text(stringResource(R.string.dock_app_installed, BuildConfig.VERSION_NAME))
-        val offered = when (state) {
-            is AppUpdater.State.Available -> state.release
-            is AppUpdater.State.Failed -> state.release
-            is AppUpdater.State.Refused -> state.release
-            else -> null
-        }
-        when (state) {
-            AppUpdater.State.Idle -> Unit
-            AppUpdater.State.Checking -> CircularProgressIndicator()
-            AppUpdater.State.UpToDate -> Text(stringResource(R.string.dock_app_up_to_date))
-            is AppUpdater.State.Available -> Unit
-            is AppUpdater.State.Downloading -> {
-                if (state.total > 0) LinearProgressIndicator(progress = { state.done.toFloat() / state.total }, modifier = Modifier.fillMaxWidth())
-                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                Text(stringResource(R.string.dock_app_downloading, state.release.versionName))
-            }
-            is AppUpdater.State.Installing -> Text(stringResource(R.string.dock_app_installing, state.release.versionName))
-            is AppUpdater.State.Failed -> Text(stringResource(R.string.dock_app_failed, state.reason), color = MaterialTheme.colorScheme.error)
-            is AppUpdater.State.Refused -> Text(refusalText(state.refusal, state.release.versionName), color = MaterialTheme.colorScheme.error)
-        }
-        offered?.let { release ->
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = actions::updateApp) { Text(stringResource(R.string.dock_app_update, release.versionName)) }
-                TextButton(onClick = actions::openAppRelease) { Text(stringResource(R.string.dock_app_whats_new)) }
-            }
-            if (!model.appInstallsAllowed) Text(stringResource(R.string.dock_app_allow), style = MaterialTheme.typography.bodySmall)
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().toggleable(value = model.appChecks, role = Role.Switch, onValueChange = actions::setAppChecks),
-        ) {
-            Text(stringResource(R.string.dock_app_checks), modifier = Modifier.weight(1f))
-            Switch(checked = model.appChecks, onCheckedChange = null)
-        }
-    }
+private fun backupSummary(state: BackupJob.State?): String = when (state) {
+    is BackupJob.State.Working -> stringResource(if (state.restore) R.string.dock_backup_restoring else R.string.dock_backup_saving)
+    is BackupJob.State.Saved -> stringResource(R.string.backup_summary_saved)
+    is BackupJob.State.Restored -> stringResource(R.string.backup_summary_restored)
+    else -> stringResource(R.string.backup_summary)
 }
 
+/** Phone: what the phone does for the server, the helm screen and power first, its grants and its own update. */
 @Composable
-private fun refusalText(refusal: AppRelease.Refusal, version: String): String = stringResource(
-    when (refusal) {
-        AppRelease.Refusal.CHECKSUM -> R.string.dock_app_refused_checksum
-        AppRelease.Refusal.UNREADABLE -> R.string.dock_app_refused_unreadable
-        AppRelease.Refusal.OTHER_APP -> R.string.dock_app_refused_other_app
-        AppRelease.Refusal.NOT_NEWER -> R.string.dock_app_refused_not_newer
-        AppRelease.Refusal.OTHER_SIGNER -> R.string.dock_app_refused_other_signer
-    },
-    version,
-)
-
-/**
- * "What's new in 2.14.0": signalk-server's release notes from the live version up to the one on
- * offer, read from GitHub the first time they are opened, each release cut to its first lines.
- */
-@Composable
-private fun WhatsNew(notes: Notes, live: String?, offer: ServerVersion, actions: AppActions) {
-    var open by rememberSaveable { mutableStateOf(false) }
-    // Open with nothing read: on the first open, after "Check for updates" dropped them, after a
-    // rotation; a failure is tried again when the notes are opened again, not in a loop.
-    val unknown = notes == Notes.Unknown
-    LaunchedEffect(open, unknown) {
-        if (open && (unknown || notes is Notes.Failed)) actions.loadNotes()
-    }
-    TextButton(onClick = { open = !open }) {
-        Text(if (open) stringResource(R.string.dock_notes_hide) else stringResource(R.string.dock_notes_show, offer.text))
-    }
-    if (!open) return
-    when (notes) {
-        Notes.Unknown, Notes.Loading -> CircularProgressIndicator()
-        is Notes.Failed -> Text(stringResource(R.string.dock_notes_failed, notes.reason), color = MaterialTheme.colorScheme.error)
-        is Notes.Loaded -> {
-            val releases = ReleaseNotes.between(notes.releases, live, offer)
-            if (releases.isEmpty()) Text(stringResource(R.string.dock_notes_none))
-            val format = DateFormat.getDateInstance(DateFormat.MEDIUM)
-            for (r in releases.take(NOTE_RELEASES)) {
-                Text(
-                    r.published?.let { stringResource(R.string.dock_notes_release, r.version.text, format.format(Date(it))) } ?: r.version.text,
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                if (r.lines.isEmpty()) Text(stringResource(R.string.dock_notes_empty), style = MaterialTheme.typography.bodySmall)
-                else Text(r.lines.take(NOTE_LINES).joinToString("\n"), style = MaterialTheme.typography.bodySmall)
-                val more = r.lines.size - NOTE_LINES
-                if (more > 0) Text(pluralStringResource(R.plurals.dock_notes_more, more, more), style = MaterialTheme.typography.bodySmall)
-            }
-            val older = releases.size - NOTE_RELEASES
-            if (older > 0) Text(pluralStringResource(R.plurals.dock_notes_older, older, older), style = MaterialTheme.typography.bodySmall)
+private fun PhoneTab(model: AppModel, open: (Page) -> Unit) {
+    TabHeader(stringResource(R.string.tab_phone))
+    val night = model.night
+    val p = model.permissions
+    val toAllow = Needs.permissionsToAllow(p.notifications, p.localNetwork, p.location, p.fullScreen, p.batteryUnrestricted)
+    RowGroup {
+        NavRow(
+            stringResource(R.string.dock_helm_title),
+            when {
+                !model.nightAllowed -> stringResource(R.string.helm_summary_not_allowed)
+                else -> listOfNotNull(
+                    if (night.filter) stringResource(R.string.helm_summary_filter, night.strength) else null,
+                    if (night.dim) stringResource(R.string.helm_summary_dim, night.brightness) else null,
+                    if (night.keepOn) stringResource(R.string.helm_summary_on) else null,
+                ).joinToString(" · ").ifEmpty { stringResource(R.string.helm_summary_off) }
+            },
+            onClick = { open(Page.HELM) },
+        )
+        RowDivider()
+        NavRow(stringResource(R.string.dock_power_title), stringResource(powerName(model.power)), onClick = { open(Page.POWER) })
+        RowDivider()
+        NavRow(
+            stringResource(R.string.permissions_title),
+            if (toAllow == 0) stringResource(R.string.permissions_summary_all) else pluralStringResource(R.plurals.permissions_summary, toAllow, toAllow),
+            onClick = { open(Page.PERMISSIONS) },
+            alert = p.notifications == false || p.localNetwork == false,
+        )
+        model.app?.let { app ->
+            RowDivider()
+            val available = app as? AppUpdater.State.Available
+            NavRow(
+                stringResource(R.string.dock_app_update_title),
+                available?.let { stringResource(R.string.app_summary_offer, it.release.versionName) }
+                    ?: stringResource(R.string.dock_app_installed, BuildConfig.VERSION_NAME),
+                onClick = { open(Page.APP_UPDATE) },
+                accent = available != null,
+            )
         }
     }
-    TextButton(onClick = actions::openReleases) { Text(stringResource(R.string.dock_notes_github)) }
+    Note(stringResource(R.string.dock_app_version, BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA))
 }
 
-/** "Up 3:12:05 · CPU 4 % of one core · memory 182 MB", as much of it as is known. */
-@Composable
-private fun usageText(u: ServerUsage.Usage): String {
-    val up = DateUtils.formatElapsedTime(u.up / 1000)
-    val cpu = u.cpuPercent?.roundToInt()
-    val memory = u.memoryBytes?.let { Formatter.formatShortFileSize(LocalContext.current, it) }
-    return when {
-        cpu != null && memory != null -> stringResource(R.string.dock_usage, up, cpu, memory)
-        memory != null -> stringResource(R.string.dock_usage_memory, up, memory)
-        else -> stringResource(R.string.dock_uptime, up)
-    }
+/** A profile's name, as the Power page, its row and Home's helm strip say it. */
+@StringRes
+internal fun powerName(p: PowerProfile): Int = when (p) {
+    PowerProfile.HARBOR -> R.string.dock_power_harbor
+    PowerProfile.PASSAGE -> R.string.dock_power_passage
+    PowerProfile.SAVER -> R.string.dock_power_saver
 }
-
-/** A delta rate as a person reads it: a tenth under ten a second ("2.4"), whole above ("118"). */
-private fun deltaRateText(rate: Double): String =
-    if (rate < 10) String.format(Locale.getDefault(), "%.1f", rate) else rate.roundToInt().toString()
-
-private const val INSTALL_LINES = 15
-private const val HISTORY_LINES = 5
-
-/** The releases the notes show at most, newest first; the rest are a line and a link to GitHub. */
-private const val NOTE_RELEASES = 10
-
-/** A release's lines shown: the head of a long list of changes, the rest counted. */
-private const val NOTE_LINES = 12

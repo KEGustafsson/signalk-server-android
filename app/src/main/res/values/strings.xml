@@ -5,6 +5,7 @@
 
     <!-- Setup wizard (docs/PLAN.md §5.3) -->
     <string name="setup_title">Set up Signal K Server</string>
+    <string name="setup_step">Step %1$d of %2$d</string>
     <string name="setup_next">Next</string>
     <string name="setup_back">Back</string>
     <string name="setup_retry">Try again</string>
@@ -51,14 +52,10 @@
     <!-- The Dock (docs/PLAN.md §8.1) -->
     <!-- Debug builds only: opens the runtime checks screen (src/debug). -->
     <string name="dock_runtime_checks">Runtime checks</string>
-    <string name="dock_status_title">Server</string>
     <string name="dock_stopped">Stopped</string>
     <string name="dock_starting">Starting %1$s…</string>
     <string name="dock_running">Running %1$s</string>
     <string name="dock_uptime">Up %1$s</string>
-    <string name="dock_usage_memory">Up %1$s · memory %2$s</string>
-    <string name="dock_usage">Up %1$s · CPU %2$d %% of one core · memory %3$s</string>
-    <string name="dock_delta_rate">Taking in %1$s deltas a second</string>
     <string name="dock_running_on_trial">Running %1$s, watched for its first minutes</string>
     <string name="dock_failed">Stopped: %1$s</string>
     <string name="dock_url_lan">On the boat\'s network: %1$s</string>
@@ -102,12 +99,9 @@
     <string name="dock_satellite_write_expired">%1$s no longer has the request (it restarted). Ask for read/write again.</string>
     <string name="dock_satellite_write_unknown">Sending starts once %1$s says this phone may write.</string>
     <string name="satellite_request_description">Signal K Server on %1$s</string>
-    <string name="dock_lan_access">LAN access</string>
     <string name="dock_lan_access_on">Tablets and plotters on the boat\'s network reach the server.</string>
     <string name="dock_lan_access_off">Only this phone reaches the server.</string>
-    <string name="dock_start">Start</string>
     <string name="dock_open_admin">Open the admin UI</string>
-    <string name="dock_updates_title">Updates</string>
     <string name="dock_live">Installed: %1$s</string>
     <string name="dock_nothing_live">Nothing installed yet</string>
     <string name="dock_other">Also kept on the phone: %1$s</string>
@@ -154,19 +148,14 @@
     <string name="dock_history_failed">did not install</string>
     <string name="dock_history_rolled_back">rolled back</string>
     <string name="dock_history_bad">rolled back: it failed after the update</string>
-    <string name="dock_settings_title">Settings</string>
-    <string name="dock_sensors_title">Sensors</string>
     <string name="dock_sensors_body">The phone\'s battery, barometer, GPS, attitude, rate of turn, compass and cabin sensors reach Signal K through the Pocket SK Android bridge plugin. Turn each on or off, set its period and the bow offset in the plugin\'s settings in the admin UI.</string>
     <string name="dock_level_why">With the phone in its holder and the boat lying level and still, tap Level now: roll and pitch then read zero as the phone sits. Until then the phone is taken to lie flat, screen up, with its top towards the bow.</string>
     <string name="dock_level">Level now</string>
     <string name="dock_gps_restart_why">The phone\'s GPS is not reaching Signal K: the server was started without the app on the screen (at boot or from the tile), and Android then gives it no location. Starting it again from here brings the GPS in.</string>
     <string name="dock_gps_restart">Start again with GPS</string>
-    <string name="dock_devices_title">Serial devices</string>
     <string name="dock_devices_body">GPS and AIS receivers and NMEA 0183 interfaces, plugged in by USB or paired over Bluetooth, reach Signal K through the Android bridge plugin, each as the source android.&lt;device&gt;. Set each USB device\'s baud rate in the plugin\'s settings in the admin UI; 4800 unless set.</string>
     <string name="dock_devices_stopped">Serial devices are read while the server runs.</string>
-    <string name="dock_devices_usb">USB</string>
     <string name="dock_devices_none">No USB serial device is plugged in.</string>
-    <string name="dock_devices_bluetooth">Bluetooth</string>
     <string name="dock_bluetooth_why">Allow Nearby devices so the app can see the phone\'s paired Bluetooth devices and hear Bluetooth LE sensors. Pair a serial device in the phone\'s Bluetooth settings first, then switch it on here.</string>
     <string name="dock_bluetooth_allow">Allow Bluetooth</string>
     <string name="dock_bluetooth_none">No paired Bluetooth device. Pair the NMEA device in the phone\'s Bluetooth settings, then switch it on here.</string>
@@ -178,7 +167,6 @@
     <string name="dock_device_idle">%1$s · off in the bridge plugin\'s settings</string>
     <string name="dock_device_error">%1$s · %2$s</string>
     <string name="dock_device_allow">Allow</string>
-    <string name="dock_storage_title">Storage</string>
     <string name="dock_storage_body">Where the server keeps its .signalk folder: charts, server state, application data, logs, each plugin\'s data, and copies of its settings, its passwords and the plugins\' settings. On the phone or on a card it is the app\'s own folder, which goes with the app when it is uninstalled. The plugins themselves stay in the app\'s private storage, where Android lets them run.</string>
     <string name="dock_storage_phone">Phone</string>
     <string name="dock_storage_free">%1$s free of %2$s</string>
@@ -199,9 +187,6 @@
     <string name="dock_storage_cancel">Cancel</string>
     <string name="dock_webapps_title">Webapps</string>
     <string name="dock_webapps_none">No webapps installed. Freeboard-SK, KIP and others are in the admin UI\'s App Store.</string>
-    <string name="dock_webapps_why">Each opens in the browser; a stopped server is started first.</string>
-    <string name="dock_webapps_why_pin">Each opens in the browser; a stopped server is started first. On the home screen, one tap opens it from there.</string>
-    <string name="dock_webapps_open">Open</string>
     <string name="dock_webapps_pin">Home screen</string>
     <string name="dock_webapps_pin_none">This home screen does not take shortcuts</string>
     <string name="dock_log_title">Log</string>
@@ -248,11 +233,9 @@
     <string name="dock_power_saver">Battery saver</string>
     <string name="dock_power_saver_what">The phone\'s sensors stop, but for the GPS, at most once a second, and the battery; no Bluetooth LE scan. Instruments on USB and Bluetooth serial carry on.</string>
     <string name="dock_power_passage_overlay">Dimming needs the app allowed to display over other apps: the Helm screen card asks for it.</string>
-    <string name="dock_backup_title">Backup</string>
     <string name="dock_backup_body">The server\'s settings, its users and passwords and the plugins\' settings, as one zip encrypted with AES-256, saved wherever you choose: this phone, a card, Drive or Nextcloud. 7-Zip opens it on a computer with the passphrase. The plugins themselves are installed again from the App Store\'s registry when you restore, and the data folders (charts and the rest) are not in it: they are in the USB folder.</string>
     <string name="dock_backup_passphrase">Passphrase</string>
     <string name="dock_backup_rule">12 to 64 characters: letters, digits, spaces and punctuation, no accents. Nobody can open the backup without it, you included.</string>
-    <string name="dock_backup_again">Passphrase again, for a new backup</string>
     <string name="dock_backup_save">Save a backup</string>
     <string name="dock_backup_restore">Restore</string>
     <string name="dock_backup_stop_first">Stop the server to restore a backup.</string>
@@ -384,7 +367,154 @@
     <string name="reset_everything_working">Deleting everything…</string>
     <string name="reset_settings_done">The server\'s settings are reset. Start the server to set it up again.</string>
     <string name="reset_settings_done_started">The server\'s settings are reset, and it is starting as new. Open the admin UI to set it up again.</string>
-    <string name="reset_busy">An install, a backup or a restore is running: try again when it is done.</string>
+    <string name="reset_busy">An install, a backup, a restore or the app\'s update is running: try again when it is done.</string>
     <string name="reset_still_running">The server did not stop, so nothing was reset. Stop it and try again.</string>
     <string name="reset_failed">The reset failed: %1$s</string>
+
+    <!-- The Dock's frame: the bottom bar's tabs, a page's back, the fold for a page's longer story. -->
+    <string name="tab_home">Home</string>
+    <string name="tab_devices">Devices</string>
+    <string name="tab_server">Server</string>
+    <string name="tab_phone">Phone</string>
+    <string name="nav_back">Back</string>
+    <string name="explain_show">How this works</string>
+    <string name="explain_hide">Hide how this works</string>
+
+    <!-- Home: the server's ring, its main action, where the boat reaches it. -->
+    <string name="ring_running">Running</string>
+    <string name="ring_starting">Starting</string>
+    <string name="ring_waiting">Waiting</string>
+    <string name="ring_moving">Moving data</string>
+    <string name="ring_stopping">Stopping</string>
+    <string name="ring_stopped">Stopped</string>
+    <string name="ring_failed">Stopped</string>
+    <string name="ring_version">Signal K Server %1$s</string>
+    <string name="usage_cpu">CPU %1$d %%</string>
+    <string name="usage_memory">%1$s memory</string>
+    <string name="usage_deltas">%1$s updates a second</string>
+    <string name="home_start">Start the server</string>
+    <string name="home_install">Install the server</string>
+    <string name="reach_title">Tablets and plotters on the boat\'s network open</string>
+    <string name="reach_no_network">The phone is on no network the boat can reach it on.</string>
+    <string name="reach_phone_only">Only this phone reaches the server.</string>
+    <string name="reach_change">Who can reach it</string>
+
+    <!-- Home: Needs you, only what wants a tap now. -->
+    <string name="needs_title">Needs you</string>
+    <string name="needs_none">Nothing needs you. The server is running.</string>
+    <string name="need_open">Open</string>
+    <string name="need_install">Install</string>
+    <string name="need_failed">The server stopped with a problem</string>
+    <string name="need_failed_go">See the log</string>
+    <string name="need_no_server">No server installed yet</string>
+    <string name="need_no_server_text">Choose a version and install it; the latest release is picked for you.</string>
+    <string name="need_no_server_go">Choose a version</string>
+    <string name="need_permissions">Allow what the server needs</string>
+    <string name="need_permissions_text">Notifications show that it runs and warn when it has trouble; Nearby devices lets the boat\'s tablets and plotters reach it.</string>
+    <string name="need_gps">The phone\'s GPS is not reaching Signal K</string>
+    <string name="need_gps_text">The server was started without the app on the screen, so Android gave it no location. Starting it again from here does.</string>
+    <string name="need_usb">A USB device waits for your permission</string>
+    <string name="need_card">The data\'s card is not in the phone</string>
+    <string name="need_card_text">The server waits for %1$s.</string>
+    <string name="need_missing">Some plugins cannot load</string>
+    <string name="need_missing_go">See which</string>
+    <string name="need_battery">Android may stop the server</string>
+    <string name="need_overlay">Passage cannot dim the screen</string>
+    <string name="need_update">Signal K Server %1$s is out</string>
+    <string name="need_update_text">You have %1$s. It is kept, so you can go back to it.</string>
+    <string name="need_app_update">App %1$s is out</string>
+    <string name="need_inbox">Files from a computer are waiting</string>
+
+    <!-- Home: the helm's quick controls. -->
+    <string name="helm_strip_title">At the helm</string>
+    <string name="helm_strip_more">Dimming and the screen kept on</string>
+
+    <!-- Devices tab. -->
+    <string name="devices_intro">What feeds the server: this phone\'s own sensors, instruments on USB and Bluetooth, and the boat\'s main server.</string>
+    <string name="devices_summary_stopped">Read while the server runs</string>
+    <string name="sensors_title">This phone\'s sensors</string>
+    <string name="sensors_summary">GPS, attitude, compass, barometer and more</string>
+    <string name="sensors_summary_no_gps">GPS not allowed</string>
+    <string name="sensors_summary_no_gps_now">The GPS is not reaching Signal K</string>
+    <string name="level_title">Level the phone</string>
+    <string name="level_needs_server">The server has to be running to level.</string>
+    <string name="usb_title">USB</string>
+    <string name="usb_summary_none">Nothing plugged in</string>
+    <string name="usb_summary_waiting">%1$s waits for your permission</string>
+    <plurals name="usb_summary">
+        <item quantity="one">%1$d device</item>
+        <item quantity="other">%1$d devices</item>
+    </plurals>
+    <string name="bluetooth_title">Bluetooth</string>
+    <string name="bluetooth_summary_not_allowed">Not allowed yet</string>
+    <string name="bluetooth_summary_none">No paired device</string>
+    <plurals name="bluetooth_summary">
+        <item quantity="one">%1$d of %2$d paired device read</item>
+        <item quantity="other">%1$d of %2$d paired devices read</item>
+    </plurals>
+    <string name="main_summary_off">Not following one</string>
+    <string name="main_summary_following">Following %1$s</string>
+    <string name="main_summary_asking">Waiting for %1$s to approve this phone</string>
+    <string name="main_summary_ended">Could not follow %1$s</string>
+    <plurals name="main_summary_found">
+        <item quantity="one">%1$d found on this network</item>
+        <item quantity="other">%1$d found on this network</item>
+    </plurals>
+    <string name="main_found_title">Follow a server</string>
+    <string name="main_own_server">That is this phone\'s own server.</string>
+    <string name="main_send_title">What this phone sends it</string>
+
+    <!-- Server tab. -->
+    <string name="versions_title">Version</string>
+    <string name="versions_summary_current">%1$s · up to date</string>
+    <string name="versions_summary_offer">%1$s · %2$s is out</string>
+    <string name="versions_rollback_bad">%1$s stopped working after an update on this phone, so Roll back does not offer it. Another version below offers it as Install %1$s anyway.</string>
+    <string name="versions_other_title">Another version</string>
+    <string name="versions_other_text">A beta, an older release, a file or a build\'s web address. It is tried before it is used, and the version you have is kept.</string>
+    <string name="access_title">Who can reach it</string>
+    <string name="access_lan">The boat\'s network</string>
+    <string name="access_phone">This phone only</string>
+    <string name="access_restarts">The server restarts to take a change.</string>
+    <string name="access_addresses">Its addresses now</string>
+    <string name="data_title">Where the data is</string>
+    <string name="data_summary">%1$s · %2$s</string>
+    <string name="data_free">%1$s free</string>
+    <string name="data_where">Keep it on</string>
+    <string name="data_copy_title">Charts and other files</string>
+    <string name="backup_title">Backup and restore</string>
+    <string name="backup_summary">The settings in a file of your choice</string>
+    <string name="backup_summary_saved">Backup saved</string>
+    <string name="backup_summary_restored">Backup restored</string>
+    <string name="backup_save_title">Save a backup</string>
+    <string name="backup_again">Passphrase again</string>
+    <string name="backup_busy">An install, a reset or the app\'s update is running: try again when it is done.</string>
+    <string name="backup_restore_title">Restore a backup</string>
+    <string name="backup_restore_passphrase">The backup\'s passphrase</string>
+    <string name="log_summary">The newest lines, and a zip for whoever helps you</string>
+    <string name="log_summary_failed">Says why the server stopped</string>
+    <string name="log_share_title">Diagnostics</string>
+    <plurals name="missing_summary">
+        <item quantity="one">%1$d addon has no Android build</item>
+        <item quantity="other">%1$d addons have no Android build</item>
+    </plurals>
+    <string name="reset_summary">Start again from the beginning</string>
+    <string name="reset_settings_what">Settings, users, plugins and webapps go; the charts and other data stay.</string>
+    <string name="reset_everything_what">Everything goes, the charts and data too. The app closes; opened again, it starts as just installed.</string>
+
+    <!-- Phone tab. -->
+    <string name="helm_summary_not_allowed">Needs display over other apps</string>
+    <string name="helm_summary_off">Off</string>
+    <string name="helm_summary_filter">Red filter %1$d %%</string>
+    <string name="helm_summary_dim">dimmed to %1$d %%</string>
+    <string name="helm_summary_on">screen kept on</string>
+    <string name="permissions_title">Permissions</string>
+    <string name="permissions_summary_all">All allowed</string>
+    <plurals name="permissions_summary">
+        <item quantity="one">%1$d to allow</item>
+        <item quantity="other">%1$d to allow</item>
+    </plurals>
+    <string name="app_update_busy">The app updates once the install, backup, restore or reset running now is done.</string>
+    <string name="installer_stuck">An earlier update of this app is still waiting in Android\'s installer, so installs, backups, restores and resets wait too. Open the app again, or restart the phone, to clear it.</string>
+    <string name="app_check_now">Check now</string>
+    <string name="app_summary_offer">%1$s is out</string>
 </resources>
