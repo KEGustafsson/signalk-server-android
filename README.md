@@ -1,113 +1,181 @@
 # Signal K Server for Android
 
-A full [Signal K Server](https://github.com/SignalK/signalk-server) on any Android phone or tablet: the real Node.js server, its App Store, plugins and webapps, unmodified.
+**Turn a spare Android phone or tablet into your boat's Signal K server.**
 
-The APK ships only a Node.js runtime and a bootstrap installer. On first run the app installs `signalk-server` from npm into app-private storage, the same way `npm install -g signalk-server` does on a Pi. Around that it adds what a phone needs and a Pi does not:
+This app runs the real [Signal K Server](https://github.com/SignalK/signalk-server) on the phone: the same server a Raspberry Pi runs, with its admin UI, App Store, plugins and webapps. Around it, the app adds what a phone at sea needs. It keeps the server running with the screen off. It reads instruments plugged in over USB or paired over Bluetooth. It makes the phone's own GPS and sensors part of the boat's data, and it rings Signal K's alarms like a real alarm clock.
 
-- a foreground service that keeps the server alive with the screen off, and restarts it the way systemd would
-- A/B upgrades of the server with a health gate and automatic rollback
-- USB and Bluetooth serial bridged into Signal K (no root, no `/dev/tty*`), and Bluetooth LE sensors
-- the phone's own GNSS, attitude, barometer, battery and cabin sensors as Signal K data
-- Signal K alarms as real Android alarms that wake a locked phone
-- a helm screen: any webapp on the home screen, a red night filter, dimming, a widget
-- the server's offline charts and other mass data on the phone or on an SD card, filled from a
-  browser on the boat's network or from a laptop over USB
-- encrypted backups of the server's settings, and the app updating itself from this
-  repository's Releases
-
-<p>
-  <img src="docs/images/freeboard-s57-chart.png" alt="An S-57 chart of Government Cut, Miami, drawn by Freeboard-SK" width="49%">
-  <img src="docs/images/freeboard-osm-depth.webp" alt="Freeboard-SK with OpenStreetMap, a depth layer and the boat's heading" width="49%">
+<p align="center">
+  <img src="docs/images/app-home.png" alt="Home: the server running, its version and uptime, the Open the admin UI button, and the address tablets on the boat's network open" width="32%">
+  <img src="docs/images/app-devices.png" alt="Devices: this phone's sensors, USB, Bluetooth and the boat's main server" width="32%">
+  <img src="docs/images/app-server.png" alt="Server: version, webapps, who can reach it, where the data is, backup, log and reset" width="32%">
 </p>
 
-*Charts as Freeboard-SK draws them from a Signal K server: an S-57 chart (left) and OpenStreetMap
-with a depth layer (right).*
+## What you can do with it
 
-Sibling project: [Crew Radio](https://github.com/KEGustafsson/crew-radio), whose service, networking and Signal K client code this app reuses.
+- **Run a Signal K server with no extra hardware.** A phone is a small computer with its own battery, GPS and Wi-Fi.
+- **See the boat's data on every screen aboard.** Tablets, laptops and chart plotters on the boat's Wi-Fi open the server's address in a browser. The app shows that address on its first screen.
+- **Connect instruments.** It reads GPS and AIS receivers and NMEA 0183 interfaces on a USB adapter, Bluetooth serial devices, and Bluetooth LE sensors such as Ruuvi tags.
+- **Use the phone as a sensor.** Position, speed and course, heel and pitch, the barometer, the battery, and the cabin's temperature and humidity where the phone has those sensors.
+- **Hear the alarms.** An anchor alarm or a depth alarm from Signal K wakes the phone, rings and fills the locked screen.
+- **Keep charts aboard.** Upload them from a browser, or copy them from a laptop over USB. They can live on the phone or on an SD card.
+- **Follow the boat's main server.** If the boat already has a Signal K server, the phone can follow it and send its own sensors there.
+- **Stand watch at night.** A red night filter and dimming work over any app, and a Quick Settings tile turns them on.
 
-## Status
+## What you need
 
-Close to 1.0. Every merge to `main` publishes a signed APK on the [Releases](https://github.com/KEGustafsson/signalk-server-android/releases) page. What has been built but still waits for a test on a phone is listed under "To check on a device" in each step of [docs/PLAN.md](docs/PLAN.md) §16, which is also the plan of record.
+- An Android phone or tablet with **Android 10 or later**. Most phones made since 2017 will do.
+- For the first start, about **90 MB of internet**, Wi-Fi if you can. With no internet aboard, a computer can make the server file for you (see [No internet aboard](#no-internet-aboard)).
+- Room on the phone for the server, which keeps its current and its previous version, and for your charts.
+- The phone on a charger. A server runs all day.
 
 ## Install
 
-You need a phone or tablet with Android 10 or later and, for the first run, about 90 MB of internet (Wi-Fi is best), or a server package made on a computer (below).
-
-1. On the phone, open the [latest release](https://github.com/KEGustafsson/signalk-server-android/releases/latest) and download **`SignalKServer-<version>-arm64-v8a.apk`**. It fits nearly every phone made since 2017. `SignalKServer-<version>.apk` is larger and runs everywhere else: 32-bit phones, the emulator, ChromeOS.
-2. Open the file. Android asks once whether your browser may install apps; allow it, then install.
+1. On the phone, open the [latest release](https://github.com/KEGustafsson/signalk-server-android/releases/latest) and download **`SignalKServer-<version>-arm64-v8a.apk`**. It fits nearly every phone made since 2017. If your phone is an older 32-bit one, or you use ChromeOS, take the larger **`SignalKServer-<version>.apk`** instead.
+2. Open the downloaded file. Android asks once whether your browser may install apps: allow it, then tap **Install**.
 3. Open **Signal K Server**.
 
-From then on the app updates itself: the Dock's **App update** card offers a newer release, downloads it, checks it against the checksum its release publishes and the key the app is signed with, and hands it to Android's installer. A server that was running starts again after the update.
+The app is published here only, not on Google Play or F-Droid. Updates come to it on their own: when a newer release is out, **Phone → App update** offers it. The app downloads it and checks that it is genuine, then Android asks you to confirm. If you would rather have one app keep all your sideloaded apps current, [Obtainium](https://github.com/ImranR98/Obtainium) can follow this repository.
 
-The app is published here only, not on F-Droid or IzzyOnDroid. If you would rather have one app keep your sideloaded apps current, [Obtainium](https://github.com/ImranR98/Obtainium) follows this repository's releases: add the repository's address, and when it asks which file, take the one step 1 names for your phone: the arm64-v8a APK on nearly every phone, `SignalKServer-<version>.apk` on a 32-bit phone, the emulator or ChromeOS.
+## First start
 
-## First run
+<img src="docs/images/app-setup.png" alt="The setup's first page, Welcome, step 1 of 5" width="32%" align="right">
 
-A short wizard:
+A short setup walks you through five steps:
 
-- **Which version.** The newest `signalk-server` npm has, or **From a file (.tgz)** when the boat has no internet: on any computer with Node.js, `npm pack signalk-server` makes that file. The app installs it, then tries the new server on a spare port before it makes it live.
-- **What the server needs.** Notifications (the server's own notification and its warnings), Nearby devices (so tablets and plotters on the boat's network reach the server; without it only this phone can), and an unrestricted battery (so Android does not stop the server overnight). Each can also be changed later in the Dock's **Settings** card.
-- **Start.** The admin UI opens in the browser at `http://127.0.0.1:3000/admin/`. Set up its security there (an admin user), as on any Signal K server. Plugins and webapps (Freeboard-SK, KIP, and the rest) come from its **App Store**.
+1. **Welcome.** What the app is about to download.
+2. **Which version.** The newest Signal K server is chosen for you. Without internet, pick **From a file (.tgz)** instead.
+3. **Install.** The app downloads the server and tries it once on its own before using it. This takes a few minutes.
+4. **What the server needs.** Allow these, each with one tap:
+   - **Notifications**, so the server can say it is running and warn you.
+   - **Nearby devices**, so tablets and plotters on the boat's network can reach it.
+   - **Unrestricted battery**, so Android does not stop the server overnight.
+   - **Precise location**, if you want the phone's GPS in Signal K.
 
-## The Dock
+   You can also choose here to start the server when the phone starts.
+5. **Start the server.** Its admin UI opens in the browser. Create the admin user there, as on any Signal K server, and add plugins and webapps (Freeboard-SK, KIP and many more) from its **App Store**.
 
-The app's one screen. From the top:
+You can change everything from step 4 later under **Phone → Permissions**.
 
-- **Server**: running or stopped, Start/Stop/Restart, the address the boat's network reaches it on (`http://<phone's address>:3000`), its uptime, CPU and memory, and how many updates a second it takes in. **LAN access**, on unless you turn it off, lets tablets and plotters on the boat's network reach the server; off, only this phone does (the server restarts to change it).
-- **Boat's main server**: when the boat has a Signal K server of its own (a Raspberry Pi, a chart plotter), this phone's server can follow it, so the webapps on the phone show the boat's data. The card lists the servers it finds on the network, or takes an address. **Follow** asks that server for access: approve the request in its admin UI under Security, Access Requests. The card then says whether the link is up; **Stop following** ends it. Two switches send this phone's sensors and its serial devices to that server too, under this phone's own name there; they start off for each server followed. Both switches need read/write access, and **Ask for read/write** asks for it (approve it with Read/Write). With read/write access, silencing one of the boat's alarms on the phone silences it on that server as well; with read-only access, it quiets the phone alone.
-- **Webapps**: each installed webapp opens in the browser, and can be pinned to the home screen, where one tap starts a stopped server and opens it.
-- **Helm screen**: a red night filter, dimming and keeping the screen on, over every app. A Quick Settings tile, **Night filter**, turns the filter on and off.
-- **Power**: **Harbor** (everything), **Passage** (the screen dimmed to the helm screen's brightness) and **Battery saver** (the phone's own sensors stop, except the GNSS at once a second and the battery). Instruments on USB and Bluetooth carry on in all three.
-- **Updates**: the server's version, a newer one to install, its release notes, and a rollback to the one before. A new version runs on trial after its update; if it fails to come up, the app rolls back by itself.
-- **App update**: the app's own update, above. A switch turns off the daily check.
-- **Settings**: what the phone grants the server, and starting it when the phone starts.
-- **Sensors**: the phone's sensors in Signal K, and **Level now** for roll and pitch.
-- **Serial devices**: USB and Bluetooth instruments.
-- **Storage**: whether the server's data lives on the phone or on a card.
-- **Backup**: saving and restoring the server's settings.
-- **Log**: the server's log, filtered by kind or by words, and **Share diagnostics** for whoever helps you.
+<br clear="right">
 
-There is also a Quick Settings tile, **Signal K**, to start and stop the server, and a home-screen widget, **Boat at a glance**: depth, speed over ground and apparent wind.
+## Finding your way around
 
-## Instruments and the phone's sensors
+The app has four tabs at the bottom. A tab with something waiting for you carries a small dot, and inside it the row that needs you is marked.
 
-The app installs its own plugin, **Pocket SK Android bridge**, which carries everything below into Signal K. Its settings are in the admin UI under Server → Plugin Config.
+### Home: the server
 
-- **USB serial.** GPS and AIS receivers and NMEA 0183 interfaces on a USB adapter with an FTDI, Silicon Labs CP210x, CH340 or Prolific PL2303 chip, or one that is a plain USB serial (CDC) device. Plug it in (a USB OTG adapter on most phones), allow it when Android asks, and set its baud rate in the plugin's settings: 4800 unless set, 38400 for most AIS.
-- **Bluetooth serial.** Pair the device in the phone's Bluetooth settings, then switch it on in the **Serial devices** card.
-- **Bluetooth LE sensors.** Sensors that broadcast their readings in their advertisements (Ruuvi tags and other temperature and humidity sensors, Victron devices with instant readout, and the like) reach plugins such as `bt-sensors-plugin-sk` through the phone's own Bluetooth: no BlueZ needed. Sensors that must be connected to (GATT), which most battery monitors are (JBD, Jikong, Renogy), are not supported: the plugin reports "GATT services unavailable" for them.
-- **The phone itself.** Battery, barometer, GNSS position, speed and course, roll, pitch and rate of turn, a magnetic heading (off by default), cabin temperature, humidity and light where the phone has the sensors, and the cellular signal. Each can be switched off or slowed down in the plugin's settings. The GNSS needs **Precise location** allowed.
+Home shows how the server is doing and what to do with it.
 
-Each source appears in Signal K as `android.<name>`, so the data browser shows where a value came from.
+- **The ring** is green while the server runs, grey when it is stopped and red if it stopped with an error. While it runs, the ring turns, faster while data is coming in. Inside the ring are the server's version and how long it has run.
+- **The big button** does the one thing you need now: **Install the server**, **Start the server**, or **Open the admin UI**. **Restart** and **Stop** sit beside it while the server runs.
+- **The address card** shows the address tablets and plotters open, such as `192.168.1.23:3000`, with a button that copies it. While the server is stopped the address is shown dimmed, so you can still note it down. Under it, **Who can reach it** chooses between **The boat's network** and **This phone only**.
+
+### Devices: what feeds the server
+
+- **This phone's sensors.** What the phone measures for Signal K, and **Level now** to zero the heel and pitch once the phone sits in its holder.
+- **USB.** Instruments on a USB adapter (see [Instruments](#instruments)).
+- **Bluetooth.** Your paired Bluetooth serial devices, each with a switch.
+- **Boat's main server.** Follow another Signal K server on the boat (see [Following the boat's main server](#following-the-boats-main-server)).
+
+### Server: the server itself
+
+- **Version.** Check for updates, install a newer server, or roll back to the version before. A new version is tried first. If it does not come up, the app goes back to the one that worked.
+- **Webapps.** Your installed webapps. Tap one to open it in the browser, or tap **Home screen** to put it on the phone's home screen.
+- **Who can reach it**, the same choice as on Home.
+- **Where the data is.** Keep the server's data on the phone or on an SD card or USB drive, and take in files copied over USB.
+- **Backup and restore**, see [Backups](#backups).
+- **Log.** What the server has been saying, with a filter. **Share diagnostics** sends a zip to whoever helps you. Your passwords and security settings are never in it.
+- **Missing Android builds**, shown only when a plugin needs a part that has not been built for Android yet (see [Good to know](#good-to-know)).
+- **Reset**, kept apart at the bottom. **Reset the server's settings…** starts the server fresh and keeps your charts. **Reset everything…** returns the app to its first day.
+
+### Phone: what the phone does for the server
+
+- **Helm screen**: the red night filter, dimming below the phone's own lowest, and keeping the screen on.
+- **Power**: **Harbor** gives the server everything it asks of the phone. **Passage** does the same with the screen dimmed to the helm screen's brightness. **Battery saver** stops the phone's own sensors, except the GPS (at most once a second) and the battery, and the Bluetooth LE scan. Instruments on USB and Bluetooth serial keep working in all three.
+- **Permissions**: what the server needs from the phone, each with its state.
+- **App update**: the app's own updates, with **Check now** and a switch for the daily check.
+
+<p align="center">
+  <img src="docs/images/app-phone.png" alt="Phone: helm screen, power and permissions" width="32%">
+  <img src="docs/images/app-webapps.png" alt="Webapps: Freeboard-SK, KIP and Instrument Panel, each with a Home screen button" width="32%">
+  <img src="docs/images/app-helm.png" alt="Helm screen: red night filter at 60 %, dim the screen, keep the screen on" width="32%">
+</p>
+
+## On the boat's network
+
+Any device on the same Wi-Fi as the phone can use the server. Join the boat's Wi-Fi, or turn on the phone's own hotspot and join that. Then type the address from the Home screen into the device's browser. For example, `192.168.1.23:3000/admin` opens the admin UI, and `192.168.1.23:3000/@signalk/freeboard-sk` opens Freeboard-SK. Chart plotters and apps that speak Signal K or NMEA 0183 over the network connect to the same address.
+
+On the phone itself, the webapps open from **Server → Webapps** or from the home screen. **This phone only** shuts the boat's network out; the server restarts to make the change.
+
+## Instruments
+
+The app installs a plugin of its own, **Pocket SK Android bridge**, which brings everything below into Signal K. Its settings are in the admin UI under **Server → Plugin Config**. Each source shows up in Signal K as `android.<name>`, so the data browser tells you where every value came from.
+
+- **USB.** GPS and AIS receivers and NMEA 0183 interfaces on a USB serial adapter, with an FTDI, CP210x, CH340 or PL2303 chip, or a plain USB serial device. Plug it in (most phones need a USB OTG adapter) and allow it when Android asks. Then set its speed in the plugin's settings: 4800 unless you set it, 38400 for most AIS receivers.
+- **Bluetooth serial.** Pair the device in the phone's Bluetooth settings first, then switch it on under **Devices → Bluetooth**.
+- **Bluetooth LE sensors.** Sensors that broadcast their readings, such as Ruuvi tags, other temperature and humidity sensors, and Victron devices with Instant Readout, reach plugins like `bt-sensors-plugin-sk` through the phone's Bluetooth. Sensors that need a connection are not supported yet; most battery monitors (JBD, Jikong, Renogy) are of that kind.
+- **The phone itself.** Battery, barometer, GPS position, speed and course, heel, pitch and rate of turn, cabin temperature, humidity and light, and the mobile signal. A magnetic heading is there too, off by default. Each can be switched off or slowed down in the plugin's settings.
 
 ## Alarms
 
-An alarm or emergency from Signal K (an anchor alarm, a depth alarm) rings with the phone's alarm sound, vibrates, and wakes and fills a locked screen; warnings too, when the bridge plugin's settings ask for them. **Silence** (or **Acknowledge**, for an emergency) goes back to the server. The full-screen alarm needs **Full-screen alarms** allowed on Android 14 and later (the Settings card opens the page); without it the alarm still rings, as a notification.
+<img src="docs/images/app-alarm.png" alt="An alarm over the lock screen: Anchor dragging, with Silence and Close" width="32%" align="right">
 
-## Charts and other data
+When Signal K raises an alarm or an emergency, such as the anchor dragging or the depth too shallow, the phone acts like an alarm clock:
+- It rings with the alarm sound and vibrates.
+- It wakes the phone and fills the locked screen.
 
-The server's `.signalk` folder (charts, its state, the plugins' data, the logs) lives in the app's own folder on the phone, or on an SD card or USB drive chosen in the **Storage** card. Three ways to fill it:
+Warnings can do the same if you turn them on in the bridge plugin's settings.
 
-- **From a browser on the boat's network**: the **Pocket SK files** webapp uploads charts and other files into the server's data folders.
-- **From a computer over USB**: `Android/data/fi.pocketsk/files/signalk` on the phone (or the card) is the server's `.signalk`, as on a Linux box. Charts copied there are the server's at once; a settings file changed there is taken in at the server's next start.
-- **The USB inbox**: files copied into `Android/data/fi.pocketsk/files/inbox/charts` are moved into the charts when the server starts, or at once with **Take them in**.
+**Silence**, or **Acknowledge** for an emergency, quiets the alarm on the server too. On Android 14 and later, allow **Full-screen alarms** under **Phone → Permissions**. Without it the alarm still rings, but as a notification.
+
+<br clear="right">
+
+## Charts and other files
+
+The server keeps its charts and other data in a folder of its own, on the phone or on an SD card or USB drive (**Server → Where the data is**). There are three ways to fill it:
+
+- **From any browser on the boat**, with the **Pocket SK files** webapp, which uploads charts and other files.
+- **From a computer over USB**, by connecting the phone and opening `Android/data/fi.pocketsk/files/signalk`. That folder is the server's own, as on a Raspberry Pi, and charts copied there are ready at once.
+- **Through the USB inbox.** Files copied into `Android/data/fi.pocketsk/files/inbox/charts` are moved into the charts when the server starts, or straight away with **Take them in**.
 
 ## Backups
 
-The **Backup** card saves the server's settings, its users and passwords and the plugins' settings as one zip encrypted with AES-256 and a passphrase you type each time. Save it wherever you like: the phone, a card, Drive, Nextcloud. On a computer, 7-Zip opens it with the passphrase. A restore puts the settings back and installs the plugins again with npm (so it needs the network). Charts and other data are not in the backup; they are in the USB folder.
+**Server → Backup and restore** saves the server's settings in one file, wherever you choose: the phone, a card, Google Drive or Nextcloud. That includes its users and passwords, its connections and the plugins' settings. The file is encrypted with a passphrase you type each time, and nobody can open it without that passphrase, you included. On a computer, 7-Zip opens it.
+
+A restore puts the settings back and installs the plugins again, so it needs the internet. Charts are not in the backup, because they are large; copy them off over USB instead.
+
+## Following the boat's main server
+
+If the boat already has a Signal K server (a Raspberry Pi, a chart plotter), the phone's server can follow it, so the webapps on the phone show the boat's data. Under **Devices → Boat's main server**, pick the server the app found on the network, or type its address, and tap **Follow**. Then approve the phone's request in that server's admin UI under **Security → Access Requests**.
+
+Two switches can also send the phone's sensors and its USB and Bluetooth instruments to the main server, under the phone's own name there. They need read/write access: **Ask for read/write** asks for it. **Stop following** ends the link.
+
+## More on the phone
+
+- **Quick Settings tiles.** **Signal K** starts and stops the server. **Night filter** turns the red filter on and off. Add them from the phone's Quick Settings editor.
+- **Home-screen widget.** **Boat at a glance** shows depth, speed over ground and apparent wind.
+- **Webapps on the home screen.** A pinned webapp starts the server if it is stopped, then opens.
+
+## No internet aboard
+
+On any computer with [Node.js](https://nodejs.org), run `npm pack signalk-server`, which makes a file such as `signalk-server-2.35.1.tgz`. Copy it to the phone. In the setup's **Which version** step, or later under **Server → Version → Other versions…**, choose **From a file (.tgz)** and pick it.
 
 ## Good to know
 
-- **Keep the battery unrestricted.** Some phones stop background apps hard; the **Settings** card's battery row opens the page where the app is set to Don't optimise.
-- **GPS after an automatic start.** A server started at boot or from the tile gets no location from Android until it is started again from the app's screen; the **Sensors** card offers that.
-- **Plugins with native code.** Android builds of the common native addons (serialport, better-sqlite3, sqlite3, bufferutil, utf-8-validate) are fetched by the app when a plugin needs one. A plugin whose addon has no Android build yet installs, but will not load: the install log says so, and the Dock lists the addon under **Missing Android builds** with **Request it**, which opens a request for it here. Once its build is published, install the plugin again and the app puts the build in place.
-- **Uninstalling the app deletes the server's data folder** on the phone and the card, as Android does with every app's own folder. Save a backup, and copy the charts off over USB, first.
-- **Security.** Anyone on the boat's network can reach the server, as on a Pi: set up an admin user in the admin UI, or turn **LAN access** off when this phone is the only screen. With it off the server still takes NMEA 0183 over UDP from a Wi-Fi gateway.
-- **Secrets.** The server's `security.json` is in the USB folder, so anyone who can open the phone's files over USB can read it. The diagnostics bundle leaves the server's settings and security out.
+- **Keep the battery unrestricted.** Some phones stop background apps hard. If the server stops overnight, check **Phone → Permissions**.
+- **GPS after an automatic start.** When the server starts by itself (at boot, or from the tile), Android withholds the location until the server is started once from the app's screen. **Devices → This phone's sensors** offers to do that.
+- **Plugins with native parts.** Some plugins need a piece built for Android. The app fetches those builds for the common ones (serialport, sqlite and others). If a plugin needs one that does not exist yet, **Server → Missing Android builds** lists it with **Request it**. When the build is published, install the plugin again.
+- **Set up security.** Anyone on the boat's network can reach the server, as with a Raspberry Pi. Create an admin user in the admin UI, or choose **This phone only** when the phone is the only screen aboard.
+- **Uninstalling deletes the server's data**, on the phone and on the card, as Android does for every app. Save a backup and copy the charts off first.
+- **Anyone who can open the phone's files over USB can read the server's settings**, including `security.json`.
 
-## Build it yourself
+## Help and feedback
 
-Open the folder in Android Studio (a release that supports Android Gradle Plugin 9.4) and build, or run `./gradlew assembleDebug` with an Android SDK (platform 37) and a JDK 17 on the machine. Unit tests: `./gradlew testDebugUnitTest`. Every merge to `main` builds a signed APK and publishes it on the Releases page; the build, signing and release procedure is the one documented for [Crew Radio](https://github.com/KEGustafsson/crew-radio/blob/main/docs/BUILDING.md), with `SIGNALK_ANDROID_` in place of `CREWRADIO_` in the secrets and environment variables. The architecture and every decision behind it are in [docs/PLAN.md](docs/PLAN.md).
+Found a bug or missing something? [Open an issue](https://github.com/KEGustafsson/signalk-server-android/issues), and attach the zip from **Server → Log → Share diagnostics**. Questions about Signal K itself, its plugins and webapps are best asked in the [Signal K community](https://signalk.org).
+
+## For developers
+
+The app is built with Android Studio, or `./gradlew assembleDebug` with an Android SDK (platform 37) and JDK 17; unit tests run with `./gradlew testDebugUnitTest`. Every merge to `main` publishes a signed APK on the Releases page. The design and every decision behind it are in [docs/PLAN.md](docs/PLAN.md). The build and release procedure follows the sibling project [Crew Radio](https://github.com/KEGustafsson/crew-radio/blob/main/docs/BUILDING.md), with `SIGNALK_ANDROID_` in place of `CREWRADIO_`. The app's screenshots above are drawn from its own screen code with example data.
 
 ## Licence
 
