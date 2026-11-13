@@ -167,6 +167,9 @@ class MainActivity : ComponentActivity() {
     private val appUpdateObserver = AppUpdater.Observer { state ->
         runOnUiThread {
             model.app = state
+            // An update started here tries the old session's cleanup again first: whatever it
+            // found shows at once, not only at the next return to the app.
+            model.installerStuck = AppUpdater.staleSession
             showInstallConfirmation()
         }
     }
