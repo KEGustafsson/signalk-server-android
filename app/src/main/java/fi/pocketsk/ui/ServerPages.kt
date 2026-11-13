@@ -109,6 +109,7 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
             }
         }
     }
+    slots.otherVersion?.takeIf { slots.history.isBad(it) }?.let { Note(stringResource(R.string.versions_rollback_bad, it)) }
     Section(stringResource(R.string.versions_other_title)) {
         Note(stringResource(R.string.versions_other_text))
         var choosing by rememberSaveable { mutableStateOf(false) }

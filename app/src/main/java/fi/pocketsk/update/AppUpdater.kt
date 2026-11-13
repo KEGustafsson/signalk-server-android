@@ -85,6 +85,40 @@ internal object AppUpdater {
      */
     val updating: Boolean get() = state.let { it is State.Downloading || it is State.Installing }
 
+    /**
+     * Abandons the installer sessions an earlier process of this app left: one committed and
+     * waiting for the owner's confirmation when that process ended. [updating] knows only this
+     * process's update, so such a session would let a backup, restore or reset start and then be
+     * cut short when the owner confirmed. Called as the process starts, before any of them can,
+     * so every session there is is an earlier process's; the update is offered again instead.
+     * Short calls to the package installer, made on the main thread as the process starts so
+     * they are done before anything else; what they did is logged from a worker, since the log
+     * writes to a file.
+     */
+    fun abandonStale(context: Context) {
+        val installer = context.packageManager.packageInstaller
+        val notes = mutableListOf<String>()
+        // Each on its own, and nothing thrown out of here: this runs as the app starts, where an
+        // exception would keep it from opening at all.
+        val sessions = try {
+            installer.mySessions
+        } catch (e: RuntimeException) {
+            notes += "could not list the app's installer sessions: $e"
+            emptyList()
+        }
+        for (s in sessions) {
+            notes += try {
+                installer.abandonSession(s.sessionId)
+                "abandoned the app update an earlier run left with the installer (session ${s.sessionId})"
+            } catch (e: RuntimeException) {
+                "could not abandon an earlier app update's installer session ${s.sessionId}: $e"
+            }
+        }
+        if (notes.isEmpty()) return
+        val app = context.applicationContext
+        transportThread("app-update-stale", onError = {}) { notes.forEach(ServerStatus.log(app)::note) }
+    }
+
     /** Whether this install updates itself: not when a store that keeps it current installed it. */
     fun selfUpdates(context: Context): Boolean = AppRelease.selfUpdates(installer(context))
 

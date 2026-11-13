@@ -377,7 +377,12 @@ private fun needAction(need: Needs.Need, model: AppModel, actions: AppActions, o
         Needs.Need.MISSING_BUILDS -> open(Page.MISSING)
         Needs.Need.BATTERY -> actions.openBatterySettings()
         Needs.Need.PASSAGE_OVERLAY -> actions.openOverlaySettings()
-        Needs.Need.SERVER_UPDATE -> serverOffer(model)?.let { actions.install(InstallManager.Source.Registry(it.text)) }
+        Needs.Need.SERVER_UPDATE -> serverOffer(model)?.let {
+            // The page shows the install's progress, its last lines and a failure, which this
+            // card, gone once the install starts, cannot.
+            open(Page.VERSIONS)
+            actions.install(InstallManager.Source.Registry(it.text))
+        }
         Needs.Need.APP_UPDATE -> {
             // The page shows the download, the installer's answer and a failure, which this card,
             // gone once the update starts, cannot.

@@ -190,6 +190,9 @@ internal interface AppActions {
     fun updateApp()
     /** The app's own release on offer, on GitHub in the browser. */
     fun openAppRelease()
+    /** Looks for a newer build of the app now, GitHub asked afresh, the daily look on or not. */
+    fun checkAppUpdate()
+
     /** Turns the Dock's daily look for a newer build of the app on or off. */
     fun setAppChecks(on: Boolean)
     /** Installs [source]; [allowBad] when the owner picked a version the health gate rolled back here, and was told so. */

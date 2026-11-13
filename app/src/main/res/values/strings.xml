@@ -468,6 +468,7 @@
     <string name="versions_title">Version</string>
     <string name="versions_summary_current">%1$s · up to date</string>
     <string name="versions_summary_offer">%1$s · %2$s is out</string>
+    <string name="versions_rollback_bad">%1$s stopped working after an update on this phone, so Roll back does not offer it. Another version below offers it as Install %1$s anyway.</string>
     <string name="versions_other_title">Another version</string>
     <string name="versions_other_text">A beta, an older release, a file or a build\'s web address. It is tried before it is used, and the version you have is kept.</string>
     <string name="access_title">Who can reach it</string>
@@ -513,5 +514,6 @@
         <item quantity="other">%1$d to allow</item>
     </plurals>
     <string name="app_update_busy">The app updates once the install, backup, restore or reset running now is done.</string>
+    <string name="app_check_now">Check now</string>
     <string name="app_summary_offer">%1$s is out</string>
 </resources>

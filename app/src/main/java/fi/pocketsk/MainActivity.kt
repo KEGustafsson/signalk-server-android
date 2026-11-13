@@ -544,6 +544,10 @@ class MainActivity : ComponentActivity() {
         override fun openReleases() = this@MainActivity.openReleases()
         override fun updateApp() = this@MainActivity.updateApp()
         override fun openAppRelease() = this@MainActivity.openAppRelease()
+        override fun checkAppUpdate() {
+            if (selfUpdates) AppUpdater.check(this@MainActivity, maxAgeMs = 0)
+        }
+
         override fun setAppChecks(on: Boolean) = this@MainActivity.setAppChecks(on)
         override fun install(source: InstallManager.Source, allowBad: Boolean) = this@MainActivity.install(source, allowBad)
         override fun pickTarball() = this@MainActivity.pickTarball()

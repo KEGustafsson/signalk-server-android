@@ -7,6 +7,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +31,8 @@ import fi.pocketsk.update.AppUpdater
 @Composable
 internal fun HelmPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
     PageHeader(stringResource(R.string.dock_helm_title), onBack)
+    // Read for what is shown; each change copies model.night itself, so two changes before the
+    // next recomposition do not undo each other.
     val night = model.night
     if (!model.nightAllowed) {
         Block {
@@ -40,19 +43,19 @@ internal fun HelmPage(model: AppModel, actions: AppActions, onBack: () -> Unit) 
         return
     }
     Block {
-        SwitchRow(stringResource(R.string.dock_helm_filter), night.filter) { actions.setNight(night.copy(filter = it)) }
+        SwitchRow(stringResource(R.string.dock_helm_filter), night.filter) { actions.setNight(model.night.copy(filter = it)) }
         if (night.filter) {
-            PercentSlider(stringResource(R.string.dock_helm_strength, night.strength), night.strength, 0) { actions.setNight(night.copy(strength = it)) }
+            PercentSlider(stringResource(R.string.dock_helm_strength, night.strength), night.strength, 0) { actions.setNight(model.night.copy(strength = it)) }
         }
     }
     Block {
-        SwitchRow(stringResource(R.string.dock_helm_dim), night.dim) { actions.setNight(night.copy(dim = it)) }
+        SwitchRow(stringResource(R.string.dock_helm_dim), night.dim) { actions.setNight(model.night.copy(dim = it)) }
         if (night.dim) {
-            PercentSlider(stringResource(R.string.dock_helm_brightness, night.brightness), night.brightness, 1) { actions.setNight(night.copy(brightness = it)) }
+            PercentSlider(stringResource(R.string.dock_helm_brightness, night.brightness), night.brightness, 1) { actions.setNight(model.night.copy(brightness = it)) }
         }
     }
     Block {
-        SwitchRow(stringResource(R.string.dock_helm_keep_on), night.keepOn) { actions.setNight(night.copy(keepOn = it)) }
+        SwitchRow(stringResource(R.string.dock_helm_keep_on), night.keepOn) { actions.setNight(model.night.copy(keepOn = it)) }
     }
     Explain(stringResource(R.string.dock_helm_body))
 }
@@ -133,6 +136,11 @@ internal fun AppUpdatePage(model: AppModel, actions: AppActions, onBack: () -> U
         }
     }
     Block {
+        // A look now, whether or not the daily one is on, for the app alone.
+        OutlinedButton(
+            onClick = actions::checkAppUpdate,
+            enabled = state !is AppUpdater.State.Checking && !model.appUpdating,
+        ) { Text(stringResource(R.string.app_check_now)) }
         SwitchRow(stringResource(R.string.dock_app_checks), model.appChecks, onChange = actions::setAppChecks)
     }
 }
