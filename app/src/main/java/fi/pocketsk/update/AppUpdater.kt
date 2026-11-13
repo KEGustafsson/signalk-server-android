@@ -81,29 +81,45 @@ internal object AppUpdater {
 
     /**
      * The update is downloading or with the installer, which ends this process when it commits:
-     * no install, backup, restore or reset may start meanwhile, since none would finish.
+     * no install, backup, restore or reset may start meanwhile, since none would finish. Also
+     * while an earlier run's installer session could not be shown gone ([abandonStale]): that
+     * cleanup is tried again here, so a refusal lasts only as long as the installer does.
      */
-    val updating: Boolean get() = state.let { it is State.Downloading || it is State.Installing }
+    fun updating(context: Context): Boolean =
+        state.let { it is State.Downloading || it is State.Installing } ||
+            (staleLeft && !clean(context.applicationContext))
+
+    /** Set while [abandonStale] could not confirm that no earlier run's session is left. */
+    @Volatile private var staleLeft = false
 
     /**
      * Abandons the installer sessions an earlier process of this app left: one committed and
-     * waiting for the owner's confirmation when that process ended. [updating] knows only this
-     * process's update, so such a session would let a backup, restore or reset start and then be
-     * cut short when the owner confirmed. Called as the process starts, before any of them can,
-     * so every session there is is an earlier process's; the update is offered again instead.
-     * Short calls to the package installer, made on the main thread as the process starts so
-     * they are done before anything else; what they did is logged from a worker, since the log
-     * writes to a file.
+     * waiting for the owner's confirmation when that process ended. This process's own state
+     * knows nothing of it, so such a session would let a backup, restore or reset start and then
+     * be cut short when the owner confirmed. Called as the process starts, before any of them
+     * can, so every session there is is an earlier process's; the update is offered again
+     * instead. If the installer cannot be asked or a session not abandoned, [updating] stays true
+     * and tries again each time it is read. Short calls to the package installer, made on the
+     * main thread as the process starts so they are done before anything else.
      */
     fun abandonStale(context: Context) {
-        val installer = context.packageManager.packageInstaller
+        clean(context.applicationContext)
+    }
+
+    /**
+     * Abandons every installer session of this app, and says whether none is left; logs what it
+     * did from a worker, since the log writes to a file. Nothing is thrown out of here: it runs
+     * as the app starts, where an exception would keep it from opening at all.
+     */
+    private fun clean(app: Context): Boolean {
+        val installer = app.packageManager.packageInstaller
         val notes = mutableListOf<String>()
-        // Each on its own, and nothing thrown out of here: this runs as the app starts, where an
-        // exception would keep it from opening at all.
+        var clean = true
         val sessions = try {
             installer.mySessions
         } catch (e: RuntimeException) {
             notes += "could not list the app's installer sessions: $e"
+            clean = false
             emptyList()
         }
         for (s in sessions) {
@@ -111,12 +127,15 @@ internal object AppUpdater {
                 installer.abandonSession(s.sessionId)
                 "abandoned the app update an earlier run left with the installer (session ${s.sessionId})"
             } catch (e: RuntimeException) {
+                clean = false
                 "could not abandon an earlier app update's installer session ${s.sessionId}: $e"
             }
         }
-        if (notes.isEmpty()) return
-        val app = context.applicationContext
-        transportThread("app-update-stale", onError = {}) { notes.forEach(ServerStatus.log(app)::note) }
+        staleLeft = !clean
+        if (notes.isNotEmpty()) {
+            transportThread("app-update-stale", onError = {}) { notes.forEach(ServerStatus.log(app)::note) }
+        }
+        return clean
     }
 
     /** Whether this install updates itself: not when a store that keeps it current installed it. */
@@ -147,6 +166,8 @@ internal object AppUpdater {
         // The installer ends this process, and with it an install, backup, restore or reset
         // running in it: those finish first.
         if (InstallJob.isRunning || BackupJob.isRunning || ResetJob.isRunning) return
+        // An earlier run's session still with the installer is that update; this one waits for it to go.
+        if (staleLeft && !clean(context.applicationContext)) return
         val release = when (val s = state) {
             is State.Available -> s.release
             is State.Failed -> s.release ?: return

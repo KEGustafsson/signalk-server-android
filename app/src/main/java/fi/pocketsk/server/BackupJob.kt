@@ -69,7 +69,7 @@ internal object BackupJob {
     fun save(context: Context, uri: Uri, passphrase: CharArray): Boolean {
         // A reset empties the files a backup reads: one thing at a time touches them.
         // An install's trial run copies `.signalk` as this writes it; the app's update ends the process.
-        if (isRunning || ResetJob.isRunning || InstallJob.isRunning || AppUpdater.updating) return false.also { passphrase.fill(' ') }
+        if (isRunning || ResetJob.isRunning || InstallJob.isRunning || AppUpdater.updating(context)) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = false))
         work(app, restore = false) {
@@ -93,7 +93,7 @@ internal object BackupJob {
     @Synchronized
     fun restore(context: Context, uri: Uri, passphrase: CharArray): Boolean {
         // An install's trial run copies `.signalk` as this writes it; the app's update ends the process.
-        if (isRunning || ResetJob.isRunning || InstallJob.isRunning || AppUpdater.updating) return false.also { passphrase.fill(' ') }
+        if (isRunning || ResetJob.isRunning || InstallJob.isRunning || AppUpdater.updating(context)) return false.also { passphrase.fill(' ') }
         val app = context.applicationContext
         publish(State.Working(restore = true))
         work(app, restore = true) {

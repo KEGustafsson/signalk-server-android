@@ -136,7 +136,7 @@ internal object ResetJob {
         if (isRunning) return false
         val app = context.applicationContext
         // The app's update ends the process, and the reset with it.
-        if (InstallJob.isRunning || BackupJob.isRunning || AppUpdater.updating) {
+        if (InstallJob.isRunning || BackupJob.isRunning || AppUpdater.updating(context)) {
             publish(State.Failed(kind, Why.BUSY))
             return true
         }

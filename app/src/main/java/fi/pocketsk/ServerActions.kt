@@ -59,7 +59,7 @@ internal object ServerActions {
         // copies it: the trial would run on half of one.
         if (ResetJob.isRunning || BackupJob.isRunning) return false
         // The app's update ends the process the install runs in.
-        if (AppUpdater.updating) return false
+        if (AppUpdater.updating(context)) return false
         val app = context.applicationContext
         return InstallJob.start(
             InstallManager(app, runtime),
