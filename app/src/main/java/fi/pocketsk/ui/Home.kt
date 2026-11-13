@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,6 +51,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import fi.pocketsk.BuildConfig
 import fi.pocketsk.R
 import fi.pocketsk.ServerActions
@@ -275,13 +278,18 @@ internal fun AddressCard(model: AppModel, open: ((Page) -> Unit)?) {
             }
             shown?.let {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
+                    // One line, shrinking to fit a narrow phone or a large font rather than
+                    // breaking inside the port or cutting it off.
+                    val large = MaterialTheme.typography.headlineSmall
+                    BasicText(
                         it,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = if (running != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = large.copy(
+                            fontWeight = FontWeight.Medium,
+                            color = if (running != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                         maxLines = 1,
                         softWrap = false,
+                        autoSize = TextAutoSize.StepBased(minFontSize = ADDRESS_MIN_SP.sp, maxFontSize = large.fontSize),
                         modifier = Modifier.weight(1f),
                     )
                     if (running != null) CopyButton("http://$it")
@@ -342,6 +350,12 @@ private fun CopyButton(url: String) {
 }
 
 private const val RING_SIZE = 200
+
+/**
+ * The smallest the address shrinks to on one line. In sp, so it grows with the phone's font
+ * setting too: 10 keeps the longest address and its port on a 320 dp screen at twice the font.
+ */
+private const val ADDRESS_MIN_SP = 10
 private const val RING_STROKE = 12
 
 /** One turn of the ring's arc while data comes in, and while none does. */
