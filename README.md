@@ -24,7 +24,7 @@ This app runs the real [Signal K Server](https://github.com/SignalK/signalk-serv
 ## What you need
 
 - An Android phone or tablet with **Android 10 or later**. Most phones made since 2017 will do.
-- For the first start, about **90 MB of internet**, Wi-Fi if you can. With no internet aboard, a computer can make the server file for you (see [No internet aboard](#no-internet-aboard)).
+- **An internet connection** for the first start and for each server update: about 90 MB, Wi-Fi if you can. After that the server runs without one.
 - Room on the phone for the server, which keeps its current and its previous version, and for your charts.
 - The phone on a charger. A server runs all day.
 
@@ -43,7 +43,7 @@ The app is published here only, not on Google Play or F-Droid. Updates come to i
 A short setup walks you through five steps:
 
 1. **Welcome.** What the app is about to download.
-2. **Which version.** The newest Signal K server is chosen for you. Without internet, pick **From a file (.tgz)** instead.
+2. **Which version.** The newest Signal K server is chosen for you. You can pick an older one, or a server file you have (see [Installing from a file](#installing-from-a-file)).
 3. **Install.** The app downloads the server and tries it once on its own before using it. This takes a few minutes.
 4. **What the server needs.** Allow these, each with one tap:
    - **Notifications**, so the server can say it is running and warn you.
@@ -84,7 +84,7 @@ Home shows how the server is doing and what to do with it.
 - **Who can reach it**, the same choice as on Home.
 - **Where the data is.** Keep the server's data on the phone or on an SD card or USB drive, and take in files copied over USB.
 - **Backup and restore**, see [Backups](#backups).
-- **Log.** What the server has been saying, with a filter. **Share diagnostics** sends a zip to whoever helps you. Your passwords and security settings are never in it.
+- **Log.** What the server has been saying, with a filter. **Share diagnostics** sends a zip to whoever helps you. The server's settings and security are never in it, but the log holds whatever the server and its plugins printed, so read it before you post the zip in public.
 - **Missing Android builds**, shown only when a plugin needs a part that has not been built for Android yet (see [Good to know](#good-to-know)).
 - **Reset**, kept apart at the bottom. **Reset the server's settings…** starts the server fresh and keeps your charts. **Reset everything…** returns the app to its first day.
 
@@ -135,7 +135,7 @@ Warnings can do the same if you turn them on in the bridge plugin's settings.
 The server keeps its charts and other data in a folder of its own, on the phone or on an SD card or USB drive (**Server → Where the data is**). There are three ways to fill it:
 
 - **From any browser on the boat**, with the **Pocket SK files** webapp, which uploads charts and other files.
-- **From a computer over USB**, by connecting the phone and opening `Android/data/fi.pocketsk/files/signalk`. That folder is the server's own, as on a Raspberry Pi, and charts copied there are ready at once.
+- **From a computer over USB**, by connecting the phone and opening `Android/data/fi.pocketsk/files/signalk`. That folder is the server's own, as on a Raspberry Pi, and charts copied there are ready at once. It is on the storage the data is kept on: the phone's own, or the SD card, which the computer shows as a second drive. With the data on a USB drive, plug the drive into the computer instead.
 - **Through the USB inbox.** Files copied into `Android/data/fi.pocketsk/files/inbox/charts` are moved into the charts when the server starts, or straight away with **Take them in**.
 
 ## Backups
@@ -156,9 +156,9 @@ Two switches can also send the phone's sensors and its USB and Bluetooth instrum
 - **Home-screen widget.** **Boat at a glance** shows depth, speed over ground and apparent wind.
 - **Webapps on the home screen.** A pinned webapp starts the server if it is stopped, then opens.
 
-## No internet aboard
+## Installing from a file
 
-On any computer with [Node.js](https://nodejs.org), run `npm pack signalk-server`, which makes a file such as `signalk-server-2.35.1.tgz`. Copy it to the phone. In the setup's **Which version** step, or later under **Server → Version → Other versions…**, choose **From a file (.tgz)** and pick it.
+A server package made with `npm pack` (a test build, or `npm pack signalk-server` on any computer with [Node.js](https://nodejs.org)) installs from the phone too. Copy the `.tgz` file to the phone, then choose **From a file (.tgz)** in the setup's **Which version** step or under **Server → Version → Other versions…**. Such a file holds the server alone, not the parts it is built on, so the phone still needs the internet while it installs.
 
 ## Good to know
 
