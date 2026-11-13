@@ -44,8 +44,9 @@ import fi.pocketsk.update.AppUpdater
 
 /**
  * The Dock's four places, in the bottom bar (docs/PLAN.md §8.1, §16 16): Home, what the server is
- * doing and what needs the owner; Devices, what feeds it; Server, its versions, reach, data,
- * backups, log and reset; Phone, what the phone does for it.
+ * doing and its one action; Devices, what feeds it; Server, what needs the owner, its versions,
+ * reach, data, backups, log and reset, the webapps and the helm's quick controls; Phone, what the
+ * phone does for it.
  */
 internal enum class Tab(@StringRes val label: Int, @DrawableRes val icon: Int) {
     HOME(R.string.tab_home, R.drawable.ic_tab_home),
@@ -76,8 +77,8 @@ internal enum class Page(val tab: Tab) {
 /**
  * The Dock (docs/PLAN.md §8.1): the bottom bar's four tabs, each a short list, each row opening a
  * page with one subject on it. Back goes from a page to its tab, and from a tab to Home. A tab
- * with something in it that wants the owner carries a dot, the same things Home lists under
- * "Needs you".
+ * with something in it that wants the owner carries a dot; the Server tab, which lists them all
+ * under "Needs you", carries one for any.
  */
 @Composable
 internal fun DockScreen(model: AppModel, actions: AppActions) {
@@ -97,7 +98,8 @@ internal fun DockScreen(model: AppModel, actions: AppActions) {
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 for (t in Tab.entries) {
-                    val dot = t != Tab.HOME && needs.any { needTab(it) == t }
+                    // The Server tab lists every need; the others carry a dot for the ones dealt with there.
+                    val dot = needs.any { needTab(it) == t } || (t == Tab.SERVER && needs.isNotEmpty())
                     NavigationBarItem(
                         selected = tab == t,
                         onClick = {
@@ -128,9 +130,9 @@ internal fun DockScreen(model: AppModel, actions: AppActions) {
                 val back = { page = null }
                 when (val p = place.page) {
                     null -> when (place.tab) {
-                        Tab.HOME -> HomeTab(model, actions, needs, open)
+                        Tab.HOME -> HomeTab(model, actions, open)
                         Tab.DEVICES -> DevicesTab(model, open)
-                        Tab.SERVER -> ServerTab(model, open)
+                        Tab.SERVER -> ServerTab(model, actions, needs, open)
                         Tab.PHONE -> PhoneTab(model, open)
                     }
                     Page.SENSORS -> SensorsPage(model, actions, back)
@@ -262,10 +264,14 @@ private fun DevicesTab(model: AppModel, open: (Page) -> Unit) {
     }
 }
 
-/** Server: its version, who reaches it, where its data is, its backups, its log; the reset apart, last. */
+/**
+ * Server: what needs the owner first; its version, who reaches it, where its data is, its backups,
+ * its log; the webapps and the helm's quick controls; the reset apart, last.
+ */
 @Composable
-private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
+private fun ServerTab(model: AppModel, actions: AppActions, needs: List<Needs.Need>, open: (Page) -> Unit) {
     TabHeader(stringResource(R.string.tab_server))
+    NeedsSection(model, actions, needs, open)
     val slots = model.slots
     val offer = serverOffer(model)
     RowGroup {
@@ -324,6 +330,8 @@ private fun ServerTab(model: AppModel, open: (Page) -> Unit) {
             )
         }
     }
+    WebappTiles(model, actions)
+    HelmStrip(model, actions, open)
     RowGroup {
         NavRow(stringResource(R.string.reset_title), stringResource(R.string.reset_summary), onClick = { open(Page.RESET) }, danger = true)
     }
