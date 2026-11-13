@@ -1,13 +1,13 @@
 package fi.pocketsk.ui
 
 /**
- * What the Home tab's "Needs you" list holds (docs/PLAN.md §8.1, §16 16): only what wants the
- * owner's tap now, most pressing first, each one thing with one way to do it. Everything else
- * stays on its tab, under a row that says how it stands, so a server with nothing wrong shows a
- * Home with nothing on it but the server.
+ * What wants the owner's tap now (docs/PLAN.md §8.1, §16 16), most pressing first, each one thing
+ * dealt with on one tab: the bottom bar puts a dot on that tab, and the tab marks the row whose
+ * page deals with it. Home shows none of them, as the owner asked: it is the server and its one
+ * action alone.
  *
- * Pure, so the rules of what shows and in which order are tested; [DockScreen] reads the facts
- * from [AppModel] into an [Input] and draws a card for each [Need].
+ * Pure, so the rules of what counts and in which order are tested; [DockScreen] reads the facts
+ * from [AppModel] into an [Input] and gives each [Need]'s tab its dot.
  */
 internal object Needs {
 

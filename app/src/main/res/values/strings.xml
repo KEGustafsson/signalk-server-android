@@ -188,6 +188,7 @@
     <string name="dock_webapps_title">Webapps</string>
     <string name="dock_webapps_none">No webapps installed. Freeboard-SK, KIP and others are in the admin UI\'s App Store.</string>
     <string name="dock_webapps_pin">Home screen</string>
+    <string name="webapps_summary_none">None installed yet</string>
     <string name="dock_webapps_pin_none">This home screen does not take shortcuts</string>
     <string name="dock_log_title">Log</string>
     <string name="dock_log_empty">Nothing logged yet</string>
@@ -400,34 +401,8 @@
     <string name="reach_change">Who can reach it</string>
 
     <!-- Home: Needs you, only what wants a tap now. -->
-    <string name="needs_title">Needs you</string>
-    <string name="needs_none">Nothing needs you. The server is running.</string>
-    <string name="need_open">Open</string>
-    <string name="need_install">Install</string>
-    <string name="need_failed">The server stopped with a problem</string>
-    <string name="need_failed_go">See the log</string>
-    <string name="need_no_server">No server installed yet</string>
-    <string name="need_no_server_text">Choose a version and install it; the latest release is picked for you.</string>
-    <string name="need_no_server_go">Choose a version</string>
-    <string name="need_permissions">Allow what the server needs</string>
-    <string name="need_permissions_text">Notifications show that it runs and warn when it has trouble; Nearby devices lets the boat\'s tablets and plotters reach it.</string>
-    <string name="need_gps">The phone\'s GPS is not reaching Signal K</string>
-    <string name="need_gps_text">The server was started without the app on the screen, so Android gave it no location. Starting it again from here does.</string>
-    <string name="need_usb">A USB device waits for your permission</string>
-    <string name="need_card">The data\'s card is not in the phone</string>
-    <string name="need_card_text">The server waits for %1$s.</string>
-    <string name="need_missing">Some plugins cannot load</string>
-    <string name="need_missing_go">See which</string>
-    <string name="need_battery">Android may stop the server</string>
-    <string name="need_overlay">Passage cannot dim the screen</string>
-    <string name="need_update">Signal K Server %1$s is out</string>
-    <string name="need_update_text">You have %1$s. It is kept, so you can go back to it.</string>
-    <string name="need_app_update">App %1$s is out</string>
-    <string name="need_inbox">Files from a computer are waiting</string>
 
     <!-- Home: the helm's quick controls. -->
-    <string name="helm_strip_title">At the helm</string>
-    <string name="helm_strip_more">Dimming and the screen kept on</string>
 
     <!-- Devices tab. -->
     <string name="devices_intro">What feeds the server: this phone\'s own sensors, instruments on USB and Bluetooth, and the boat\'s main server.</string>

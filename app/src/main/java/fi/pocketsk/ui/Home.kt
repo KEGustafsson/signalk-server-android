@@ -54,8 +54,9 @@ import kotlin.math.roundToInt
 /**
  * Home (docs/PLAN.md §8.1, §16 16): the boat's alarms while there are any; the server as a ring,
  * coloured by its state and turning while data comes in, with the one thing to do with it now
- * (start it, or open its admin UI); and where tablets reach it. What needs the owner, the webapps
- * and the helm's quick controls are on the Server tab ([NeedsSection]), as the owner asked.
+ * (start it, or open its admin UI); and where tablets reach it. Nothing else, as the owner asked:
+ * what needs them is a tab's dot and a marked row, the webapps are on the Server tab and the helm
+ * screen and power on the Phone tab.
  */
 @Composable
 internal fun HomeTab(model: AppModel, actions: AppActions, open: (Page) -> Unit) {

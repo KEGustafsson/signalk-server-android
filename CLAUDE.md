@@ -63,10 +63,10 @@ app/                 the Android app
                      developer's tool, its button in debug builds' Dock alone)
   fi.pocketsk.ui     DockScreen (the bottom bar's four tabs, Home, Devices, Server, Phone, their
                      rows and the pages they open), Home (the status ring, the main action, the
-                     address), ServerSections (the Server tab's Needs you, webapp tiles and
-                     helm strip), DevicePages, ServerPages, PhonePages, SetupScreen, AlarmScreen, Versions (the version chooser, the wizard's and the Version
+                     address: install, start, stop), DevicePages, ServerPages (the webapps'
+                     tiles among them), PhonePages, SetupScreen, AlarmScreen, Versions (the version chooser, the wizard's and the Version
                      page's), Common (blocks, rows, switches, the "How this works" fold,
-                     permission rows), AppModel, Theme; Needs (what the Server tab's "Needs you" lists,
+                     permission rows), AppModel, Theme; Needs (what wants the owner: the tabs' dots,
                      pure, tested)
   fi.pocketsk.install InstallManager (slots, npm, smoke test, promotion, rollback), InstallJob,
                      ReleaseNotesSource (GitHub's release notes, a day's cache); Slots, ServerVersion,

@@ -1,16 +1,24 @@
 package fi.pocketsk.ui
 
 import android.text.format.Formatter
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -549,3 +557,51 @@ private const val NOTE_RELEASES = 10
 
 /** A release's lines shown: the head of a long list of changes, the rest counted. */
 private const val NOTE_LINES = 12
+
+/**
+ * The webapps installed (docs/PLAN.md §8.3) as tiles: a tap opens one in the browser, a stopped
+ * server started first; with a launcher that takes them, each can be pinned to the home screen,
+ * where one tap does the same ([fi.pocketsk.WebappShortcuts]). On the Server tab: the App Store
+ * installs them into the server, beside its plugins, and the server serves them.
+ */
+@Composable
+internal fun WebappsPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
+    PageHeader(stringResource(R.string.dock_webapps_title), onBack)
+    val webapps = model.webapps ?: return
+    if (webapps.isEmpty()) {
+        Note(stringResource(R.string.dock_webapps_none))
+        return
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        for (w in webapps) {
+            Card(
+                onClick = { actions.openWebapp(w.name) },
+                modifier = Modifier.width(TILE_WIDTH.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+                    ) {
+                        Text(
+                            // A mark, not words: the first letter, upper case by Unicode alone.
+                            w.title.trim().take(1).uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                    Text(w.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                    if (model.canPin) {
+                        TextButton(onClick = { actions.pinWebapp(w.name) }, contentPadding = ButtonDefaults.TextButtonContentPadding) {
+                            Text(stringResource(R.string.dock_webapps_pin))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private const val TILE_WIDTH = 150
