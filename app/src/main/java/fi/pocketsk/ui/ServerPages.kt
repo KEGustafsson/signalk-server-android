@@ -60,6 +60,7 @@ import java.util.Date
 @Composable
 internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
     PageHeader(stringResource(R.string.versions_title), onBack)
+    InstallerStuck(model)
     val slots = model.slots
     if (slots == null) {
         CircularProgressIndicator()
@@ -152,6 +153,12 @@ internal fun VersionsPage(model: AppModel, actions: AppActions, onBack: () -> Un
             dismissButton = { TextButton(onClick = { reinstalling = false }) { Text(stringResource(R.string.dock_storage_cancel)) } },
         )
     }
+}
+
+/** Why the page's actions wait: an earlier run's app update still with Android's installer. */
+@Composable
+private fun InstallerStuck(model: AppModel) {
+    if (model.installerStuck) Block { Problem(stringResource(R.string.installer_stuck)) }
 }
 
 /** How an install went, in words, for the History list. */
@@ -315,6 +322,7 @@ private class Choice(val volume: DataVolumes.Volume?)
 @Composable
 internal fun BackupPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
     PageHeader(stringResource(R.string.backup_title), onBack)
+    InstallerStuck(model)
     val job = model.backup
     // An install, a reset or the app's update refuses a backup or restore, so the buttons wait for them.
     val working = model.busy
@@ -478,6 +486,7 @@ internal fun MissingPage(model: AppModel, actions: AppActions, onBack: () -> Uni
 @Composable
 internal fun ResetPage(model: AppModel, actions: AppActions, onBack: () -> Unit) {
     PageHeader(stringResource(R.string.reset_title), onBack)
+    InstallerStuck(model)
     var asked by remember { mutableStateOf<ResetJob.Kind?>(null) }
     val busy = model.busy
     model.reset?.let { Block { ResetOutcome(it) } }

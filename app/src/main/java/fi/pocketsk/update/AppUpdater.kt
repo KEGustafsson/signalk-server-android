@@ -89,6 +89,12 @@ internal object AppUpdater {
         state.let { it is State.Downloading || it is State.Installing } ||
             (staleLeft && !clean(context.applicationContext))
 
+    /**
+     * An earlier run's installer session may still be left: [abandonStale] and every retry since
+     * could not show it gone. The Dock says so and disables what [updating] would refuse.
+     */
+    val staleSession: Boolean get() = staleLeft
+
     /** Set while [abandonStale] could not confirm that no earlier run's session is left. */
     @Volatile private var staleLeft = false
 

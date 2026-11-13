@@ -341,6 +341,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // An earlier run's update the installer would not give up: tried again, and the Dock
+        // told whether the server's jobs still wait for it.
+        AppUpdater.updating(this)
+        model.installerStuck = AppUpdater.staleSession
         // Settings opened from here (battery, an app permission) may have changed something.
         refreshPermissions()
         refreshAddress()

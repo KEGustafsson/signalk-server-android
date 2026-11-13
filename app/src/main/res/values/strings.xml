@@ -514,6 +514,7 @@
         <item quantity="other">%1$d to allow</item>
     </plurals>
     <string name="app_update_busy">The app updates once the install, backup, restore or reset running now is done.</string>
+    <string name="installer_stuck">An earlier update of this app is still waiting in Android\'s installer, so installs, backups, restores and resets wait too. Open the app again, or restart the phone, to clear it.</string>
     <string name="app_check_now">Check now</string>
     <string name="app_summary_offer">%1$s is out</string>
 </resources>

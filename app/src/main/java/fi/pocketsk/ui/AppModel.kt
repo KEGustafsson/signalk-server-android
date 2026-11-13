@@ -106,7 +106,13 @@ internal class AppModel {
      * the app's own update. One at a time, as the jobs themselves enforce; the screens disable
      * what would be refused rather than let it fail.
      */
-    val busy: Boolean get() = installing || resetting || backup is BackupJob.State.Working || appUpdating
+    val busy: Boolean get() = installing || resetting || backup is BackupJob.State.Working || appUpdating || installerStuck
+
+    /**
+     * An earlier run's app update may still be with Android's installer, which could not be
+     * cleared ([fi.pocketsk.update.AppUpdater.staleSession]): the server's jobs wait for it.
+     */
+    var installerStuck by mutableStateOf(false)
 
     /** A sideloaded `.tgz`, copied into the app's cache, once one has been picked. */
     var tarball by mutableStateOf<File?>(null)
