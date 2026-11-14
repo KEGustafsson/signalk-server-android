@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   plugin:
-    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@55466a958cf2958542208fed559d70911888f1bb # master
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@7d96d5230d40b8fec9b7fd093d134fb22b39fad7 # master
     with:
       working-directory: sk-plugin/android-bridge
       node-versions: '["24"]'
